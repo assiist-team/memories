@@ -308,6 +308,8 @@ IMPORTANT: Ensure that the spec and tasks list are ALIGNED and DO NOT CONFLICT w
 @agent-os/standards/global/commenting.md
 @agent-os/standards/global/conventions.md
 @agent-os/standards/global/error-handling.md
+@agent-os/standards/global/performance.md
+@agent-os/standards/global/security.md
 @agent-os/standards/global/tech-stack.md
 @agent-os/standards/global/validation.md
 @agent-os/standards/testing/test-writing.md
