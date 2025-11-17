@@ -1,0 +1,49 @@
+task_groups:
+  - name: Database & RLS Foundation
+    claude_code_subagent: backend-specialist
+    standards:
+      - backend/*
+      - global/security.md
+      - global/validation.md
+  - name: Supabase Client & Session Plumbing
+    claude_code_subagent: backend-specialist
+    standards:
+      - backend/*
+      - global/security.md
+      - global/error-handling.md
+  - name: Authentication UX (Email + Google + Verification)
+    claude_code_subagent: frontend-specialist
+    standards:
+      - frontend/*
+      - global/validation.md
+      - global/error-handling.md
+      - global/security.md
+  - name: Biometric Login Support
+    claude_code_subagent: frontend-specialist
+    standards:
+      - frontend/*
+      - global/security.md
+      - global/error-handling.md
+  - name: Onboarding & Tutorial Flow
+    claude_code_subagent: frontend-specialist
+    standards:
+      - frontend/*
+  - name: Settings & Profile Management
+    claude_code_subagent: frontend-specialist
+    standards:
+      - frontend/*
+      - global/validation.md
+      - global/error-handling.md
+  - name: Account Deletion Service & UI
+    claude_code_subagent: backend-specialist
+    standards:
+      - backend/*
+      - frontend/*
+      - global/security.md
+      - global/error-handling.md
+  - name: QA & Verification
+    claude_code_subagent: qa-specialist
+    standards:
+      - testing/*
+      - global/*
+

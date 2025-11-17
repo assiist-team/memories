@@ -1,0 +1,44 @@
+name: memories
+description: A Flutter app for capturing and organizing memories
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+  
+  # Supabase
+  supabase_flutter: ^2.5.6
+  
+  # Secure Storage
+  flutter_secure_storage: ^9.0.0
+  
+  # Biometric Authentication
+  local_auth: ^2.2.0
+  local_auth_android: ^1.0.0
+  local_auth_darwin: ^1.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  
+  # Code Generation
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.3.11
+  
+  # Testing
+  mocktail: ^1.0.1
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+

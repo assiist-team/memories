@@ -2,7 +2,7 @@
 
 ## MVP - Core Memory Capture & Viewing
 
-1. [ ] **User Authentication & Profile** — Implement Supabase Auth with email/password and social login; create user profile with basic settings. `XS`
+1. [x] **User Authentication & Profile** — Implemented (2025-01-17). Supabase Auth + profiles complete; see `agent-os/specs/2025-11-16-user-auth-and-profile/tasks.md` and `docs/release_notes_auth.md`. `XS`
 
 2. [ ] **Moment Creation (Text + Media)** — Build form to create Moments with title (required), text description (optional), and ability to upload photos/videos from device; store media in Supabase Storage. `S`
 
