@@ -5,6 +5,7 @@ import 'package:memories/providers/auth_state_provider.dart';
 import 'package:memories/screens/auth/login_screen.dart';
 import 'package:memories/screens/auth/verification_wait_screen.dart';
 import 'package:memories/screens/onboarding/onboarding_flow_screen.dart';
+import 'package:memories/widgets/sync_service_initializer.dart';
 
 /// Main app router that handles navigation based on authentication state
 ///
@@ -50,12 +51,15 @@ class AppRouter extends ConsumerWidget {
       case AuthRouteState.authenticated:
         // Show main app shell (placeholder for now)
         // TODO: Replace with actual main shell when implemented
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Memories'),
-          ),
-          body: const Center(
-            child: Text('Welcome to Memories!\nMain app coming soon.'),
+        // Wrap in SyncServiceInitializer to start auto-sync
+        return SyncServiceInitializer(
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('Memories'),
+            ),
+            body: const Center(
+              child: Text('Welcome to Memories!\nMain app coming soon.'),
+            ),
           ),
         );
     }
