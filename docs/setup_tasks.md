@@ -56,9 +56,9 @@ Set these environment variables in your Flutter build configuration:
 You need to add redirect URLs based on your app's bundle ID/package name. Replace `YOUR_BUNDLE_ID` with your actual bundle ID (e.g., `com.example.memories`):
 
 **For Development:**
-- `memories://auth-callback` (temporary placeholder - replace with your bundle ID)
-- `YOUR_BUNDLE_ID://auth-callback` (e.g., `com.example.memories://auth-callback`)
-- `http://localhost:3000/auth/callback` (for web testing)
+- `com.example.memories://auth-callback` (for the mobile app builds; this deep link must match `lib/services/google_oauth_service.dart`/your app bundle ID so the native redirect can resume the session)
+- `YOUR_BUNDLE_ID://auth-callback` (add this if your bundle ID differs from `com.example.memories`)
+- `http://localhost:3000/auth/callback` (only add when you are running the Flutter web version locally—use this redirect for browser-based OAuth flows during web testing)
 
 **For Production:**
 - `YOUR_BUNDLE_ID://auth-callback` (iOS - e.g., `com.example.memories://auth-callback`)
@@ -70,7 +70,7 @@ You need to add redirect URLs based on your app's bundle ID/package name. Replac
 - Once you determine your bundle ID, update both the Supabase Dashboard and the code
 - The format is: `{BUNDLE_ID}://auth-callback`
 
-**Current code uses:** `memories://auth-callback` (this is a placeholder - update it to match your actual bundle ID)
+**Current code uses:** `com.example.memories://auth-callback`
 
 ### 1.3 Enable Google OAuth Provider
 

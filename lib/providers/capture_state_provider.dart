@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_dictation/flutter_dictation.dart';
 import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/dictation_service.dart';
@@ -12,13 +13,37 @@ import 'package:uuid/uuid.dart';
 part 'capture_state_provider.g.dart';
 
 /// Provider for dictation service
-@riverpod
+/// 
+/// Kept alive for the entire capture surface lifetime to ensure
+/// stable lifecycle so mic events continue streaming.
+/// 
+/// CRITICAL: Read the feature flag with ref.read() instead of ref.watch()
+/// to prevent the service from being recreated if the flag changes.
+/// The flag should only be read once when the service is first created.
+@Riverpod(keepAlive: true)
 DictationService dictationService(DictationServiceRef ref) {
-  // Watch feature flag (sync version)
-  final useNewPlugin = ref.watch(useNewDictationPluginSyncProvider);
+  // Read feature flag ONCE at creation (don't watch to avoid rebuilds)
+  final useNewPlugin = ref.read(useNewDictationPluginSyncProvider);
   final service = DictationService(useNewPlugin: useNewPlugin);
+  
+  // Initialize immediately in background to pre-warm native layer
+  service.ensureInitialized().catchError((e) {
+    print('[dictationServiceProvider] Failed to initialize service: $e');
+  });
+  
   ref.onDispose(() => service.dispose());
   return service;
+}
+
+/// Provider for waveform controller
+/// 
+/// Manages waveform visualization state for dictation.
+/// Kept alive for the capture surface lifetime.
+@Riverpod(keepAlive: true)
+WaveformController waveformController(WaveformControllerRef ref) {
+  final controller = WaveformController();
+  ref.onDispose(() => controller.dispose());
+  return controller;
 }
 
 /// Provider for geolocation service
@@ -40,6 +65,8 @@ GeolocationService geolocationService(GeolocationServiceRef ref) {
 class CaptureStateNotifier extends _$CaptureStateNotifier {
   @override
   CaptureState build() {
+    // Watch dictation service to keep it alive for the notifier's lifetime
+    ref.watch(dictationServiceProvider);
     return const CaptureState();
   }
 
@@ -141,7 +168,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     });
 
     // Subscribe to audio level stream (for waveform)
+    final waveformController = ref.read(waveformControllerProvider);
     _audioLevelSubscription = dictationService.audioLevelStream.listen((level) {
+      // Update waveform controller for plugin widgets
+      waveformController.updateLevel(level);
       state = state.copyWith(
         audioLevel: level,
         hasUnsavedChanges: true,
@@ -185,6 +215,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     _cancelSubscriptions();
     _cancelElapsedTimer();
 
+    // Reset waveform controller
+    final waveformController = ref.read(waveformControllerProvider);
+    waveformController.reset();
+
     // Clean up audio file if it exists (cancel/discard flow)
     final sessionId = state.sessionId;
     if (sessionId != null) {
@@ -217,6 +251,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     // Cancel subscriptions and timer
     _cancelSubscriptions();
     _cancelElapsedTimer();
+
+    // Reset waveform controller
+    final waveformController = ref.read(waveformControllerProvider);
+    waveformController.reset();
 
     // Extract audio metadata if available
     double? audioDuration;

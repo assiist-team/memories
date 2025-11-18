@@ -39,5 +39,54 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
+    # Check if this is a bundle target (privacy bundles or resource bundles)
+    is_bundle_target = (target.respond_to?(:product_type) && target.product_type == 'com.apple.product-type.bundle') || 
+                       target.name.include?('_privacy') || 
+                       target.name.end_with?('_privacy') ||
+                       target.name.end_with?('.bundle')
+    
+    # Fix for bundle targets that don't have executables - create dummy executable to satisfy CopySwiftLibs
+    if is_bundle_target
+      target.build_configurations.each do |config|
+        config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+        config.build_settings['SWIFT_EMIT_MODULE_INTERFACE'] = 'NO'
+      end
+      
+      # Add a script phase before CopySwiftLibs to create minimal executable
+      script_phase = target.new_shell_script_build_phase('Create Bundle Executable')
+      script_phase.shell_script = <<~SCRIPT
+        BUNDLE_PATH="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.bundle"
+        EXECUTABLE_PATH="${BUNDLE_PATH}/${PRODUCT_NAME}"
+        
+        # Create bundle directory if it doesn't exist
+        mkdir -p "${BUNDLE_PATH}"
+        
+        # Create a minimal valid Mach-O executable if it doesn't exist (needed for CopySwiftLibs)
+        if [ ! -f "${EXECUTABLE_PATH}" ]; then
+          # Create a minimal valid Mach-O executable using ld
+          # This creates an empty executable that satisfies CopySwiftLibs requirements
+          /usr/bin/ld -arch arm64 -platform_version ios 13.0 0.0 -syslibroot "${SDKROOT}" -o "${EXECUTABLE_PATH}" 2>/dev/null || \
+          /usr/bin/ld -arch x86_64 -platform_version ios-simulator 13.0 0.0 -syslibroot "${SDKROOT}" -o "${EXECUTABLE_PATH}" 2>/dev/null || \
+          echo "int main() { return 0; }" | "${CC}" -x c - -o "${EXECUTABLE_PATH}" 2>/dev/null || \
+          touch "${EXECUTABLE_PATH}" && chmod +x "${EXECUTABLE_PATH}"
+        fi
+      SCRIPT
+      script_phase.run_only_for_deployment_postprocessing = '0'
+      
+      # Move script phase before CopySwiftLibs if possible
+      copy_swift_libs_index = target.build_phases.index { |p| p.respond_to?(:name) && p.name == 'CopySwiftLibs' }
+      if copy_swift_libs_index
+        target.build_phases.insert(copy_swift_libs_index, script_phase)
+        target.build_phases.delete(script_phase) if target.build_phases.count(script_phase) > 1
+      end
+    else
+      # Ensure Swift runtime is properly initialized for Swift plugins
+      # This is critical when using use_frameworks! with Swift-based Flutter plugins
+      target.build_configurations.each do |config|
+        config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'YES'
+        config.build_settings['SWIFT_VERSION'] = '5.0'
+      end
+    end
   end
 end

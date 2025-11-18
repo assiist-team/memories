@@ -12,6 +12,8 @@ import 'package:memories/providers/search_provider.dart';
 import 'package:memories/widgets/skeleton_loader.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
+import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/screens/capture/capture_screen.dart';
 
 /// Main timeline screen displaying Moments in reverse chronological order
 class TimelineScreen extends ConsumerStatefulWidget {
@@ -91,21 +93,25 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
   @override
   Widget build(BuildContext context) {
     final timelineState = ref.watch(unifiedTimelineFeedNotifierProvider);
-    // TODO: Implement proper connectivity checking
-    final isOnline = true;
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isOnlineAsync = connectivityService.isOnline();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Memories'),
         elevation: 0,
       ),
-      body: Column(
-        children: [
-          // Global search bar
-          const GlobalSearchBar(),
-          // Offline banner
-          if (!isOnline)
-            Container(
+      body: FutureBuilder<bool>(
+        future: isOnlineAsync,
+        builder: (context, snapshot) {
+          final isOnline = snapshot.data ?? true;
+          return Column(
+            children: [
+              // Global search bar
+              const GlobalSearchBar(),
+              // Offline banner
+              if (!isOnline)
+                Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Theme.of(context).colorScheme.errorContainer,
@@ -126,35 +132,37 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
                 ],
               ),
             ),
-          // Timeline content or search results
-          Expanded(
-            child: Consumer(
-              builder: (context, ref, child) {
-                final searchQuery = ref.watch(searchQueryProvider);
-                final searchResultsState = ref.watch(searchResultsProvider);
+              // Timeline content or search results
+              Expanded(
+                child: Consumer(
+                  builder: (context, ref, child) {
+                    final searchQuery = ref.watch(searchQueryProvider);
+                    final searchResultsState = ref.watch(searchResultsProvider);
 
-                // Show search results if there's an active search query
-                if (searchQuery.isNotEmpty) {
-                  // Show search results list if we have results or are loading
-                  if (searchResultsState.items.isNotEmpty ||
-                      searchResultsState.isLoading) {
-                    return SearchResultsList(
-                      results: searchResultsState.items,
-                      query: searchQuery,
-                      hasMore: searchResultsState.hasMore,
-                      isLoadingMore: searchResultsState.isLoadingMore,
-                    );
-                  }
-                  // Empty/error states are handled by GlobalSearchBar
-                  return const SizedBox.shrink();
-                }
+                    // Show search results if there's an active search query
+                    if (searchQuery.isNotEmpty) {
+                      // Show search results list if we have results or are loading
+                      if (searchResultsState.items.isNotEmpty ||
+                          searchResultsState.isLoading) {
+                        return SearchResultsList(
+                          results: searchResultsState.items,
+                          query: searchQuery,
+                          hasMore: searchResultsState.hasMore,
+                          isLoadingMore: searchResultsState.isLoadingMore,
+                        );
+                      }
+                      // Empty/error states are handled by GlobalSearchBar
+                      return const SizedBox.shrink();
+                    }
 
-                // Otherwise show timeline content
-                return _buildTimelineContent(timelineState, searchQuery);
-              },
-            ),
-          ),
-        ],
+                    // Otherwise show timeline content
+                    return _buildTimelineContent(timelineState, searchQuery);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -430,7 +438,11 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () {
-                          // TODO: Navigate to capture screen
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const CaptureScreen(),
+                            ),
+                          );
                         },
                         child: const Text('Capture a new memory'),
                       ),

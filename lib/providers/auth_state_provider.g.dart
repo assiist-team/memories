@@ -27,7 +27,7 @@ final secureStorageServiceProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef SecureStorageServiceRef = AutoDisposeProviderRef<SecureStorageService>;
-String _$authStateHash() => r'ac56055ab790111521428f2672f992e5ae4a3de5';
+String _$authStateHash() => r'3892626cd77f8ff6f0dde2e66c099c3734bca71a';
 
 /// Provider that listens to Supabase auth state changes and determines routing
 ///

@@ -80,10 +80,10 @@ class UnifiedFeedRepository {
       params['p_memory_type'] = 'all';
     }
 
-    final response = await _supabase.rpc('get_unified_feed', params: params);
+    final response = await _supabase.rpc('get_unified_timeline_feed', params: params);
 
     if (response is! List) {
-      throw Exception('Invalid response format from get_unified_feed');
+      throw Exception('Invalid response format from get_unified_timeline_feed');
     }
 
     final memories = response

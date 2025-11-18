@@ -51,6 +51,14 @@
 	<string>Memories uses speech recognition to convert your voice recordings into text for your memories and stories.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Memories needs access to your microphone to record voice stories and memories.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Memories needs access to your camera to capture photos and videos for your memories.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Memories uses local network access to check connectivity status and sync your memories.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartobservatory._tcp</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -97,36 +97,35 @@ class OnboardingService {
   }
 
   Future<Map<String, dynamic>> _fetchProfileFromSupabase(String userId) async {
-    final result = await _supabase
+    final profile = await _supabase
         .from('profiles')
         .select('onboarding_completed_at')
         .eq('id', userId)
         .maybeSingle();
-    
-    if (result == null) {
-      throw Exception('Profile does not exist for user');
+
+    if (profile != null) {
+      return profile;
     }
-    
-    return result;
+
+    // Profile missing - attempt to create it via RPC and re-fetch
+    await _ensureProfileExists(userId);
+
+    final ensuredProfile = await _supabase
+        .from('profiles')
+        .select('onboarding_completed_at')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (ensuredProfile == null) {
+      throw Exception('Profile still missing after ensure_profile_exists RPC call.');
+    }
+
+    return ensuredProfile;
   }
 
   Future<Map<String, dynamic>> _completeOnboardingInSupabase(String userId) async {
-    // First check if profile exists
-    final existingProfile = await _supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-    
-    if (existingProfile == null) {
-      // Profile doesn't exist - this shouldn't happen if trigger worked,
-      // but handle gracefully. Since RLS blocks direct inserts, we can't create it here.
-      // The trigger should have created it on signup, so this is an edge case.
-      // Return a response that indicates failure
-      throw Exception('Profile does not exist for user. The profile should have been created automatically. Please try signing out and back in, or contact support.');
-    }
-    
-    // Profile exists, proceed with update
+    await _ensureProfileExists(userId);
+
     final result = await _supabase
         .from('profiles')
         .update({
@@ -135,12 +134,18 @@ class OnboardingService {
         .eq('id', userId)
         .select()
         .maybeSingle();
-    
+
     if (result == null) {
       throw Exception('Failed to update onboarding status. No rows were updated.');
     }
-    
+
     return result;
+  }
+
+  Future<void> _ensureProfileExists(String userId) async {
+    await _supabase.rpc('ensure_profile_exists', params: {
+      'target_user_id': userId,
+    });
   }
 }
 

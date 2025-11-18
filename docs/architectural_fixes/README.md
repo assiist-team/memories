@@ -46,6 +46,18 @@ See the master plan: [`../memory-implementation-fix-plan.md`](../memory-implemen
    - Consolidates Phase 5 work (table/enum renames)
    - **Status**: Implementation complete, migrations ready to apply
 
+7. **[Phase 7: Story Fields Extension](./phase-7-story-fields-extension-plan.md)**
+   - **Priority**: Medium
+   - **Risk**: Medium
+   - Extends story_fields table with additional processing fields
+   - Adds retry_count, error_message, and other processing metadata
+
+8. **[Phase 8: Sync Service Renaming](./phase-8-sync-service-renaming.md)**
+   - **Priority**: Medium
+   - **Risk**: Low
+   - Renames `MomentSyncService` → `MemorySyncService`
+   - Independent, can be done anytime
+
 ## Execution Order
 
 ```
@@ -58,6 +70,12 @@ Phase 3 (Validation Fix)
 Phase 4 (Service Rename) ──┐
     ↓                      │ (Independent)
 Phase 6 (DB Normalization) ┘ (Consolidates Phase 5)
+    ↓
+Phase 7 (Story Fields Extension)
+    ↓
+Phase 8 (Sync Service Rename) ──┐
+    ↓                            │ (Independent)
+Story Sync Service TODO ─────────┘ (Future work)
 ```
 
 **Note**: Phase 5 was superseded by Phase 6, which consolidates the table/enum renames along with text normalization.
@@ -72,6 +90,17 @@ Phase 6 (DB Normalization) ┘ (Consolidates Phase 5)
 | 4 | 5-6 files | Low | None | ✅ |
 | 5 | 8+ spec files + DB migration | Medium | None | ⚠️ Superseded |
 | 6 | Models + Services + 4 DB migrations | Medium | None | ✅ Complete |
+| 7 | DB migration + models | Medium | None | 📋 Planned |
+| 8 | 2-3 files | Low | None | 📋 Planned |
+
+## Additional TODOs
+
+- **[Story Sync Service](./story-sync-service-todo.md)** - Implement sync service for Stories
+  - **Priority**: High
+  - **Risk**: Medium
+  - **Status**: 📋 TODO
+  - Stories are currently queued but not synced automatically
+  - Requires `StorySyncService` implementation similar to `MemorySyncService`
 
 ## Getting Started
 

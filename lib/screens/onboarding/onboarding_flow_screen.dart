@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:memories/services/onboarding_service.dart';
+import 'package:memories/providers/auth_state_provider.dart';
 import 'package:memories/screens/onboarding/onboarding_capture_screen.dart';
 import 'package:memories/screens/onboarding/onboarding_timeline_screen.dart';
 import 'package:memories/screens/onboarding/onboarding_privacy_screen.dart';
@@ -26,8 +27,21 @@ class OnboardingFlowScreen extends StatefulWidget {
 }
 
 class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
+  late final PageController _pageController;
   int _currentPageIndex = 0;
   bool _isCompleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentPageIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleComplete() async {
     if (_isCompleting) return;
@@ -45,8 +59,11 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
       if (success && mounted) {
         // Clear cache to ensure fresh state
         onboardingService.clearCache();
-        // Navigation will be handled by auth state provider
-        // The auth state will update and route to authenticated state
+        
+        // Invalidate auth state provider to trigger re-check of onboarding status
+        // This will cause it to query the database again and detect that
+        // onboarding is now complete, triggering navigation to the main app
+        container.invalidate(authStateProvider);
       } else if (mounted) {
         // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -79,24 +96,28 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
 
   void _handleNext() {
     if (_currentPageIndex < 2) {
-      setState(() {
-        _currentPageIndex++;
-      });
+      _pageController.animateToPage(
+        _currentPageIndex + 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
   void _handlePrevious() {
     if (_currentPageIndex > 0) {
-      setState(() {
-        _currentPageIndex--;
-      });
+      _pageController.animateToPage(
+        _currentPageIndex - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return PageView(
-      controller: PageController(initialPage: _currentPageIndex),
+      controller: _pageController,
       onPageChanged: (index) {
         setState(() {
           _currentPageIndex = index;

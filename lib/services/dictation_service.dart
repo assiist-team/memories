@@ -108,8 +108,9 @@ class DictationService {
   String? get errorMessage => _errorMessage;
 
   /// Initialize the native dictation service
-  /// Should be called before starting to listen
-  Future<void> _ensureInitialized() async {
+  /// Should be called before starting to listen.
+  /// This is now public so providers can pre-warm the service on creation.
+  Future<void> ensureInitialized() async {
     if (_isInitialized) {
       return;
     }
@@ -157,7 +158,7 @@ class DictationService {
       _resetWaveform();
       
       // Ensure service is initialized
-      await _ensureInitialized();
+      await ensureInitialized();
       
       // Reset transcript and audio file state
       _currentTranscript = '';

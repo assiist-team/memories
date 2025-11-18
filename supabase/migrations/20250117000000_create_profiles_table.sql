@@ -96,3 +96,4 @@ CREATE POLICY "No profile deletes"
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, UPDATE ON public.profiles TO authenticated;
 
+

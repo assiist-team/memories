@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dictation/flutter_dictation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/models/queued_moment.dart';
@@ -9,11 +11,11 @@ import 'package:memories/providers/media_picker_provider.dart';
 import 'package:memories/providers/queue_status_provider.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
-import 'package:memories/services/moment_sync_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/queue_status_chips.dart';
 import 'package:memories/widgets/tag_chip_input.dart';
@@ -189,13 +191,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
       // Step 3: Handle Story vs Moment/Memento saving
       if (finalState.memoryType == MemoryType.story) {
-        // For Stories, queue for offline sync (story save service will be implemented in task 8)
+        // For Stories, queue for offline sync
+        // MemorySyncService will automatically sync when connectivity is restored
         // Check connectivity to determine if we should queue
         final connectivityService = ref.read(connectivityServiceProvider);
         final isOnline = await connectivityService.isOnline();
         
         try {
-          // Queue story (will be synced when story save service is available in task 8)
+          // Queue story for sync (MemorySyncService handles automatic syncing)
           // This queues whenever uploads cannot proceed (offline or when upload service unavailable)
           final storyQueueService = ref.read(offlineStoryQueueServiceProvider);
           final localId = OfflineStoryQueueService.generateLocalId();
@@ -235,7 +238,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               ),
             );
             await notifier.clear(keepAudioIfQueued: true);
-            Navigator.of(context).pop();
+            // Only pop if there's a route to pop (i.e., if this screen was pushed)
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
             return;
           }
         } catch (e) {
@@ -298,7 +304,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             ),
           );
           await notifier.clear(keepAudioIfQueued: true);
-          Navigator.of(context).pop();
+          // Only pop if there's a route to pop (i.e., if this screen was pushed)
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
           return;
         }
       }
@@ -336,7 +345,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
         // Clear state and navigate to detail view
         await notifier.clear();
-        Navigator.of(context).pop();
+        // Only pop if there's a route to pop (i.e., if this screen was pushed)
+        // If this is the root screen in navigation shell, just navigate to detail
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
         // Navigate to moment detail view
         final savedMomentId = result.momentId;
         if (savedMomentId.isNotEmpty) {
@@ -473,55 +486,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     );
   }
 
-  Future<bool> _handleCancel() async {
-    final state = ref.read(captureStateNotifierProvider);
-    
-      if (state.hasUnsavedChanges) {
-      final shouldDiscard = await showDialog<bool>(
-        context: context,
-        builder: (context) => Semantics(
-          label: 'Discard changes confirmation dialog',
-          child: AlertDialog(
-            title: Semantics(
-              label: 'Discard changes?',
-              header: true,
-              child: const Text('Discard changes?'),
-            ),
-            content: Semantics(
-              label: 'You have unsaved changes. Are you sure you want to discard them?',
-              child: const Text('You have unsaved changes. Are you sure you want to discard them?'),
-            ),
-            actions: [
-              Semantics(
-                label: 'Keep editing',
-                button: true,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Keep Editing'),
-                ),
-              ),
-              Semantics(
-                label: 'Discard changes',
-                button: true,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Discard'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (shouldDiscard == true) {
-        await ref.read(captureStateNotifierProvider.notifier).clear();
-        return true;
-      }
-      return false;
-    }
-
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -533,260 +497,199 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       _syncInputTextController(state.inputText);
     });
 
-    return WillPopScope(
-      onWillPop: _handleCancel,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Capture Memory'),
-          actions: [
-            // Sync now action (in overflow menu)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) async {
-                if (value == 'sync_now') {
-                  await _handleSyncNow(ref);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'sync_now',
-                  child: Row(
-                    children: [
-                      Icon(Icons.sync, size: 20),
-                      SizedBox(width: 8),
-                      Text('Sync Now'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            // Cancel button
-            TextButton(
-              onPressed: () async {
-                if (await _handleCancel()) {
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                }
-              },
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Queue status chips
-              const QueueStatusChips(),
-              // Main content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Memory type toggles
-                _MemoryTypeToggle(
-                  selectedType: state.memoryType,
-                  onTypeChanged: (type) => notifier.setMemoryType(type),
-                ),
-                const SizedBox(height: 24),
-                
-                // Dictation control
-                _DictationControl(
-                  isDictating: state.isDictating,
-                  transcript: state.inputText ?? '',
-                  audioLevel: state.audioLevel,
-                  elapsedDuration: state.elapsedDuration,
-                  errorMessage: state.errorMessage,
-                  onStart: () => notifier.startDictation(),
-                  onStop: () => notifier.stopDictation(),
-                  onCancel: () => notifier.cancelDictation(),
-                ),
-                const SizedBox(height: 24),
-                
-                // Input text field
-                Semantics(
-                  label: 'Input text',
-                  textField: true,
-                  child: TextField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Description (optional)',
-                      hintText: 'Add any additional details...',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 4,
-                    onChanged: (value) => notifier.updateInputText(value.isEmpty ? null : value),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Media tray
-                MediaTray(
-                  photoPaths: state.photoPaths,
-                  videoPaths: state.videoPaths,
-                  onPhotoRemoved: (index) => notifier.removePhoto(index),
-                  onVideoRemoved: (index) => notifier.removeVideo(index),
-                  canAddPhoto: state.canAddPhoto,
-                  canAddVideo: state.canAddVideo,
-                ),
-                const SizedBox(height: 16),
-                
-                // Media add buttons
-                Row(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Capture Memory'),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Queue status chips
+            const QueueStatusChips(),
+            // Main content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Semantics(
-                        label: 'Add photo',
-                        button: true,
-                        child: OutlinedButton.icon(
-                          onPressed: state.canAddPhoto ? _handleAddPhoto : null,
-                          icon: const Icon(Icons.photo_camera),
-                          label: const Text('Photo'),
+                    // Memory type toggles
+                    _MemoryTypeToggle(
+                      selectedType: state.memoryType,
+                      onTypeChanged: (type) => notifier.setMemoryType(type),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Dictation control (iOS only)
+                    if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb)
+                      _DictationControl(
+                        isDictating: state.isDictating,
+                        transcript: state.inputText ?? '',
+                        elapsedDuration: state.elapsedDuration,
+                        errorMessage: state.errorMessage,
+                        onStart: () => notifier.startDictation(),
+                        onStop: () => notifier.stopDictation(),
+                        onCancel: () => notifier.cancelDictation(),
+                      )
+                    else if (defaultTargetPlatform != TargetPlatform.iOS && !kIsWeb)
+                      // Platform not supported banner
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Voice dictation is currently available on iOS. Android support coming soon.',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Semantics(
-                        label: 'Add video',
-                        button: true,
-                        child: OutlinedButton.icon(
-                          onPressed: state.canAddVideo ? _handleAddVideo : null,
-                          icon: const Icon(Icons.videocam),
-                          label: const Text('Video'),
+                    const SizedBox(height: 24),
+
+                    // Input text field
+                    Semantics(
+                      label: 'Input text',
+                      textField: true,
+                      child: TextField(
+                        controller: _descriptionController,
+                        decoration: const InputDecoration(
+                          labelText: 'Description (optional)',
+                          hintText: 'Add any additional details...',
+                          border: OutlineInputBorder(),
                         ),
+                        maxLines: 4,
+                        onChanged: (value) => notifier.updateInputText(value.isEmpty ? null : value),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Media tray
+                    MediaTray(
+                      photoPaths: state.photoPaths,
+                      videoPaths: state.videoPaths,
+                      onPhotoRemoved: (index) => notifier.removePhoto(index),
+                      onVideoRemoved: (index) => notifier.removeVideo(index),
+                      canAddPhoto: state.canAddPhoto,
+                      canAddVideo: state.canAddVideo,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Media add buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Semantics(
+                            label: 'Add photo',
+                            button: true,
+                            child: OutlinedButton.icon(
+                              onPressed: state.canAddPhoto ? _handleAddPhoto : null,
+                              icon: const Icon(Icons.photo_camera),
+                              label: const Text('Photo'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Semantics(
+                            label: 'Add video',
+                            button: true,
+                            child: OutlinedButton.icon(
+                              onPressed: state.canAddVideo ? _handleAddVideo : null,
+                              icon: const Icon(Icons.videocam),
+                              label: const Text('Video'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Tagging input
+                    TagChipInput(
+                      tags: state.tags,
+                      onTagAdded: (tag) => notifier.addTag(tag),
+                      onTagRemoved: (index) => notifier.removeTag(index),
+                      hintText: 'Add tags (optional)',
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Save button with progress indicator
+                    Semantics(
+                      label: 'Save memory',
+                      button: true,
+                      child: ElevatedButton(
+                        onPressed: (state.canSave && !_isSaving) ? _handleSave : null,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          minimumSize: const Size(0, 48),
+                        ),
+                        child: _isSaving
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Semantics(
+                                    label: _saveProgressMessage ?? 'Saving memory',
+                                    value: _saveProgress != null
+                                        ? '${(_saveProgress! * 100).toInt()}% complete'
+                                        : null,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ),
+                                        if (_saveProgressMessage != null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            _saveProgressMessage!,
+                                            style: const TextStyle(fontSize: 12),
+                                          ),
+                                        ],
+                                        if (_saveProgress != null) ...[
+                                          const SizedBox(height: 4),
+                                          LinearProgressIndicator(
+                                            value: _saveProgress,
+                                            backgroundColor: Colors.white.withOpacity(0.3),
+                                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Text('Save'),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
-                
-                // Tagging input
-                TagChipInput(
-                  tags: state.tags,
-                  onTagAdded: (tag) => notifier.addTag(tag),
-                  onTagRemoved: (index) => notifier.removeTag(index),
-                  hintText: 'Add tags (optional)',
-                ),
-                const SizedBox(height: 32),
-                
-                // Save button with progress indicator
-                Semantics(
-                  label: 'Save memory',
-                  button: true,
-                  child: ElevatedButton(
-                    onPressed: (state.canSave && !_isSaving) ? _handleSave : null,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      minimumSize: const Size(0, 48),
-                    ),
-                    child: _isSaving
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Semantics(
-                                label: _saveProgressMessage ?? 'Saving memory',
-                                value: _saveProgress != null
-                                    ? '${(_saveProgress! * 100).toInt()}% complete'
-                                    : null,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    ),
-                                    if (_saveProgressMessage != null) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        _saveProgressMessage!,
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ],
-                                    if (_saveProgress != null) ...[
-                                      const SizedBox(height: 4),
-                                      LinearProgressIndicator(
-                                        value: _saveProgress,
-                                        backgroundColor: Colors.white.withOpacity(0.3),
-                                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          )
-                        : const Text('Save'),
-                  ),
-                ),
-                    ],
-                  ),
-                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Future<void> _handleSyncNow(WidgetRef ref) async {
-    final syncService = ref.read(momentSyncServiceProvider);
-    
-    try {
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 16),
-                Text('Syncing queued moments...'),
-              ],
-            ),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      
-      // Trigger sync
-      await syncService.syncQueuedMoments();
-      
-      // Invalidate queue status to refresh
-      ref.invalidate(queueStatusProvider);
-      
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sync completed'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sync failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
   }
 }
 
@@ -829,10 +732,9 @@ class _MemoryTypeToggle extends StatelessWidget {
   }
 }
 
-class _DictationControl extends StatelessWidget {
+class _DictationControl extends ConsumerWidget {
   final bool isDictating;
   final String transcript;
-  final double audioLevel;
   final Duration elapsedDuration;
   final String? errorMessage;
   final VoidCallback onStart;
@@ -842,7 +744,6 @@ class _DictationControl extends StatelessWidget {
   const _DictationControl({
     required this.isDictating,
     required this.transcript,
-    this.audioLevel = 0.0,
     this.elapsedDuration = Duration.zero,
     this.errorMessage,
     required this.onStart,
@@ -850,122 +751,78 @@ class _DictationControl extends StatelessWidget {
     required this.onCancel,
   });
 
-  /// Format duration as M:SS
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$minutes:$seconds";
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final waveformController = ref.watch(waveformControllerProvider);
+    final isSimulator = PlatformUtils.isSimulator;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // When NOT dictating: Show mic button (right aligned, centered)
-        if (!isDictating)
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Semantics(
-                label: 'Start dictation',
-                button: true,
-                child: Center(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.mic),
-                      iconSize: 32,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      onPressed: onStart,
-                      padding: const EdgeInsets.all(12),
-                      constraints: const BoxConstraints(
-                        minWidth: 60,
-                        minHeight: 60,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        
-        // When dictating: Show control row (cancel X, waveform, timer + checkmark)
-        if (isDictating)
+        // Simulator warning banner
+        if (isSimulator)
           Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Cancel button (left)
-                Semantics(
-                  label: 'Cancel dictation',
-                  button: true,
-                  child: IconButton(
-                    icon: const Icon(Icons.cancel),
-                    iconSize: 20,
-                    color: Theme.of(context).colorScheme.onSurface,
-                    padding: const EdgeInsets.only(right: 8),
-                    constraints: const BoxConstraints(
-                      minWidth: 30,
-                      minHeight: 30,
-                    ),
-                    onPressed: onCancel,
-                  ),
+                Icon(
+                  Icons.info_outline,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                
-                // Waveform (middle, expanded)
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Container(
-                    height: 30,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: CustomPaint(
-                      painter: _WaveformPainter(audioLevel: audioLevel),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-                
-                // Timer and checkmark (right)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Timer text
-                    Text(
-                      _formatDuration(elapsedDuration),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Checkmark button (confirm/stop)
-                    Semantics(
-                      label: 'Stop dictation',
-                      button: true,
-                      child: IconButton(
-                        icon: const Icon(Icons.check_circle),
-                        iconSize: 20,
-                        color: Theme.of(context).colorScheme.onSurface,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 30,
-                          minHeight: 30,
+                  child: Text(
+                    'Voice dictation is unavailable on iOS Simulator. Please test on a physical device.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                        onPressed: onStop,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
+        
+        // Use AudioControlsDecorator for dictation controls
+        AudioControlsDecorator(
+          isListening: isDictating,
+          elapsedTime: elapsedDuration,
+          // Disable mic button when on simulator
+          onMicPressed: isSimulator ? null : (isDictating ? onStop : onStart),
+          onCancelPressed: isDictating ? onCancel : null,
+          waveformController: waveformController,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Semantics(
+              label: 'Dictation transcript',
+              liveRegion: true,
+              child: Text(
+                transcript.isEmpty && !isDictating
+                    ? (isSimulator 
+                        ? 'Dictation unavailable on simulator'
+                        : 'Tap the microphone to start dictating')
+                    : transcript,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: transcript.isEmpty && !isDictating
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : Theme.of(context).colorScheme.onSurface,
+                    ),
+                textAlign: transcript.isEmpty && !isDictating
+                    ? TextAlign.center
+                    : TextAlign.start,
+              ),
+            ),
+          ),
+        ),
         
         // Error message display
         if (errorMessage != null)
@@ -999,82 +856,8 @@ class _DictationControl extends StatelessWidget {
               ),
             ),
           ),
-        
-        // Transcript display
-        if (transcript.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.only(top: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Semantics(
-              label: 'Dictation transcript',
-              liveRegion: true,
-              child: Text(
-                transcript,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ),
-          ),
-        
-        // Helper text when idle
-        if (transcript.isEmpty && !isDictating && errorMessage == null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'Tap the microphone to start dictating',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ),
       ],
     );
-  }
-}
-
-/// Custom painter for waveform visualization
-class _WaveformPainter extends CustomPainter {
-  final double audioLevel;
-
-  _WaveformPainter({required this.audioLevel});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..style = PaintingStyle.fill;
-
-    // Simple waveform visualization: draw bars based on audio level
-    final barCount = 20;
-    final barWidth = size.width / barCount;
-    final spacing = barWidth * 0.2;
-
-    for (int i = 0; i < barCount; i++) {
-      // Vary bar height based on audio level and position
-      final normalizedPosition = i / barCount;
-      final variation = (normalizedPosition * 2 - 1).abs(); // Creates a V shape
-      final barHeight = size.height * audioLevel * (0.3 + variation * 0.7);
-      
-      final x = i * barWidth + spacing / 2;
-      final y = (size.height - barHeight) / 2;
-      
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, y, barWidth - spacing, barHeight),
-          const Radius.circular(2),
-        ),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_WaveformPainter oldDelegate) {
-    return oldDelegate.audioLevel != audioLevel;
   }
 }
 

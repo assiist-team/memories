@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// First onboarding screen explaining the Capture pillar
 /// 
-/// Introduces users to how they can capture moments in the app.
+/// Introduces users to how they can capture memories in the app.
 /// Part of the three-pillar onboarding flow: Capture, Timeline, Privacy.
 class OnboardingCaptureScreen extends StatelessWidget {
   final VoidCallback onNext;
@@ -48,7 +48,7 @@ class OnboardingCaptureScreen extends StatelessWidget {
               const SizedBox(height: 32),
               // Title
               Text(
-                'Capture Your Moments',
+                'Capture Your Memories',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
@@ -58,7 +58,7 @@ class OnboardingCaptureScreen extends StatelessWidget {
               // Description
               Text(
                 'Record voice stories, snap photos with context, or preserve meaningful objects. '
-                'Capture memories in seconds, not minutes.',
+                'Capture stories, moments, and mementos in seconds.',
                 style: Theme.of(context).textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),

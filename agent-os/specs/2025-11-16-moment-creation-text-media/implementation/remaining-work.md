@@ -139,7 +139,7 @@ Created migration file documenting all schema changes:
 
 **Implementation:**
 - Created `MomentSyncService` with automatic retry
-- Monitors connectivity changes using `connectivity_plus`
+- Monitors connectivity changes using a custom Dart-only `ConnectivityService` (no `connectivity_plus` plugin)
 - Retry logic with exponential backoff (max 3 attempts)
 - Background sync every 30 seconds when online
 - Updates queue status as sync progresses

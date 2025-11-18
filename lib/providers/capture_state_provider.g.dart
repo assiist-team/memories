@@ -6,13 +6,20 @@ part of 'capture_state_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$dictationServiceHash() => r'614026fe3e293419933b512bbd95114b94af28f0';
+String _$dictationServiceHash() => r'93ad50543ea9d6633920c761d573865260e5dff9';
 
 /// Provider for dictation service
 ///
+/// Kept alive for the entire capture surface lifetime to ensure
+/// stable lifecycle so mic events continue streaming.
+///
+/// CRITICAL: Read the feature flag with ref.read() instead of ref.watch()
+/// to prevent the service from being recreated if the flag changes.
+/// The flag should only be read once when the service is first created.
+///
 /// Copied from [dictationService].
 @ProviderFor(dictationService)
-final dictationServiceProvider = AutoDisposeProvider<DictationService>.internal(
+final dictationServiceProvider = Provider<DictationService>.internal(
   dictationService,
   name: r'dictationServiceProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -24,7 +31,30 @@ final dictationServiceProvider = AutoDisposeProvider<DictationService>.internal(
 
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
-typedef DictationServiceRef = AutoDisposeProviderRef<DictationService>;
+typedef DictationServiceRef = ProviderRef<DictationService>;
+String _$waveformControllerHash() =>
+    r'2eb5347834419178ad7c67db9e6ff9961f593f10';
+
+/// Provider for waveform controller
+///
+/// Manages waveform visualization state for dictation.
+/// Kept alive for the capture surface lifetime.
+///
+/// Copied from [waveformController].
+@ProviderFor(waveformController)
+final waveformControllerProvider = Provider<WaveformController>.internal(
+  waveformController,
+  name: r'waveformControllerProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$waveformControllerHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef WaveformControllerRef = ProviderRef<WaveformController>;
 String _$geolocationServiceHash() =>
     r'05dd867526d104eaa2a329fe4982be9c281ae68f';
 
@@ -47,7 +77,7 @@ final geolocationServiceProvider =
 // ignore: unused_element
 typedef GeolocationServiceRef = AutoDisposeProviderRef<GeolocationService>;
 String _$captureStateNotifierHash() =>
-    r'2e25da47c30ac737484a71c87df1b0b5e3646867';
+    r'00e36c1f6009c72836b1b73d8fa2b09f0e251d67';
 
 /// Provider for capture state
 ///

@@ -14,6 +14,7 @@ import 'package:memories/widgets/global_search_bar.dart';
 import 'package:memories/widgets/search_results_list.dart';
 import 'package:memories/providers/search_provider.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/capture/capture_screen.dart';
 
 /// Unified Timeline screen displaying Stories, Moments, and Mementos
 /// in a single reverse-chronological feed with filtering and grouping.
@@ -253,7 +254,11 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
         child: UnifiedFeedEmptyState(
           currentFilter: currentFilter,
           onCaptureTap: () {
-            // TODO: Navigate to capture screen
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const CaptureScreen(),
+              ),
+            );
           },
         ),
       ),
@@ -477,7 +482,11 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () {
-                          // TODO: Navigate to capture screen
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const CaptureScreen(),
+                            ),
+                          );
                         },
                         child: const Text('Capture a new memory'),
                       ),

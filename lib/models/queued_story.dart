@@ -128,7 +128,7 @@ class QueuedStory {
 
   /// Convert to CaptureState
   /// 
-  /// Note: audioPath is not included in CaptureState as it's story-specific
+  /// Includes audioPath and audioDuration for story sync
   CaptureState toCaptureState() {
     return CaptureState(
       memoryType: _parseMemoryType(memoryType),
@@ -140,6 +140,8 @@ class QueuedStory {
       longitude: longitude,
       locationStatus: locationStatus,
       capturedAt: capturedAt,
+      audioPath: audioPath,
+      audioDuration: audioDuration,
     );
   }
 

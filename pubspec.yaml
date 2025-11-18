@@ -30,7 +30,6 @@ dependencies:
   
   # Media & Camera
   image_picker: ^1.0.7
-  camera: ^0.10.5+9
   video_player: ^2.8.2
   
   # Location
@@ -39,9 +38,6 @@ dependencies:
   # Offline Storage
   shared_preferences: ^2.2.2
   path_provider: ^2.1.1
-  
-  # Connectivity
-  connectivity_plus: ^6.0.3
   
   # UUID generation
   uuid: ^4.3.3
@@ -60,7 +56,7 @@ dependencies:
   
   # Dictation Plugin
   flutter_dictation:
-    path: ../flutter_dictation
+    path: /Users/benjaminmackenzie/Dev/flutter_dictation
 
 dev_dependencies:
   flutter_test:
