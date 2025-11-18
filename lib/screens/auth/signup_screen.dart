@@ -88,17 +88,46 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
+      debugPrint('');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('Starting Google OAuth signup...');
+      debugPrint('═══════════════════════════════════════════════════════');
+      
       final container = ProviderScope.containerOf(context);
       final googleOAuth = container.read(googleOAuthServiceProvider);
       await googleOAuth.signIn();
-      // Navigation will be handled by auth state provider
-    } catch (e) {
+      
+      debugPrint('✓ OAuth signIn() completed - Safari should have opened');
+      debugPrint('  Waiting for OAuth callback via deep link...');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('');
+      
+      // Browser opened successfully - reset loading state
+      // The OAuth flow will continue in the browser and return via deep link
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      // Navigation will be handled by auth state provider when OAuth completes
+    } catch (e, stackTrace) {
+      debugPrint('');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('ERROR in Google OAuth signup:');
+      debugPrint('  $e');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('');
+      
       final container = ProviderScope.containerOf(context);
       final errorHandler = container.read(authErrorHandlerProvider);
-      setState(() {
-        _errorMessage = errorHandler.handleAuthError(e);
-        _isLoading = false;
-      });
+      errorHandler.logError(e, stackTrace);
+      
+      if (mounted) {
+        setState(() {
+          _errorMessage = errorHandler.handleAuthError(e);
+          _isLoading = false;
+        });
+      }
     }
   }
 

@@ -210,7 +210,7 @@ class MemorySaveService {
       
       final momentData = {
         'user_id': _supabase.auth.currentUser?.id,
-        'title': '', // Will be updated after title generation
+        'title': null, // Will be updated after title generation (now nullable)
         'input_text': state.inputText, // Canonical raw user text
         'processed_text': null, // LLM-processed text - stays NULL until processing completes
         'photo_urls': photoUrls,
@@ -240,6 +240,43 @@ class MemorySaveService {
           .single();
 
       final momentId = response['id'] as String;
+
+      // Step 3.5: Create story_fields row if this is a story
+      if (state.memoryType == MemoryType.story) {
+        // Upload audio if available
+        String? audioPath;
+        if (state.audioPath != null) {
+          try {
+            final audioFile = File(state.audioPath!);
+            if (await audioFile.exists()) {
+              final audioFileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
+              final audioStoragePath = 'stories/audio/${_supabase.auth.currentUser?.id}/$momentId/$audioFileName';
+              
+              await _supabase.storage.from('stories-audio').upload(
+                audioStoragePath,
+                audioFile,
+                fileOptions: const FileOptions(
+                  upsert: false,
+                  contentType: 'audio/m4a',
+                ),
+              );
+              
+              audioPath = audioStoragePath;
+            }
+          } catch (e) {
+            // Audio upload failed, but continue with story creation
+            // The story_fields row will be created without audio_path
+          }
+        }
+
+        // Create story_fields row with initial processing status
+        await _supabase.from('story_fields').insert({
+          'memory_id': momentId,
+          'story_status': 'processing',
+          'audio_path': audioPath,
+          'retry_count': 0,
+        });
+      }
 
       // Step 4: Generate title
       // For Mementos: use description text if available, otherwise transcript

@@ -104,15 +104,37 @@ class OnboardingService {
         .single();
   }
 
-  Future<Map<String, dynamic>> _completeOnboardingInSupabase(String userId) {
-    return _supabase
+  Future<Map<String, dynamic>> _completeOnboardingInSupabase(String userId) async {
+    // First check if profile exists
+    final existingProfile = await _supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+    
+    if (existingProfile == null) {
+      // Profile doesn't exist - this shouldn't happen if trigger worked,
+      // but handle gracefully. Since RLS blocks direct inserts, we can't create it here.
+      // The trigger should have created it on signup, so this is an edge case.
+      // Return a response that indicates failure
+      throw Exception('Profile does not exist for user. The profile should have been created automatically. Please try signing out and back in, or contact support.');
+    }
+    
+    // Profile exists, proceed with update
+    final result = await _supabase
         .from('profiles')
         .update({
           'onboarding_completed_at': DateTime.now().toIso8601String(),
         })
         .eq('id', userId)
         .select()
-        .single();
+        .maybeSingle();
+    
+    if (result == null) {
+      throw Exception('Failed to update onboarding status. No rows were updated.');
+    }
+    
+    return result;
   }
 }
 

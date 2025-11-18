@@ -25,7 +25,14 @@ class AppRouter extends ConsumerWidget {
           child: CircularProgressIndicator(),
         ),
       ),
-      error: (_, __) => const LoginScreen(),
+      error: (error, stackTrace) {
+        // Log the error for debugging
+        debugPrint('AppRouter: Error in authStateProvider: $error');
+        debugPrint('AppRouter: Stack trace: $stackTrace');
+        
+        // Show login screen with error message
+        return const LoginScreen();
+      },
     );
   }
 

@@ -6,9 +6,9 @@ part of 'supabase_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$supabaseUrlHash() => r'32c5a67bded583aef4de8e8dd5850bed30f1c3af';
+String _$supabaseUrlHash() => r'2417ff925836d3ef2bd7c68622e664c40cf9d8b3';
 
-/// Provider for Supabase URL from environment variables
+/// Provider for Supabase URL from .env file
 ///
 /// Copied from [supabaseUrl].
 @ProviderFor(supabaseUrl)
@@ -24,9 +24,9 @@ final supabaseUrlProvider = AutoDisposeProvider<String>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef SupabaseUrlRef = AutoDisposeProviderRef<String>;
-String _$supabaseAnonKeyHash() => r'0b6f70ffc84c64b67176e272d672f9c3ea10065b';
+String _$supabaseAnonKeyHash() => r'9f556cffac373f7584c4945bbc9015647b3dab3b';
 
-/// Provider for Supabase anonymous key from environment variables
+/// Provider for Supabase anonymous key from .env file
 ///
 /// Copied from [supabaseAnonKey].
 @ProviderFor(supabaseAnonKey)

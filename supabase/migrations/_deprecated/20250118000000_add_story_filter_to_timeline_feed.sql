@@ -90,7 +90,7 @@ BEGIN
     ) as snippet_text,
     NULL::TIMESTAMPTZ as next_cursor_captured_at,
     NULL::UUID as next_cursor_id
-  FROM public.memories m
+  FROM public.moments m
   WHERE m.user_id = v_user_id
     -- Memory type filter
     AND (

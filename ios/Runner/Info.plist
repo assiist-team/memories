@@ -47,6 +47,10 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to quickly and securely sign in to your account</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Memories uses speech recognition to convert your voice recordings into text for your memories and stories.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Memories needs access to your microphone to record voice stories and memories.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

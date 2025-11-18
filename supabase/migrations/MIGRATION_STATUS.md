@@ -74,6 +74,16 @@ See `_deprecated/` folder for migrations that should not be applied.
 - **Reason**: Phase 6 migration consolidates Phase 5 work and is idempotent
 - **Action**: Do not apply - use migration #6 instead
 
+### `_deprecated/20250118000000_add_story_filter_to_timeline_feed.sql`
+- **Status**: Superseded by `20251118000004_update_timeline_feed_for_text_normalization.sql`
+- **Reason**: Uses legacy `moments` table and `text_description` / `capture_type` columns
+- **Action**: Do not apply - run migration #10 instead
+
+### `_deprecated/20250120000000_create_unified_timeline_feed.sql`
+- **Status**: Superseded by `20251118000002_update_unified_timeline_feed_for_text_normalization.sql`
+- **Reason**: Uses legacy schema and would overwrite normalized RPC
+- **Action**: Do not apply - run migration #8 instead
+
 ## Migration Order Summary
 
 ```

@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter: Run (Supabase)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=SUPABASE_URL=https://cgppebaekutbacvuaioa.supabase.co",
+        "--dart-define=SUPABASE_ANON_KEY=sb_publishable_GunRzoOybI0g84ygBQ1wSg_Bs9QQj_5"
+      ]
+    }
+  ]
+}
+

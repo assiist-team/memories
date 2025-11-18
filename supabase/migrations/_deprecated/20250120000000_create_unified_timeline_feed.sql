@@ -98,7 +98,7 @@ BEGIN
     -- Cursor fields will be set after query execution
     NULL::TIMESTAMPTZ as next_cursor_created_at,
     NULL::UUID as next_cursor_id
-  FROM public.memories m
+  FROM public.moments m
   WHERE m.user_id = v_user_id
     -- Memory type filter (NULL means all types)
     AND (
@@ -133,26 +133,26 @@ GRANT EXECUTE ON FUNCTION public.get_unified_timeline_feed TO authenticated;
 -- RLS is enforced via auth.uid() check in the function, but table-level policies provide defense in depth
 DO $$
 BEGIN
-  -- Check if RLS is enabled on memories table
+  -- Check if RLS is enabled on moments table
   IF NOT EXISTS (
     SELECT 1 FROM pg_tables 
     WHERE schemaname = 'public' 
-    AND tablename = 'memories' 
+    AND tablename = 'moments' 
     AND rowsecurity = true
   ) THEN
     -- Enable RLS if not already enabled
-    ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.moments ENABLE ROW LEVEL SECURITY;
   END IF;
   
-  -- Ensure policy exists for users to read their own memories
+  -- Ensure policy exists for users to read their own moments
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
     WHERE schemaname = 'public' 
-    AND tablename = 'memories' 
-    AND policyname = 'Users can view their own memories'
+    AND tablename = 'moments' 
+    AND policyname = 'Users can view their own moments'
   ) THEN
-    CREATE POLICY "Users can view their own memories"
-      ON public.memories
+    CREATE POLICY "Users can view their own moments"
+      ON public.moments
       FOR SELECT
       USING (auth.uid() = user_id);
   END IF;

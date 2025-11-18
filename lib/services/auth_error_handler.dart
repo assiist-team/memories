@@ -16,6 +16,11 @@ class AuthErrorHandler {
   /// Returns a user-friendly error message without exposing technical details
   /// or security information per error handling standards.
   String handleAuthError(Object error) {
+    // Log error details once (not per field)
+    if (kDebugMode && error is AuthException) {
+      debugPrint('AuthError: ${error.statusCode} - ${error.message}');
+    }
+    
     // Handle network/connectivity errors
     if (error is SocketException || error is TimeoutException) {
       return 'Unable to connect. Please check your internet connection and try again.';

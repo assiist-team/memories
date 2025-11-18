@@ -8,9 +8,9 @@ import 'package:memories/models/memory_type.dart';
 import '../helpers/test_supabase_setup.dart';
 
 /// Integration tests for search functionality
-/// 
+///
 /// These tests require a real Supabase instance with migrations applied.
-/// 
+///
 /// Run with:
 /// ```bash
 /// flutter test test/integration/search_integration_test.dart \
@@ -61,7 +61,8 @@ void main() {
       if (_isSupabaseConfigured()) {
         final testUser = await createTestUser(
           supabase,
-          email: 'search_test_${DateTime.now().millisecondsSinceEpoch}@test.com',
+          email:
+              'search_test_${DateTime.now().millisecondsSinceEpoch}@test.com',
           password: 'testpassword123',
         );
         testUserId = testUser.user.id;
@@ -89,22 +90,30 @@ void main() {
       }
 
       // Create test memories
-      final momentResponse = await supabase.from('memories').insert({
-        'user_id': testUserId,
-        'memory_type': 'moment',
-        'title': 'Test Moment Title',
-        'input_text': 'This is a test moment with searchable content',
-        'tags': ['test', 'moment'],
-      }).select().single();
+      final momentResponse = await supabase
+          .from('memories')
+          .insert({
+            'user_id': testUserId,
+            'memory_type': 'moment',
+            'title': 'Test Moment Title',
+            'input_text': 'This is a test moment with searchable content',
+            'tags': ['test', 'moment'],
+          })
+          .select()
+          .single();
 
-      final storyResponse = await supabase.from('memories').insert({
-        'user_id': testUserId,
-        'memory_type': 'story',
-        'title': 'Test Story Title',
-        'input_text': 'This is a test story with searchable content',
-        'processed_text': 'This is the processed story text',
-        'tags': ['test', 'story'],
-      }).select().single();
+      final storyResponse = await supabase
+          .from('memories')
+          .insert({
+            'user_id': testUserId,
+            'memory_type': 'story',
+            'title': 'Test Story Title',
+            'input_text': 'This is a test story with searchable content',
+            'processed_text': 'This is the processed story text',
+            'tags': ['test', 'story'],
+          })
+          .select()
+          .single();
 
       // Wait a moment for search_vector to be updated
       await Future.delayed(const Duration(milliseconds: 500));
@@ -150,7 +159,8 @@ void main() {
       // Search should return only this user's memory
       final results = await searchService.searchMemories(query: 'Private');
       expect(results.items.length, greaterThanOrEqualTo(1));
-      expect(results.items.every((item) => item.id.isNotEmpty), isTrue); // All have IDs
+      expect(results.items.every((item) => item.id.isNotEmpty),
+          isTrue); // All have IDs
 
       // Create another user and verify they can't see this memory
       final otherUser = await createTestUser(
@@ -168,8 +178,7 @@ void main() {
 
       // Search should not return the first user's memory
       final otherResults = await searchService.searchMemories(query: 'Private');
-      expect(
-          otherResults.items.any((item) => item.title == 'Private Memory'),
+      expect(otherResults.items.any((item) => item.title == 'Private Memory'),
           isFalse);
 
       // Cleanup other user
@@ -225,8 +234,7 @@ void main() {
         memoryType: MemoryType.story,
       );
       expect(results.items.length, greaterThanOrEqualTo(1));
-      expect(
-          results.items.every((item) => item.memoryType == 'story'), isTrue);
+      expect(results.items.every((item) => item.memoryType == 'story'), isTrue);
     });
 
     test('verifies pagination works correctly', () async {
@@ -333,7 +341,8 @@ void main() {
         'memory_type': 'story',
         'title': 'Story with Processed Text',
         'input_text': 'This is the raw input text',
-        'processed_text': 'This is the processed story text that should appear in snippet',
+        'processed_text':
+            'This is the processed story text that should appear in snippet',
       });
 
       // Wait for search_vector update
@@ -359,4 +368,3 @@ void main() {
     });
   });
 }
-
