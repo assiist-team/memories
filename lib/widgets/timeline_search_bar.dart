@@ -36,11 +36,11 @@ class _TimelineSearchBarState extends ConsumerState<TimelineSearchBar> {
       ref.read(searchQueryNotifierProvider.notifier).setQuery(query);
       
       // Trigger search
-      final timelineNotifier = ref.read(timelineFeedNotifierProvider.notifier);
+      final timelineNotifier = ref.read(unifiedTimelineFeedNotifierProvider.notifier);
       timelineNotifier.loadInitial(searchQuery: query.isEmpty ? null : query).then((_) {
         // Track search query after results are loaded
         if (query.isNotEmpty) {
-          final timelineState = ref.read(timelineFeedNotifierProvider);
+          final timelineState = ref.read(unifiedTimelineFeedNotifierProvider);
           ref.read(timelineAnalyticsServiceProvider).trackSearchQuery(
             query,
             timelineState.moments.length,
@@ -54,7 +54,7 @@ class _TimelineSearchBarState extends ConsumerState<TimelineSearchBar> {
     ref.read(timelineAnalyticsServiceProvider).trackSearchClear();
     _controller.clear();
     ref.read(searchQueryNotifierProvider.notifier).clear();
-    ref.read(timelineFeedNotifierProvider.notifier).loadInitial();
+    ref.read(unifiedTimelineFeedNotifierProvider.notifier).loadInitial();
   }
 
   @override

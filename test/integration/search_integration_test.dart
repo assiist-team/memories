@@ -150,8 +150,7 @@ void main() {
       // Search should return only this user's memory
       final results = await searchService.searchMemories(query: 'Private');
       expect(results.items.length, greaterThanOrEqualTo(1));
-      expect(
-          results.items.every((item) => item.id != null), isTrue); // All have IDs
+      expect(results.items.every((item) => item.id.isNotEmpty), isTrue); // All have IDs
 
       // Create another user and verify they can't see this memory
       final otherUser = await createTestUser(
