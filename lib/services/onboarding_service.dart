@@ -96,12 +96,18 @@ class OnboardingService {
     _cachedUserId = null;
   }
 
-  Future<Map<String, dynamic>> _fetchProfileFromSupabase(String userId) {
-    return _supabase
+  Future<Map<String, dynamic>> _fetchProfileFromSupabase(String userId) async {
+    final result = await _supabase
         .from('profiles')
         .select('onboarding_completed_at')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
+    
+    if (result == null) {
+      throw Exception('Profile does not exist for user');
+    }
+    
+    return result;
   }
 
   Future<Map<String, dynamic>> _completeOnboardingInSupabase(String userId) async {
