@@ -59,23 +59,40 @@ class UnifiedFeedRepository {
   /// Fetch a page of unified feed memories
   /// 
   /// [cursor] is the pagination cursor (null for first page)
-  /// [filter] is the memory type filter (null for 'all')
+  /// [filters] is the set of memory types to include (empty set or all three means 'all')
   /// [batchSize] is the number of items to fetch (default: 20)
   /// 
   /// Returns a [UnifiedFeedPageResult] with memories, next cursor, and hasMore flag
   Future<UnifiedFeedPageResult> fetchPage({
     UnifiedFeedCursor? cursor,
-    MemoryType? filter,
+    Set<MemoryType>? filters,
     int batchSize = _defaultBatchSize,
   }) async {
+    final allTypes = {
+      MemoryType.story,
+      MemoryType.moment,
+      MemoryType.memento,
+    };
+    
+    final effectiveFilters = filters ?? allTypes;
+    
+    // Determine if we need to fetch all and filter client-side
+    final shouldFetchAll = effectiveFilters.length == allTypes.length || 
+                          effectiveFilters.length == 2;
+    
+    MemoryType? singleFilter;
+    if (!shouldFetchAll && effectiveFilters.length == 1) {
+      singleFilter = effectiveFilters.first;
+    }
+
     final params = <String, dynamic>{
       'p_batch_size': batchSize,
       ...cursor?.toParams() ?? {},
     };
 
-    // Add filter parameter if specified
-    if (filter != null) {
-      params['p_memory_type'] = filter.apiValue;
+    // Add filter parameter
+    if (singleFilter != null) {
+      params['p_memory_type'] = singleFilter.apiValue;
     } else {
       params['p_memory_type'] = 'all';
     }
@@ -86,9 +103,17 @@ class UnifiedFeedRepository {
       throw Exception('Invalid response format from get_unified_timeline_feed');
     }
 
-    final memories = response
+    var memories = response
         .map((json) => TimelineMoment.fromJson(json as Map<String, dynamic>))
         .toList();
+
+    // Filter client-side if needed (when 2 types selected or when filtering from 'all')
+    if (shouldFetchAll && effectiveFilters.length < allTypes.length) {
+      final filterSet = effectiveFilters.map((t) => t.apiValue.toLowerCase()).toSet();
+      memories = memories.where((memory) {
+        return filterSet.contains(memory.memoryType.toLowerCase());
+      }).toList();
+    }
 
     // Determine next cursor from last item
     UnifiedFeedCursor? nextCursor;
@@ -96,9 +121,17 @@ class UnifiedFeedRepository {
 
     if (memories.isNotEmpty) {
       final lastMemory = memories.last;
-      if (memories.length >= batchSize) {
-        // Likely more results available
-        hasMore = true;
+      // For client-side filtering, we need to be more conservative about hasMore
+      // since we might have filtered out some items
+      if (shouldFetchAll && effectiveFilters.length < allTypes.length) {
+        // If we filtered client-side, we can't be sure if there are more
+        // Use the original response length to determine
+        hasMore = response.length >= batchSize;
+      } else {
+        hasMore = memories.length >= batchSize;
+      }
+      
+      if (hasMore) {
         nextCursor = UnifiedFeedCursor.fromTimelineMoment(lastMemory);
       }
     }

@@ -1,37 +1,44 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:memories/models/memory_type.dart';
 
-/// Service for persisting the last-selected tab in the unified feed
+/// Service for persisting the selected memory types in the unified feed
 class UnifiedFeedTabPersistenceService {
-  static const String _tabKey = 'unified_feed_last_selected_tab';
+  static const String _selectedTypesKey = 'unified_feed_selected_types';
+  static const Set<MemoryType> _defaultSelectedTypes = {
+    MemoryType.story,
+    MemoryType.moment,
+    MemoryType.memento,
+  };
 
-  /// Get the last selected tab
+  /// Get the selected memory types
   /// 
-  /// Returns null if no tab was previously selected (defaults to 'all')
-  Future<MemoryType?> getLastSelectedTab() async {
+  /// Returns default set (all three types) if no preference was saved
+  Future<Set<MemoryType>> getSelectedTypes() async {
     final prefs = await SharedPreferences.getInstance();
-    final tabValue = prefs.getString(_tabKey);
+    final typesList = prefs.getStringList(_selectedTypesKey);
     
-    if (tabValue == null || tabValue == 'all') {
-      return null; // null represents 'all'
+    if (typesList == null || typesList.isEmpty) {
+      return _defaultSelectedTypes;
     }
     
-    return MemoryTypeExtension.fromApiValue(tabValue);
+    return typesList
+        .map((value) => MemoryTypeExtension.fromApiValue(value))
+        .toSet();
   }
 
-  /// Save the last selected tab
+  /// Save the selected memory types
   /// 
-  /// [tab] is the memory type filter (null for 'all')
-  Future<void> saveLastSelectedTab(MemoryType? tab) async {
+  /// [selectedTypes] is the set of memory types to show
+  Future<void> saveSelectedTypes(Set<MemoryType> selectedTypes) async {
     final prefs = await SharedPreferences.getInstance();
-    final tabValue = tab?.apiValue ?? 'all';
-    await prefs.setString(_tabKey, tabValue);
+    final typesList = selectedTypes.map((type) => type.apiValue).toList();
+    await prefs.setStringList(_selectedTypesKey, typesList);
   }
 
-  /// Clear the saved tab preference
+  /// Clear the saved preference (resets to default)
   Future<void> clearSavedTab() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tabKey);
+    await prefs.remove(_selectedTypesKey);
   }
 }
 

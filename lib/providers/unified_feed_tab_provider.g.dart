@@ -29,17 +29,17 @@ final unifiedFeedTabPersistenceServiceProvider =
 typedef UnifiedFeedTabPersistenceServiceRef
     = AutoDisposeProviderRef<UnifiedFeedTabPersistenceService>;
 String _$unifiedFeedTabNotifierHash() =>
-    r'5c95abe4b815fabbfe5ceade68122808d386bfc6';
+    r'81515f7360db65dd158c81f6db41d6fcbb175051';
 
-/// Provider for the selected tab in unified feed
+/// Provider for the selected memory types in unified feed
 ///
-/// Manages the current filter selection and persists it to SharedPreferences.
-/// null represents 'all' (no filter).
+/// Manages the current filter selection (set of memory types) and persists it to SharedPreferences.
+/// Defaults to all three memory types selected.
 ///
 /// Copied from [UnifiedFeedTabNotifier].
 @ProviderFor(UnifiedFeedTabNotifier)
 final unifiedFeedTabNotifierProvider = AutoDisposeAsyncNotifierProvider<
-    UnifiedFeedTabNotifier, MemoryType?>.internal(
+    UnifiedFeedTabNotifier, Set<MemoryType>>.internal(
   UnifiedFeedTabNotifier.new,
   name: r'unifiedFeedTabNotifierProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -49,6 +49,6 @@ final unifiedFeedTabNotifierProvider = AutoDisposeAsyncNotifierProvider<
   allTransitiveDependencies: null,
 );
 
-typedef _$UnifiedFeedTabNotifier = AutoDisposeAsyncNotifier<MemoryType?>;
+typedef _$UnifiedFeedTabNotifier = AutoDisposeAsyncNotifier<Set<MemoryType>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

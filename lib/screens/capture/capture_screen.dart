@@ -14,6 +14,7 @@ import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/services/media_picker_service.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
@@ -100,12 +101,43 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     if (source == null) return;
 
-    final path = source == ImageSource.camera
-        ? await mediaPicker.pickPhotoFromCamera()
-        : await mediaPicker.pickPhotoFromGallery();
-
-    if (path != null && mounted) {
-      notifier.addPhoto(path);
+    try {
+      if (source == ImageSource.camera) {
+        // Camera: single photo selection
+        final path = await mediaPicker.pickPhotoFromCamera();
+        if (path != null && mounted) {
+          notifier.addPhoto(path);
+        }
+      } else {
+        // Gallery: multi-photo selection
+        final paths = await mediaPicker.pickMultiplePhotos();
+        if (paths.isNotEmpty && mounted) {
+          // Add each photo (addPhoto will respect the 10-photo limit)
+          for (final path in paths) {
+            notifier.addPhoto(path);
+          }
+        }
+      }
+    } on MediaPickerException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to pick photo: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -138,12 +170,34 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     if (source == null) return;
 
-    final path = source == ImageSource.camera
-        ? await mediaPicker.pickVideoFromCamera()
-        : await mediaPicker.pickVideoFromGallery();
+    try {
+      final path = source == ImageSource.camera
+          ? await mediaPicker.pickVideoFromCamera()
+          : await mediaPicker.pickVideoFromGallery();
 
-    if (path != null && mounted) {
-      notifier.addVideo(path);
+      if (path != null && mounted) {
+        notifier.addVideo(path);
+      }
+    } on MediaPickerException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to pick video: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -440,8 +494,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Capture Memory'),
         centerTitle: true,
+        title: _MemoryTypeToggle(
+          selectedType: state.memoryType,
+          onTypeChanged: (type) => notifier.setMemoryType(type),
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -455,11 +512,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Memory type toggles at top
-                    _MemoryTypeToggle(
-                      selectedType: state.memoryType,
-                      onTypeChanged: (type) => notifier.setMemoryType(type),
-                    ),
                     // Centered capture controls section
                     Expanded(
                       child: Column(
@@ -468,61 +520,186 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                         children: [
                           // Media add buttons (Tag, Video, Photo)
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: Semantics(
-                                  label: 'Add tag',
-                                  button: true,
-                                  child: OutlinedButton.icon(
-                                    onPressed: _handleAddTag,
-                                    icon: const Icon(Icons.tag, size: 18),
-                                    label: const Text('Tag',
-                                        style: TextStyle(fontSize: 13)),
-                                    style: OutlinedButton.styleFrom(
-                                      padding:
-                                          const EdgeInsets.symmetric(vertical: 12),
+                              Semantics(
+                                label: 'Add tag',
+                                button: true,
+                                child: OutlinedButton(
+                                  onPressed: _handleAddTag,
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    foregroundColor:
+                                        Theme.of(context).colorScheme.onSurface,
+                                    side: BorderSide(
+                                      color:
+                                          Theme.of(context).colorScheme.outline,
                                     ),
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(12),
+                                    minimumSize: const Size(48, 48),
                                   ),
+                                  child: const Icon(Icons.tag, size: 18),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Expanded(
-                                child: Semantics(
-                                  label: 'Add video',
-                                  button: true,
-                                  child: OutlinedButton.icon(
-                                    onPressed:
-                                        state.canAddVideo ? _handleAddVideo : null,
-                                    icon: const Icon(Icons.videocam, size: 18),
-                                    label: const Text('Video',
-                                        style: TextStyle(fontSize: 13)),
-                                    style: OutlinedButton.styleFrom(
-                                      padding:
-                                          const EdgeInsets.symmetric(vertical: 12),
+                              Semantics(
+                                label: 'Add video',
+                                button: true,
+                                child: OutlinedButton(
+                                  onPressed: state.canAddVideo
+                                      ? _handleAddVideo
+                                      : null,
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    foregroundColor:
+                                        Theme.of(context).colorScheme.onSurface,
+                                    side: BorderSide(
+                                      color:
+                                          Theme.of(context).colorScheme.outline,
                                     ),
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(12),
+                                    minimumSize: const Size(48, 48),
                                   ),
+                                  child: const Icon(Icons.videocam, size: 18),
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Expanded(
-                                child: Semantics(
-                                  label: 'Add photo',
-                                  button: true,
-                                  child: OutlinedButton.icon(
-                                    onPressed:
-                                        state.canAddPhoto ? _handleAddPhoto : null,
-                                    icon: const Icon(Icons.photo_camera, size: 18),
-                                    label: const Text('Photo',
-                                        style: TextStyle(fontSize: 13)),
-                                    style: OutlinedButton.styleFrom(
-                                      padding:
-                                          const EdgeInsets.symmetric(vertical: 12),
+                              Semantics(
+                                label: 'Add photo',
+                                button: true,
+                                child: OutlinedButton(
+                                  onPressed: state.canAddPhoto
+                                      ? _handleAddPhoto
+                                      : null,
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    foregroundColor:
+                                        Theme.of(context).colorScheme.onSurface,
+                                    side: BorderSide(
+                                      color:
+                                          Theme.of(context).colorScheme.outline,
                                     ),
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(12),
+                                    minimumSize: const Size(48, 48),
                                   ),
+                                  child:
+                                      const Icon(Icons.photo_camera, size: 18),
                                 ),
                               ),
                             ],
                           ),
+                          const SizedBox(height: 16),
+
+                          // Combined container for tags and media
+                          if (state.photoPaths.isNotEmpty ||
+                              state.videoPaths.isNotEmpty ||
+                              state.tags.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Media strip - horizontally scrolling
+                                  if (state.photoPaths.isNotEmpty ||
+                                      state.videoPaths.isNotEmpty)
+                                    SizedBox(
+                                      height: 100,
+                                      child: MediaTray(
+                                        photoPaths: state.photoPaths,
+                                        videoPaths: state.videoPaths,
+                                        onPhotoRemoved: (index) =>
+                                            notifier.removePhoto(index),
+                                        onVideoRemoved: (index) =>
+                                            notifier.removeVideo(index),
+                                        canAddPhoto: state.canAddPhoto,
+                                        canAddVideo: state.canAddVideo,
+                                      ),
+                                    ),
+                                  // Spacing between media and tags
+                                  if ((state.photoPaths.isNotEmpty ||
+                                          state.videoPaths.isNotEmpty) &&
+                                      state.tags.isNotEmpty)
+                                    const SizedBox(height: 8),
+                                  // Tags - horizontally scrolling
+                                  if (state.tags.isNotEmpty)
+                                    SizedBox(
+                                      height: 36,
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            for (int i = 0;
+                                                i < state.tags.length;
+                                                i++)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                  right:
+                                                      i < state.tags.length - 1
+                                                          ? 8
+                                                          : 0,
+                                                ),
+                                                child: InputChip(
+                                                  label: Text(
+                                                    state.tags[i],
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.copyWith(
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .onSurface,
+                                                        ),
+                                                  ),
+                                                  onDeleted: () =>
+                                                      notifier.removeTag(i),
+                                                  deleteIcon: Icon(
+                                                    Icons.close,
+                                                    size: 16,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurface,
+                                                  ),
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  backgroundColor:
+                                                      Colors.transparent,
+                                                  side: BorderSide.none,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+
                           const SizedBox(height: 16),
 
                           // Swipeable input container (dictation and type modes) - EXPANDABLE
@@ -534,49 +711,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             elapsedDuration: state.elapsedDuration,
                             errorMessage: state.errorMessage,
                             descriptionController: _descriptionController,
-                            onInputModeChanged: (mode) => notifier.setInputMode(mode),
+                            onInputModeChanged: (mode) =>
+                                notifier.setInputMode(mode),
                             onStartDictation: () => notifier.startDictation(),
                             onStopDictation: () => notifier.stopDictation(),
                             onCancelDictation: () => notifier.cancelDictation(),
                             onTextChanged: (value) => notifier
                                 .updateInputText(value.isEmpty ? null : value),
                           ),
-                        ],
-                      ),
-                    ),
-                    // Media tray and tags at bottom (scrollable if needed)
-                    SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Media tray
-                          MediaTray(
-                            photoPaths: state.photoPaths,
-                            videoPaths: state.videoPaths,
-                            onPhotoRemoved: (index) => notifier.removePhoto(index),
-                            onVideoRemoved: (index) => notifier.removeVideo(index),
-                            canAddPhoto: state.canAddPhoto,
-                            canAddVideo: state.canAddVideo,
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Display tags as chips if any exist
-                          if (state.tags.isNotEmpty) ...[
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (int i = 0; i < state.tags.length; i++)
-                                  InputChip(
-                                    label: Text(state.tags[i]),
-                                    onDeleted: () => notifier.removeTag(i),
-                                    deleteIcon: const Icon(Icons.close, size: 18),
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                          ],
                         ],
                       ),
                     ),
@@ -802,7 +944,10 @@ class _DictationTextContainer extends StatelessWidget {
                         child: Text(
                           displayText,
                           key: ValueKey(displayText),
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyLarge
+                              ?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurface,
                               ),
                           textAlign: TextAlign.start,
@@ -916,13 +1061,16 @@ class _SwipeableInputContainerState
           _pageController.page?.round() != targetPage) {
         // Reset cached height when mode changes externally to allow recalculation
         _cachedHeight = null;
-        _pageController.animateToPage(
+        _pageController
+            .animateToPage(
           targetPage,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-        ).then((_) {
+        )
+            .then((_) {
           // When switching to dictation mode, scroll to the end of the text
-          if (widget.inputMode == InputMode.dictation && widget.transcript.isNotEmpty) {
+          if (widget.inputMode == InputMode.dictation &&
+              widget.transcript.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (_dictationScrollController.hasClients) {
                 _dictationScrollController.animateTo(
@@ -933,12 +1081,14 @@ class _SwipeableInputContainerState
               }
             });
           }
-          
+
           // When switching to type mode, move cursor to the end of the text
-          if (widget.inputMode == InputMode.type && widget.descriptionController.text.isNotEmpty) {
+          if (widget.inputMode == InputMode.type &&
+              widget.descriptionController.text.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               final text = widget.descriptionController.text;
-              widget.descriptionController.selection = TextSelection.fromPosition(
+              widget.descriptionController.selection =
+                  TextSelection.fromPosition(
                 TextPosition(offset: text.length),
               );
             });
@@ -946,7 +1096,7 @@ class _SwipeableInputContainerState
         });
       }
     }
-    
+
     // When transcript changes and we're in dictation mode, scroll to end
     if (widget.inputMode == InputMode.dictation &&
         oldWidget.transcript != widget.transcript &&
@@ -979,7 +1129,7 @@ class _SwipeableInputContainerState
       // Reset cached height when page changes to allow recalculation
       _cachedHeight = null;
       widget.onInputModeChanged(newMode);
-      
+
       // When switching to dictation mode, scroll to the end of the text
       if (newMode == InputMode.dictation && widget.transcript.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -992,9 +1142,10 @@ class _SwipeableInputContainerState
           }
         });
       }
-      
+
       // When switching to type mode, move cursor to the end of the text
-      if (newMode == InputMode.type && widget.descriptionController.text.isNotEmpty) {
+      if (newMode == InputMode.type &&
+          widget.descriptionController.text.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final text = widget.descriptionController.text;
           widget.descriptionController.selection = TextSelection.fromPosition(
@@ -1148,16 +1299,14 @@ class _SwipeableInputContainerState
                         children: [
                           Text(
                             'Tap to talk',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant
-                                      .withOpacity(0.6),
-                                  fontSize: 12,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant
+                                          .withOpacity(0.6),
+                                      fontSize: 12,
+                                    ),
                           ),
                           const SizedBox(width: 4),
                           Icon(
@@ -1171,16 +1320,14 @@ class _SwipeableInputContainerState
                           const SizedBox(width: 12),
                           Text(
                             'Swipe to type',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant
-                                      .withOpacity(0.6),
-                                  fontSize: 12,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant
+                                          .withOpacity(0.6),
+                                      fontSize: 12,
+                                    ),
                           ),
                           const SizedBox(width: 4),
                           Icon(

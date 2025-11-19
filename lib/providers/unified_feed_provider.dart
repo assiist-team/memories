@@ -80,16 +80,20 @@ UnifiedFeedRepository unifiedFeedRepository(UnifiedFeedRepositoryRef ref) {
 
 /// Provider for unified feed state
 ///
-/// [memoryTypeFilter] is the filter to apply (null for 'all')
+/// [memoryTypeFilters] is the set of memory types to include (empty set means all)
 @riverpod
 class UnifiedFeedController extends _$UnifiedFeedController {
   static const int _batchSize = 20;
   int _currentPageNumber = 1;
-  MemoryType? _memoryTypeFilter;
+  Set<MemoryType> _memoryTypeFilters = {};
 
   @override
-  UnifiedFeedViewState build([MemoryType? memoryTypeFilter]) {
-    _memoryTypeFilter = memoryTypeFilter;
+  UnifiedFeedViewState build([Set<MemoryType>? memoryTypeFilters]) {
+    _memoryTypeFilters = memoryTypeFilters ?? {
+      MemoryType.story,
+      MemoryType.moment,
+      MemoryType.memento,
+    };
     return const UnifiedFeedViewState(state: UnifiedFeedState.initial);
   }
 
@@ -117,7 +121,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         e,
         'unified_feed_initial_load',
         context: {
-          'memory_type_filter': _memoryTypeFilter?.apiValue ?? 'all',
+          'memory_type_filters': _memoryTypeFilters.map((t) => t.apiValue).join(','),
           'is_offline': !isOnline,
         },
       );
@@ -168,7 +172,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         'unified_feed_pagination',
         context: {
           'page_number': _currentPageNumber,
-          'memory_type_filter': _memoryTypeFilter?.apiValue ?? 'all',
+          'memory_type_filters': _memoryTypeFilters.map((t) => t.apiValue).join(','),
           'is_offline': !isOnline,
         },
       );
@@ -196,9 +200,9 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     await loadInitial();
   }
 
-  /// Update the memory type filter and reload
-  Future<void> setFilter(MemoryType? filter) async {
-    _memoryTypeFilter = filter;
+  /// Update the memory type filters and reload
+  Future<void> setFilter(Set<MemoryType> filters) async {
+    _memoryTypeFilters = filters;
     _currentPageNumber = 1;
     await loadInitial();
   }
@@ -220,7 +224,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
 
     final result = await repository.fetchPage(
       cursor: cursor,
-      filter: _memoryTypeFilter,
+      filters: _memoryTypeFilters,
       batchSize: _batchSize,
     );
 
@@ -278,16 +282,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
 }
 
 /// Convenience provider for unified feed (all memory types)
-final unifiedFeedProvider = unifiedFeedControllerProvider(null);
-
-/// Convenience provider for Story-only feed
-final unifiedFeedStoryProvider =
-    unifiedFeedControllerProvider(MemoryType.story);
-
-/// Convenience provider for Moment-only feed
-final unifiedFeedMomentProvider =
-    unifiedFeedControllerProvider(MemoryType.moment);
-
-/// Convenience provider for Memento-only feed
-final unifiedFeedMementoProvider =
-    unifiedFeedControllerProvider(MemoryType.memento);
+final unifiedFeedProvider = unifiedFeedControllerProvider({
+  MemoryType.story,
+  MemoryType.moment,
+  MemoryType.memento,
+});

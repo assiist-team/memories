@@ -77,7 +77,7 @@ final geolocationServiceProvider =
 // ignore: unused_element
 typedef GeolocationServiceRef = AutoDisposeProviderRef<GeolocationService>;
 String _$captureStateNotifierHash() =>
-    r'00e36c1f6009c72836b1b73d8fa2b09f0e251d67';
+    r'57b66f6d6e768ef45da71a0ccfe3751877542012';
 
 /// Provider for capture state
 ///

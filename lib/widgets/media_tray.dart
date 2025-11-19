@@ -3,25 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 /// Widget for displaying and managing media attachments
-/// 
+///
 /// Shows thumbnails for photos and videos with remove controls.
 /// Displays helper text when limits are reached.
 class MediaTray extends StatelessWidget {
   /// List of photo file paths
   final List<String> photoPaths;
-  
+
   /// List of video file paths
   final List<String> videoPaths;
-  
+
   /// Callback when a photo should be removed
   final ValueChanged<int> onPhotoRemoved;
-  
+
   /// Callback when a video should be removed
   final ValueChanged<int> onVideoRemoved;
-  
+
   /// Whether photo limit has been reached
   final bool canAddPhoto;
-  
+
   /// Whether video limit has been reached
   final bool canAddVideo;
 
@@ -38,81 +38,37 @@ class MediaTray extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasMedia = photoPaths.isNotEmpty || videoPaths.isNotEmpty;
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (hasMedia) ...[
-          // Photos section
-          if (photoPaths.isNotEmpty) ...[
-            Text(
-              'Photos (${photoPaths.length}/10)',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 100,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: photoPaths.length,
-                itemBuilder: (context, index) {
-                  return _MediaThumbnail(
-                    filePath: photoPaths[index],
-                    isVideo: false,
-                    onRemoved: () => onPhotoRemoved(index),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          // Videos section
-          if (videoPaths.isNotEmpty) ...[
-            Text(
-              'Videos (${videoPaths.length}/3)',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 100,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: videoPaths.length,
-                itemBuilder: (context, index) {
-                  return _MediaThumbnail(
-                    filePath: videoPaths[index],
-                    isVideo: true,
-                    onRemoved: () => onVideoRemoved(index),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ],
-        // Helper text for limits
-        if (!canAddPhoto || !canAddVideo)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              _getLimitMessage(),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ),
-      ],
-    );
-  }
 
-  String _getLimitMessage() {
-    if (!canAddPhoto && !canAddVideo) {
-      return 'Media limit reached (10 photos, 3 videos max)';
-    } else if (!canAddPhoto) {
-      return 'Photo limit reached (10 photos max)';
-    } else {
-      return 'Video limit reached (3 videos max)';
+    if (!hasMedia) {
+      return const SizedBox.shrink();
     }
+
+    // Combine photos and videos into a single horizontal strip
+    return SizedBox(
+      height: 100,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        itemCount: photoPaths.length + videoPaths.length,
+        itemBuilder: (context, index) {
+          // Photos come first, then videos
+          if (index < photoPaths.length) {
+            return _MediaThumbnail(
+              filePath: photoPaths[index],
+              isVideo: false,
+              onRemoved: () => onPhotoRemoved(index),
+            );
+          } else {
+            final videoIndex = index - photoPaths.length;
+            return _MediaThumbnail(
+              filePath: videoPaths[videoIndex],
+              isVideo: true,
+              onRemoved: () => onVideoRemoved(videoIndex),
+            );
+          }
+        },
+      ),
+    );
   }
 }
 
@@ -162,22 +118,24 @@ class _MediaThumbnailState extends State<_MediaThumbnail> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final overlayColor = theme.colorScheme.onSurface.withOpacity(0.7);
+    final overlayBackgroundColor = theme.colorScheme.surface.withOpacity(0.8);
+
     return Container(
       width: 100,
       height: 100,
       margin: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: theme.colorScheme.surfaceContainerHighest,
       ),
       child: Stack(
         children: [
           // Media preview
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: widget.isVideo
-                ? _buildVideoPreview()
-                : _buildPhotoPreview(),
+            child: widget.isVideo ? _buildVideoPreview() : _buildPhotoPreview(),
           ),
           // Remove button
           Positioned(
@@ -187,10 +145,10 @@ class _MediaThumbnailState extends State<_MediaThumbnail> {
               label: 'Remove ${widget.isVideo ? 'video' : 'photo'}',
               button: true,
               child: Material(
-                color: Colors.black54,
+                color: overlayBackgroundColor,
                 shape: const CircleBorder(),
                 child: IconButton(
-                  icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                  icon: Icon(Icons.close, size: 18, color: overlayColor),
                   onPressed: widget.onRemoved,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
@@ -209,13 +167,13 @@ class _MediaThumbnailState extends State<_MediaThumbnail> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black54,
+                  color: overlayBackgroundColor,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.play_circle_outline,
                   size: 16,
-                  color: Colors.white,
+                  color: overlayColor,
                 ),
               ),
             ),
@@ -257,4 +215,3 @@ class _MediaThumbnailState extends State<_MediaThumbnail> {
     );
   }
 }
-

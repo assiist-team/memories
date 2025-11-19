@@ -30,7 +30,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
   final ScrollController _scrollController = ScrollController();
   final PageStorageKey _pageStorageKey =
       const PageStorageKey('unified_timeline');
-  MemoryType? _previousTab;
+  Set<MemoryType>? _previousSelectedTypes;
 
   @override
   void initState() {
@@ -52,8 +52,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     if (maxScroll > 0) {
       final scrollDepth = ((position.pixels / maxScroll) * 100).round();
       final tabState = ref.read(unifiedFeedTabNotifierProvider);
-      tabState.whenData((selectedTab) {
-        final controller = _getControllerForTab(selectedTab);
+      tabState.whenData((selectedTypes) {
+        final controller = unifiedFeedControllerProvider(selectedTypes);
         final feedState = ref.read(controller);
         ref.read(timelineAnalyticsServiceProvider).trackScrollDepth(
               scrollDepth,
@@ -65,8 +65,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     // Load more when 80% scrolled
     if (position.pixels >= maxScroll * 0.8) {
       final tabState = ref.read(unifiedFeedTabNotifierProvider);
-      tabState.whenData((selectedTab) {
-        final controller = _getControllerForTab(selectedTab);
+      tabState.whenData((selectedTypes) {
+        final controller = unifiedFeedControllerProvider(selectedTypes);
         final feedState = ref.read(controller);
 
         // Only load more if we have more to load and aren't already loading
@@ -82,8 +82,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     ref.read(timelineAnalyticsServiceProvider).trackPullToRefresh();
 
     final tabState = ref.read(unifiedFeedTabNotifierProvider);
-    await tabState.whenData((selectedTab) async {
-      final controller = _getControllerForTab(selectedTab);
+    await tabState.whenData((selectedTypes) async {
+      final controller = unifiedFeedControllerProvider(selectedTypes);
       await ref.read(controller.notifier).refresh();
     });
   }
@@ -121,44 +121,27 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     }
   }
 
-  /// Get the appropriate controller provider for the selected tab
-  dynamic _getControllerForTab(MemoryType? tab) {
-    switch (tab) {
-      case MemoryType.story:
-        return unifiedFeedStoryProvider;
-      case MemoryType.moment:
-        return unifiedFeedMomentProvider;
-      case MemoryType.memento:
-        return unifiedFeedMementoProvider;
-      case null:
-        return unifiedFeedProvider;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Memories'),
+        title: Consumer(
+          builder: (context, ref, child) {
+            final searchQuery = ref.watch(searchQueryProvider);
+            if (searchQuery.isEmpty) {
+              return const UnifiedFeedSegmentedControl();
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+        centerTitle: true,
         elevation: 0,
       ),
       body: Column(
         children: [
           // Global search bar
           const GlobalSearchBar(),
-          // Segmented control for filtering (hide when searching)
-          Consumer(
-            builder: (context, ref, child) {
-              final searchQuery = ref.watch(searchQueryProvider);
-              if (searchQuery.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: UnifiedFeedSegmentedControl(),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
           // Timeline content or search results
           Expanded(
             child: Consumer(
@@ -183,29 +166,29 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                 }
 
                 // Otherwise show timeline content
-                // Watch tab changes
+                // Watch selected types changes
                 final tabState = ref.watch(unifiedFeedTabNotifierProvider);
 
                 return tabState.when(
-                  data: (selectedTab) {
-                    // Get the appropriate controller for the selected tab
-                    final controller = _getControllerForTab(selectedTab);
+                  data: (selectedTypes) {
+                    // Get the controller for the selected types
+                    final controller = unifiedFeedControllerProvider(selectedTypes);
                     final feedState = ref.watch(controller);
 
-                    // Handle tab change - update filter which will reload
-                    if (_previousTab != selectedTab) {
+                    // Handle selection change - update filter which will reload
+                    if (_previousSelectedTypes != selectedTypes) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        ref.read(controller.notifier).setFilter(selectedTab);
+                        ref.read(controller.notifier).setFilter(selectedTypes);
                       });
-                      _previousTab = selectedTab;
+                      _previousSelectedTypes = selectedTypes;
                     } else if (feedState.state == UnifiedFeedState.initial) {
-                      // Initial load for the current tab
+                      // Initial load for the current selection
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         ref.read(controller.notifier).loadInitial();
                       });
                     }
 
-                    return _buildTimelineContent(feedState, selectedTab);
+                    return _buildTimelineContent(feedState, selectedTypes);
                   },
                   loading: () => const UnifiedFeedSkeletonList(),
                   error: (error, stack) => _buildErrorState(
@@ -222,20 +205,20 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
   Widget _buildTimelineContent(
     UnifiedFeedViewState state,
-    MemoryType? currentFilter,
+    Set<MemoryType> currentFilters,
   ) {
     switch (state.state) {
       case UnifiedFeedState.initial:
       case UnifiedFeedState.loading:
         return _buildLoadingState();
       case UnifiedFeedState.empty:
-        return _buildEmptyState(currentFilter);
+        return _buildEmptyState(currentFilters);
       case UnifiedFeedState.error:
         return _buildErrorState(state.errorMessage);
       case UnifiedFeedState.ready:
       case UnifiedFeedState.appending:
       case UnifiedFeedState.paginationError:
-        return _buildTimelineList(state, currentFilter);
+        return _buildTimelineList(state, currentFilters);
     }
   }
 
@@ -246,13 +229,13 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     );
   }
 
-  Widget _buildEmptyState(MemoryType? currentFilter) {
+  Widget _buildEmptyState(Set<MemoryType> currentFilters) {
     return RefreshIndicator(
       onRefresh: _onRefresh,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: UnifiedFeedEmptyState(
-          currentFilter: currentFilter,
+          currentFilter: currentFilters.length == 1 ? currentFilters.first : null,
           onCaptureTap: () {
             // Switch to capture tab in main navigation
             ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
@@ -318,8 +301,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                       onPressed: () {
                         final tabState =
                             ref.read(unifiedFeedTabNotifierProvider);
-                        tabState.whenData((selectedTab) {
-                          final controller = _getControllerForTab(selectedTab);
+                        tabState.whenData((selectedTypes) {
+                          final controller = unifiedFeedControllerProvider(selectedTypes);
                           ref.read(controller.notifier).loadInitial();
                         });
                       },
@@ -337,7 +320,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
   Widget _buildTimelineList(
     UnifiedFeedViewState state,
-    MemoryType? currentFilter,
+    Set<MemoryType> currentFilters,
   ) {
     final memories = state.memories;
     final isLoadingMore = state.state == UnifiedFeedState.appending;
@@ -445,9 +428,9 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                           onPressed: () {
                             final tabState =
                                 ref.read(unifiedFeedTabNotifierProvider);
-                            tabState.whenData((selectedTab) {
+                            tabState.whenData((selectedTypes) {
                               final controller =
-                                  _getControllerForTab(selectedTab);
+                                  unifiedFeedControllerProvider(selectedTypes);
                               ref.read(controller.notifier).loadMore();
                             });
                           },

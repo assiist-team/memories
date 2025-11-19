@@ -29,7 +29,7 @@ final unifiedFeedRepositoryProvider =
 typedef UnifiedFeedRepositoryRef
     = AutoDisposeProviderRef<UnifiedFeedRepository>;
 String _$unifiedFeedControllerHash() =>
-    r'f5b5234b0dd491ec38f4743b377de404dc8744df';
+    r'f218c12cf89063dba75a08f0aa025961a9e3c9c9';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -54,16 +54,16 @@ class _SystemHash {
 
 abstract class _$UnifiedFeedController
     extends BuildlessAutoDisposeNotifier<UnifiedFeedViewState> {
-  late final MemoryType? memoryTypeFilter;
+  late final Set<MemoryType>? memoryTypeFilters;
 
   UnifiedFeedViewState build([
-    MemoryType? memoryTypeFilter,
+    Set<MemoryType>? memoryTypeFilters,
   ]);
 }
 
 /// Provider for unified feed state
 ///
-/// [memoryTypeFilter] is the filter to apply (null for 'all')
+/// [memoryTypeFilters] is the set of memory types to include (empty set means all)
 ///
 /// Copied from [UnifiedFeedController].
 @ProviderFor(UnifiedFeedController)
@@ -71,27 +71,27 @@ const unifiedFeedControllerProvider = UnifiedFeedControllerFamily();
 
 /// Provider for unified feed state
 ///
-/// [memoryTypeFilter] is the filter to apply (null for 'all')
+/// [memoryTypeFilters] is the set of memory types to include (empty set means all)
 ///
 /// Copied from [UnifiedFeedController].
 class UnifiedFeedControllerFamily extends Family<UnifiedFeedViewState> {
   /// Provider for unified feed state
   ///
-  /// [memoryTypeFilter] is the filter to apply (null for 'all')
+  /// [memoryTypeFilters] is the set of memory types to include (empty set means all)
   ///
   /// Copied from [UnifiedFeedController].
   const UnifiedFeedControllerFamily();
 
   /// Provider for unified feed state
   ///
-  /// [memoryTypeFilter] is the filter to apply (null for 'all')
+  /// [memoryTypeFilters] is the set of memory types to include (empty set means all)
   ///
   /// Copied from [UnifiedFeedController].
   UnifiedFeedControllerProvider call([
-    MemoryType? memoryTypeFilter,
+    Set<MemoryType>? memoryTypeFilters,
   ]) {
     return UnifiedFeedControllerProvider(
-      memoryTypeFilter,
+      memoryTypeFilters,
     );
   }
 
@@ -100,7 +100,7 @@ class UnifiedFeedControllerFamily extends Family<UnifiedFeedViewState> {
     covariant UnifiedFeedControllerProvider provider,
   ) {
     return call(
-      provider.memoryTypeFilter,
+      provider.memoryTypeFilters,
     );
   }
 
@@ -121,20 +121,20 @@ class UnifiedFeedControllerFamily extends Family<UnifiedFeedViewState> {
 
 /// Provider for unified feed state
 ///
-/// [memoryTypeFilter] is the filter to apply (null for 'all')
+/// [memoryTypeFilters] is the set of memory types to include (empty set means all)
 ///
 /// Copied from [UnifiedFeedController].
 class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
     UnifiedFeedController, UnifiedFeedViewState> {
   /// Provider for unified feed state
   ///
-  /// [memoryTypeFilter] is the filter to apply (null for 'all')
+  /// [memoryTypeFilters] is the set of memory types to include (empty set means all)
   ///
   /// Copied from [UnifiedFeedController].
   UnifiedFeedControllerProvider([
-    MemoryType? memoryTypeFilter,
+    Set<MemoryType>? memoryTypeFilters,
   ]) : this._internal(
-          () => UnifiedFeedController()..memoryTypeFilter = memoryTypeFilter,
+          () => UnifiedFeedController()..memoryTypeFilters = memoryTypeFilters,
           from: unifiedFeedControllerProvider,
           name: r'unifiedFeedControllerProvider',
           debugGetCreateSourceHash:
@@ -144,7 +144,7 @@ class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
           dependencies: UnifiedFeedControllerFamily._dependencies,
           allTransitiveDependencies:
               UnifiedFeedControllerFamily._allTransitiveDependencies,
-          memoryTypeFilter: memoryTypeFilter,
+          memoryTypeFilters: memoryTypeFilters,
         );
 
   UnifiedFeedControllerProvider._internal(
@@ -154,17 +154,17 @@ class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
     required super.allTransitiveDependencies,
     required super.debugGetCreateSourceHash,
     required super.from,
-    required this.memoryTypeFilter,
+    required this.memoryTypeFilters,
   }) : super.internal();
 
-  final MemoryType? memoryTypeFilter;
+  final Set<MemoryType>? memoryTypeFilters;
 
   @override
   UnifiedFeedViewState runNotifierBuild(
     covariant UnifiedFeedController notifier,
   ) {
     return notifier.build(
-      memoryTypeFilter,
+      memoryTypeFilters,
     );
   }
 
@@ -173,13 +173,13 @@ class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
     return ProviderOverride(
       origin: this,
       override: UnifiedFeedControllerProvider._internal(
-        () => create()..memoryTypeFilter = memoryTypeFilter,
+        () => create()..memoryTypeFilters = memoryTypeFilters,
         from: from,
         name: null,
         dependencies: null,
         allTransitiveDependencies: null,
         debugGetCreateSourceHash: null,
-        memoryTypeFilter: memoryTypeFilter,
+        memoryTypeFilters: memoryTypeFilters,
       ),
     );
   }
@@ -193,13 +193,13 @@ class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
   @override
   bool operator ==(Object other) {
     return other is UnifiedFeedControllerProvider &&
-        other.memoryTypeFilter == memoryTypeFilter;
+        other.memoryTypeFilters == memoryTypeFilters;
   }
 
   @override
   int get hashCode {
     var hash = _SystemHash.combine(0, runtimeType.hashCode);
-    hash = _SystemHash.combine(hash, memoryTypeFilter.hashCode);
+    hash = _SystemHash.combine(hash, memoryTypeFilters.hashCode);
 
     return _SystemHash.finish(hash);
   }
@@ -209,8 +209,8 @@ class UnifiedFeedControllerProvider extends AutoDisposeNotifierProviderImpl<
 // ignore: unused_element
 mixin UnifiedFeedControllerRef
     on AutoDisposeNotifierProviderRef<UnifiedFeedViewState> {
-  /// The parameter `memoryTypeFilter` of this provider.
-  MemoryType? get memoryTypeFilter;
+  /// The parameter `memoryTypeFilters` of this provider.
+  Set<MemoryType>? get memoryTypeFilters;
 }
 
 class _UnifiedFeedControllerProviderElement
@@ -219,8 +219,8 @@ class _UnifiedFeedControllerProviderElement
   _UnifiedFeedControllerProviderElement(super.provider);
 
   @override
-  MemoryType? get memoryTypeFilter =>
-      (origin as UnifiedFeedControllerProvider).memoryTypeFilter;
+  Set<MemoryType>? get memoryTypeFilters =>
+      (origin as UnifiedFeedControllerProvider).memoryTypeFilters;
 }
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
