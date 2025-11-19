@@ -59,27 +59,67 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         index: currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          final tab = _getTabFromIndex(index);
-          ref.read(mainNavigationTabNotifierProvider.notifier).setTab(tab);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.camera_alt_outlined),
-            selectedIcon: Icon(Icons.camera_alt),
-            label: 'Capture',
+      bottomNavigationBar: Stack(
+        children: [
+          NavigationBar(
+            backgroundColor: const Color(0xFFF5F5F5), // Match scaffold background
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) {
+              final tab = _getTabFromIndex(index);
+              ref.read(mainNavigationTabNotifierProvider.notifier).setTab(tab);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.camera_alt_outlined),
+                selectedIcon: Icon(Icons.camera_alt),
+                label: 'Capture',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.timeline_outlined),
+                selectedIcon: Icon(Icons.timeline),
+                label: 'Timeline',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'Settings',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.timeline_outlined),
-            selectedIcon: Icon(Icons.timeline),
-            label: 'Timeline',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+          // Custom top border indicator for selected item
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            child: IgnorePointer(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = constraints.maxWidth / 3;
+                  final indicatorWidth = itemWidth * 0.5; // 50% of item width
+                  final indicatorLeft = (currentIndex * itemWidth) + (itemWidth * 0.25); // Center it
+                  
+                  return Stack(
+                    children: [
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        left: indicatorLeft,
+                        top: 0,
+                        width: indicatorWidth,
+                        height: 2,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2B2B2B),
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ],
       ),

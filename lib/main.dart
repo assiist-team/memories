@@ -64,6 +64,8 @@ class MyApp extends StatelessWidget {
       title: 'Memories',
       theme: ThemeData(
         useMaterial3: true,
+        scaffoldBackgroundColor:
+            const Color(0xFFF5F5F5), // Neutral gray - matches capture screen
         colorScheme: const ColorScheme.light(
           brightness: Brightness.light,
           primary: Color(0xFF2B2B2B), // Dark gray for buttons
@@ -82,12 +84,12 @@ class MyApp extends StatelessWidget {
           onError: Color(0xFFFFFFFF),
           errorContainer: Color(0xFFFEE2E2),
           onErrorContainer: Color(0xFF7F1D1D),
-          surface: Color(0xFFF5F5F5), // Neutral light gray background
+          surface: Color(0xFFFFFFFF), // White for cards and surfaces
           onSurface: Color(0xFF171717), // Near-black text
-          surfaceContainerHighest: Color(
-              0xFFFFFFFF), // White for cards/containers with clear contrast
+          surfaceContainerHighest:
+              Color(0xFFFFFFFF), // White for elevated containers
           onSurfaceVariant: Color(0xFF525252), // Medium gray for secondary text
-          surfaceVariant: Color(0xFFFFFFFF), // White for elevated surfaces
+          surfaceVariant: Color(0xFFF0F0F0), // Light gray for input backgrounds
           outline: Color(0xFFD4D4D4), // Light border
           outlineVariant: Color(0xFFE5E5E5),
           shadow: Color(0xFF000000),
@@ -95,6 +97,46 @@ class MyApp extends StatelessWidget {
           inverseSurface: Color(0xFF2B2B2B),
           onInverseSurface: Color(0xFFF5F5F5),
           inversePrimary: Color(0xFFA3A3A3),
+        ),
+        cardTheme: const CardTheme(
+          color: Color(0xFFFFFFFF), // Explicitly white cards
+          elevation: 1,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFF5F5F5), // Match scaffold background
+          elevation: 0,
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFFF5F5F5), // Match scaffold background
+          indicatorColor: Colors.transparent, // Remove pill background
+          overlayColor: MaterialStateProperty.resolveWith((states) {
+            // Disable all overlay effects (pressed, hovered, focused)
+            return Colors.transparent;
+          }),
+          iconTheme: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return const IconThemeData(
+                color: Color(0xFF2B2B2B), // Dark gray for selected icons
+              );
+            }
+            return const IconThemeData(
+              color: Color(0xFF8A8A8A), // Lighter gray for unselected
+            );
+          }),
+          labelTextStyle: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return const TextStyle(
+                color: Color(0xFF2B2B2B),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              );
+            }
+            return const TextStyle(
+              color: Color(0xFF8A8A8A),
+              fontWeight: FontWeight.normal,
+              fontSize: 12,
+            );
+          }),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(

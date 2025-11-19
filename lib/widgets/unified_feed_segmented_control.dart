@@ -22,6 +22,12 @@ class UnifiedFeedSegmentedControl extends ConsumerWidget {
     return Semantics(
       label: 'Memory type filter',
       child: SegmentedButton<MemoryType>(
+        style: SegmentedButton.styleFrom(
+          selectedBackgroundColor: const Color(0xFF2B2B2B),
+          selectedForegroundColor: const Color(0xFFFFFFFF),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2B2B2B),
+        ),
         multiSelectionEnabled: true,
         segments: [
           ButtonSegment<MemoryType>(

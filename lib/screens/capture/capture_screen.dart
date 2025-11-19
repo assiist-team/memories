@@ -19,6 +19,7 @@ import 'package:memories/screens/moment/moment_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/queue_status_chips.dart';
+import 'package:memories/widgets/inspirational_quote.dart';
 
 /// Unified capture screen for creating Moments, Stories, and Mementos
 ///
@@ -42,6 +43,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   String? _saveProgressMessage;
   double? _saveProgress;
   bool _hasInitializedDescription = false;
+  String? _previousInputText; // Track previous state to detect external changes
 
   @override
   void initState() {
@@ -52,6 +54,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       if (state.inputText != null && !_hasInitializedDescription) {
         _descriptionController.text = state.inputText!;
         _hasInitializedDescription = true;
+        _previousInputText = state.inputText;
       }
     });
   }
@@ -63,13 +66,22 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   }
 
   /// Sync input text controller with state when state changes (e.g., from dictation)
+  /// Only syncs when state changes from an external source, not from TextField edits
   void _syncInputTextController(String? inputText) {
-    // Only update controller if it differs from current text to avoid triggering onChanged
     final currentText = _descriptionController.text;
     final newText = inputText ?? '';
-    if (currentText != newText) {
+
+    // Only sync if:
+    // 1. The state actually changed from previous value (indicates external change)
+    // 2. AND the controller text doesn't match the new state (needs syncing)
+    // This prevents interference when user is typing/deleting, as the controller
+    // will already match the state after the onChanged callback updates it
+    if (_previousInputText != inputText && currentText != newText) {
       _descriptionController.text = newText;
     }
+
+    // Update previous value for next comparison
+    _previousInputText = inputText;
   }
 
   Future<void> _handleAddPhoto() async {
@@ -487,7 +499,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     final state = ref.watch(captureStateNotifierProvider);
     final notifier = ref.read(captureStateNotifierProvider.notifier);
 
+    // Initialize previous input text if not set
+    if (_previousInputText == null) {
+      _previousInputText = state.inputText;
+    }
+
     // Sync input text controller when state.inputText changes (e.g., from dictation)
+    // Only syncs when state changes from external source, not from TextField edits
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncInputTextController(state.inputText);
     });
@@ -512,10 +530,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Inspirational quote - show when there's space
+                    // Optionally hide when media/tags are present (user can adjust this)
+                    // TEMPORARILY: Always show for debugging
+                    InspirationalQuote(
+                      showQuote: true, // TEMP: Always show for debugging
+                      // showQuote: state.photoPaths.isEmpty &&
+                      //     state.videoPaths.isEmpty &&
+                      //     state.tags.isEmpty &&
+                      //     (state.inputText == null ||
+                      //         state.inputText!.isEmpty),
+                    ),
                     // Centered capture controls section
                     Expanded(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // Media add buttons (Tag, Video, Photo)
@@ -525,74 +554,137 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                               Semantics(
                                 label: 'Add tag',
                                 button: true,
-                                child: OutlinedButton(
-                                  onPressed: _handleAddTag,
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest,
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.onSurface,
-                                    side: BorderSide(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
-                                    ),
-                                    shape: const CircleBorder(),
-                                    padding: const EdgeInsets.all(12),
-                                    minimumSize: const Size(48, 48),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(Icons.tag, size: 18),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    shape: const CircleBorder(),
+                                    child: InkWell(
+                                      onTap: _handleAddTag,
+                                      customBorder: const CircleBorder(),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        width: 48,
+                                        height: 48,
+                                        alignment: Alignment.center,
+                                        child: Icon(
+                                          Icons.tag,
+                                          size: 18,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Semantics(
                                 label: 'Add video',
                                 button: true,
-                                child: OutlinedButton(
-                                  onPressed: state.canAddVideo
-                                      ? _handleAddVideo
-                                      : null,
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest,
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.onSurface,
-                                    side: BorderSide(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
-                                    ),
-                                    shape: const CircleBorder(),
-                                    padding: const EdgeInsets.all(12),
-                                    minimumSize: const Size(48, 48),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(Icons.videocam, size: 18),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    shape: const CircleBorder(),
+                                    child: InkWell(
+                                      onTap: state.canAddVideo
+                                          ? _handleAddVideo
+                                          : null,
+                                      customBorder: const CircleBorder(),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        width: 48,
+                                        height: 48,
+                                        alignment: Alignment.center,
+                                        child: Icon(
+                                          Icons.videocam,
+                                          size: 18,
+                                          color: state.canAddVideo
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.38),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Semantics(
                                 label: 'Add photo',
                                 button: true,
-                                child: OutlinedButton(
-                                  onPressed: state.canAddPhoto
-                                      ? _handleAddPhoto
-                                      : null,
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
                                         .colorScheme
                                         .surfaceContainerHighest,
-                                    foregroundColor:
-                                        Theme.of(context).colorScheme.onSurface,
-                                    side: BorderSide(
-                                      color:
-                                          Theme.of(context).colorScheme.outline,
-                                    ),
-                                    shape: const CircleBorder(),
-                                    padding: const EdgeInsets.all(12),
-                                    minimumSize: const Size(48, 48),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.08),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  child:
-                                      const Icon(Icons.photo_camera, size: 18),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    shape: const CircleBorder(),
+                                    child: InkWell(
+                                      onTap: state.canAddPhoto
+                                          ? _handleAddPhoto
+                                          : null,
+                                      customBorder: const CircleBorder(),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        width: 48,
+                                        height: 48,
+                                        alignment: Alignment.center,
+                                        child: Icon(
+                                          Icons.photo_camera,
+                                          size: 18,
+                                          color: state.canAddPhoto
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.38),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -614,6 +706,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                     .colorScheme
                                     .surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -719,6 +818,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             onTextChanged: (value) => notifier
                                 .updateInputText(value.isEmpty ? null : value),
                           ),
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -728,7 +828,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             ),
             // Bottom section with buttons anchored above navigation bar
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               decoration: BoxDecoration(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 boxShadow: [
@@ -825,6 +925,12 @@ class _MemoryTypeToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<MemoryType>(
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: const Color(0xFF2B2B2B),
+        selectedForegroundColor: const Color(0xFFFFFFFF),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF2B2B2B),
+      ),
       segments: [
         ButtonSegment<MemoryType>(
           value: MemoryType.moment,
@@ -854,12 +960,16 @@ class _MemoryTypeToggle extends StatelessWidget {
 
 /// Text container widget for dictation mode - contains only the transcription display
 /// This is separated from controls/hints to ensure consistent sizing with type mode
-class _DictationTextContainer extends StatelessWidget {
+class _DictationTextContainer extends ConsumerWidget {
   final String transcript;
   final MemoryType memoryType;
   final bool isDictating;
   final bool showSwipeHint;
   final ScrollController? scrollController;
+  final VoidCallback? onMicPressed;
+  final VoidCallback? onCancelPressed;
+  final Duration elapsedDuration;
+  final WaveformController waveformController;
 
   const _DictationTextContainer({
     required this.transcript,
@@ -867,6 +977,10 @@ class _DictationTextContainer extends StatelessWidget {
     required this.isDictating,
     required this.showSwipeHint,
     this.scrollController,
+    this.onMicPressed,
+    this.onCancelPressed,
+    required this.elapsedDuration,
+    required this.waveformController,
   });
 
   /// Get contextual hint text based on memory type (for inside container)
@@ -882,7 +996,7 @@ class _DictationTextContainer extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isSimulator = PlatformUtils.isSimulator;
 
     return Container(
@@ -891,6 +1005,13 @@ class _DictationTextContainer extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -936,6 +1057,8 @@ class _DictationTextContainer extends StatelessWidget {
                   child: SingleChildScrollView(
                     controller: scrollController,
                     // SingleChildScrollView naturally aligns content to top-left
+                    // Add padding at the bottom to prevent text from being hidden behind mic button
+                    padding: const EdgeInsets.only(bottom: 80),
                     child: Semantics(
                       label: 'Dictation transcript',
                       liveRegion: true,
@@ -957,9 +1080,29 @@ class _DictationTextContainer extends StatelessWidget {
                   ),
                 );
 
-          // Return the transcript widget - it will expand to fill available space
+          // Return the transcript widget with AudioControlsDecorator centered horizontally at bottom
           // since the parent Container is wrapped in Expanded
-          return transcriptWidget;
+          return Stack(
+            children: [
+              transcriptWidget,
+              // AudioControlsDecorator centered horizontally at the bottom of the container
+              Positioned(
+                bottom: 8,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AudioControlsDecorator(
+                    isListening: isDictating,
+                    elapsedTime: elapsedDuration,
+                    onMicPressed: onMicPressed,
+                    onCancelPressed: onCancelPressed,
+                    waveformController: waveformController,
+                    child: const SizedBox(height: 0),
+                  ),
+                ),
+              ),
+            ],
+          );
         },
       ),
     );
@@ -1178,7 +1321,8 @@ class _SwipeableInputContainerState
         // Use a reasonable max height that ensures content doesn't scroll beyond the menu
         final screenHeight = MediaQuery.of(context).size.height;
         final maxHeight = screenHeight * 0.4; // Max 40% of screen height
-        final minHeight = 200.0; // Minimum height for consistent layout
+        final minHeight =
+            250.0; // Minimum height for consistent layout - increased for larger initial size
 
         // Cache height calculation - only recalculate if not dragging or if cached value is null
         // This prevents resizing during swipe transitions
@@ -1192,8 +1336,6 @@ class _SwipeableInputContainerState
         final simulatorBannerHeight =
             (isIOS && PlatformUtils.isSimulator) ? 60.0 : 0.0;
         final adjustedTotalHeight = _cachedHeight! + simulatorBannerHeight;
-
-        final hasError = widget.errorMessage != null;
 
         // Swipe hints should ALWAYS be visible - never hide them
         final shouldShowDictationHint = true;
@@ -1253,6 +1395,15 @@ class _SwipeableInputContainerState
                             isDictating: widget.isDictating,
                             showSwipeHint: shouldShowDictationHint,
                             scrollController: _dictationScrollController,
+                            onMicPressed: widget.isDictating
+                                ? widget.onStopDictation
+                                : widget.onStartDictation,
+                            onCancelPressed: widget.isDictating
+                                ? widget.onCancelDictation
+                                : null,
+                            elapsedDuration: widget.elapsedDuration,
+                            waveformController:
+                                ref.watch(waveformControllerProvider),
                           )
                         : // Platform not supported banner
                         Container(
@@ -1298,27 +1449,6 @@ class _SwipeableInputContainerState
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'Tap to talk',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant
-                                          .withOpacity(0.6),
-                                      fontSize: 12,
-                                    ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_downward,
-                            size: 14,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant
-                                .withOpacity(0.6),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
                             'Swipe to type',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1341,20 +1471,6 @@ class _SwipeableInputContainerState
                         ],
                       ),
                     ),
-                  ),
-                  // AudioControlsDecorator for mic button
-                  AudioControlsDecorator(
-                    isListening: widget.isDictating,
-                    elapsedTime: widget.elapsedDuration,
-                    onMicPressed: isIOS
-                        ? (widget.isDictating
-                            ? widget.onStopDictation
-                            : widget.onStartDictation)
-                        : null,
-                    onCancelPressed:
-                        widget.isDictating ? widget.onCancelDictation : null,
-                    waveformController: ref.watch(waveformControllerProvider),
-                    child: const SizedBox(height: 0),
                   ),
                   // Error message display
                   if (widget.errorMessage != null)
@@ -1429,6 +1545,13 @@ class _SwipeableInputContainerState
                               .colorScheme
                               .surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Semantics(
                           label: 'Input text',
@@ -1511,26 +1634,45 @@ class _SwipeableInputContainerState
                       isVisible: true,
                     ),
                   ),
-                  // Spacer to match AudioControlsDecorator height exactly
-                  ExcludeSemantics(
-                    child: Visibility(
-                      visible: false,
-                      maintainState: true,
-                      maintainAnimation: true,
-                      maintainSize: true,
-                      child: AudioControlsDecorator(
-                        isListening: false,
-                        elapsedTime: widget.elapsedDuration,
-                        onMicPressed: null,
-                        onCancelPressed: null,
-                        waveformController:
-                            ref.watch(waveformControllerProvider),
-                        child: const SizedBox(height: 0),
+                  // Error message display (matches dictation mode layout)
+                  if (widget.errorMessage != null)
+                    Semantics(
+                      label: 'Error message',
+                      liveRegion: true,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(top: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 20,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.errorMessage!,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onErrorContainer,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  // Spacer for error message area (matches dictation mode layout)
-                  if (hasError) const SizedBox(height: 60),
                 ],
               ),
             ],

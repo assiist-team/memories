@@ -13,10 +13,10 @@ import 'package:uuid/uuid.dart';
 part 'capture_state_provider.g.dart';
 
 /// Provider for dictation service
-/// 
+///
 /// Kept alive for the entire capture surface lifetime to ensure
 /// stable lifecycle so mic events continue streaming.
-/// 
+///
 /// CRITICAL: Read the feature flag with ref.read() instead of ref.watch()
 /// to prevent the service from being recreated if the flag changes.
 /// The flag should only be read once when the service is first created.
@@ -25,18 +25,18 @@ DictationService dictationService(DictationServiceRef ref) {
   // Read feature flag ONCE at creation (don't watch to avoid rebuilds)
   final useNewPlugin = ref.read(useNewDictationPluginSyncProvider);
   final service = DictationService(useNewPlugin: useNewPlugin);
-  
+
   // Initialize immediately in background to pre-warm native layer
   service.ensureInitialized().catchError((e) {
     print('[dictationServiceProvider] Failed to initialize service: $e');
   });
-  
+
   ref.onDispose(() => service.dispose());
   return service;
 }
 
 /// Provider for waveform controller
-/// 
+///
 /// Manages waveform visualization state for dictation.
 /// Kept alive for the capture surface lifetime.
 @Riverpod(keepAlive: true)
@@ -53,7 +53,7 @@ GeolocationService geolocationService(GeolocationServiceRef ref) {
 }
 
 /// Provider for capture state
-/// 
+///
 /// Manages the state of the unified capture sheet including:
 /// - Memory type selection (Moment/Story/Memento)
 /// - Dictation transcript
@@ -83,9 +83,12 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   StreamSubscription<DictationStatus>? _statusSubscription;
   StreamSubscription<double>? _audioLevelSubscription;
   StreamSubscription<String>? _errorSubscription;
-  
+
   /// Timer for tracking elapsed duration during dictation
   Timer? _elapsedTimer;
+
+  /// Text that existed before dictation started (preserved for appending)
+  String? _textBeforeDictation;
 
   /// Cancel all stream subscriptions
   void _cancelSubscriptions() {
@@ -98,13 +101,13 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     _audioLevelSubscription = null;
     _errorSubscription = null;
   }
-  
+
   /// Cancel elapsed timer
   void _cancelElapsedTimer() {
     _elapsedTimer?.cancel();
     _elapsedTimer = null;
   }
-  
+
   /// Get current locale string (e.g., 'en-US', 'es-ES')
   String _getCurrentLocale() {
     final locale = WidgetsBinding.instance.platformDispatcher.locale;
@@ -114,7 +117,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Start dictation
   Future<void> startDictation() async {
     final dictationService = ref.read(dictationServiceProvider);
-    
+
     if (state.isDictating) {
       return;
     }
@@ -122,13 +125,16 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     // Cancel any existing subscriptions
     _cancelSubscriptions();
 
+    // Preserve existing inputText so dictation can append to it
+    _textBeforeDictation = state.inputText;
+
     // Generate session ID if not already set (for audio file tracking)
     // Reuse existing sessionId if available (retry scenario)
     final sessionId = state.sessionId ?? const Uuid().v4();
 
     // Get current locale for dictation
     final locale = _getCurrentLocale();
-    
+
     // Reset waveform state and start elapsed timer
     final startTime = DateTime.now();
     state = state.copyWith(
@@ -139,7 +145,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       dictationLocale: locale,
       captureStartTime: startTime,
     );
-    
+
     // Start elapsed timer (updates every second)
     _cancelElapsedTimer();
     _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -153,16 +159,26 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     // Subscribe to status stream
     _statusSubscription = dictationService.statusStream.listen((status) {
       state = state.copyWith(
-        isDictating: status == DictationStatus.listening || 
-                     status == DictationStatus.starting,
+        isDictating: status == DictationStatus.listening ||
+            status == DictationStatus.starting,
         hasUnsavedChanges: true,
       );
     });
 
     // Subscribe to transcript updates (result stream)
-    _transcriptSubscription = dictationService.transcriptStream.listen((transcript) {
+    // Append dictation transcript to existing text instead of overwriting
+    _transcriptSubscription =
+        dictationService.transcriptStream.listen((transcript) {
+      // Combine preserved text with new dictation transcript
+      final preservedText = _textBeforeDictation?.trim() ?? '';
+      final combinedText = preservedText.isEmpty
+          ? transcript
+          : transcript.isEmpty
+              ? preservedText
+              : '$preservedText $transcript';
+
       state = state.copyWith(
-        inputText: transcript, // Populate inputText automatically
+        inputText: combinedText.isEmpty ? null : combinedText,
         hasUnsavedChanges: true,
       );
     });
@@ -190,7 +206,8 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     if (!started) {
       _cancelElapsedTimer();
       state = state.copyWith(
-        errorMessage: dictationService.errorMessage ?? 'Failed to start dictation',
+        errorMessage:
+            dictationService.errorMessage ?? 'Failed to start dictation',
         elapsedDuration: Duration.zero,
       );
       return;
@@ -201,7 +218,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       hasUnsavedChanges: true,
     );
   }
-  
+
   /// Cancel dictation (discard recording)
   Future<void> cancelDictation() async {
     if (!state.isDictating) {
@@ -229,11 +246,16 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       );
     }
 
+    // Restore original text (discard dictation changes) and clear preserved text
+    final originalText = _textBeforeDictation;
+    _textBeforeDictation = null;
+
     // Reset state
     state = state.copyWith(
       isDictating: false,
       audioLevel: 0.0,
       elapsedDuration: Duration.zero,
+      inputText: originalText, // Restore text that existed before dictation
       hasUnsavedChanges: true,
       clearAudio: true,
     );
@@ -288,10 +310,15 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       cachedAudioPath = result.audioFilePath;
     }
 
+    // Clear preserved text for next dictation session
+    // The current inputText already has the combined text from the transcript subscription
+    _textBeforeDictation = null;
+
     // Reset waveform state and store cached audio path
+    // Keep current inputText (already contains preserved text + dictation transcript)
     state = state.copyWith(
       isDictating: false,
-      inputText: result.transcript.isNotEmpty ? result.transcript : state.inputText,
+      // inputText already has the combined text from transcript subscription, don't overwrite
       audioPath: cachedAudioPath,
       audioDuration: audioDuration,
       audioLevel: 0.0,
@@ -396,7 +423,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }
 
   /// Clear all state
-  /// 
+  ///
   /// [keepAudioIfQueued] if true, keeps audio file even if it's queued for upload
   /// Set to true when clearing state after successful queueing
   Future<void> clear({bool keepAudioIfQueued = false}) async {
@@ -438,16 +465,16 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }
 
   /// Capture location metadata
-  /// 
+  ///
   /// Attempts to get current position and updates state with location
   /// or location status (denied/unavailable)
   Future<void> captureLocation() async {
     final geolocationService = ref.read(geolocationServiceProvider);
-    
+
     try {
       final position = await geolocationService.getCurrentPosition();
       final status = await geolocationService.getLocationStatus();
-      
+
       if (position != null) {
         state = state.copyWith(
           latitude: position.latitude,
@@ -478,7 +505,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }
 
   /// Load existing moment data into capture state for editing
-  /// 
+  ///
   /// Preloads inputText, tags, location, and memory type from a MomentDetail
   /// Note: Media files (photos/videos) are not loaded as they're already uploaded
   /// and cannot be edited. Users can add new media during edit.
@@ -491,7 +518,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     String? locationStatus,
   }) {
     final memoryType = MemoryTypeExtension.fromApiValue(captureType);
-    
+
     state = state.copyWith(
       memoryType: memoryType,
       inputText: inputText,
@@ -503,4 +530,3 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     );
   }
 }
-
