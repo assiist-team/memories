@@ -28,7 +28,7 @@ final momentDetailServiceProvider =
 // ignore: unused_element
 typedef MomentDetailServiceRef = AutoDisposeProviderRef<MomentDetailService>;
 String _$momentDetailNotifierHash() =>
-    r'a0e44f27339d8a9f63d8b8064ceb50729e94445a';
+    r'ffbb4849a0609d1c3015501b3a07b434f8fa3119';
 
 /// Copied from Dart SDK
 class _SystemHash {

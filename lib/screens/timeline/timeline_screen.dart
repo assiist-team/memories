@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/providers/timeline_provider.dart';
+import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/widgets/moment_card.dart';
 import 'package:memories/widgets/story_card.dart';
 import 'package:memories/widgets/memento_card.dart';
@@ -13,7 +14,6 @@ import 'package:memories/widgets/skeleton_loader.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
-import 'package:memories/screens/capture/capture_screen.dart';
 
 /// Main timeline screen displaying Moments in reverse chronological order
 class TimelineScreen extends ConsumerStatefulWidget {
@@ -438,11 +438,8 @@ class _TimelineScreenState extends ConsumerState<TimelineScreen> {
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const CaptureScreen(),
-                            ),
-                          );
+                          // Switch to capture tab in main navigation
+                          ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
                         },
                         child: const Text('Capture a new memory'),
                       ),

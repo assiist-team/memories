@@ -5,6 +5,7 @@ import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/unified_feed_provider.dart';
 import 'package:memories/providers/unified_feed_tab_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
+import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/widgets/unified_feed_segmented_control.dart';
 import 'package:memories/widgets/memory_card.dart';
 import 'package:memories/widgets/memory_header.dart';
@@ -14,7 +15,6 @@ import 'package:memories/widgets/global_search_bar.dart';
 import 'package:memories/widgets/search_results_list.dart';
 import 'package:memories/providers/search_provider.dart';
 import 'package:memories/screens/moment/moment_detail_screen.dart';
-import 'package:memories/screens/capture/capture_screen.dart';
 
 /// Unified Timeline screen displaying Stories, Moments, and Mementos
 /// in a single reverse-chronological feed with filtering and grouping.
@@ -254,11 +254,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
         child: UnifiedFeedEmptyState(
           currentFilter: currentFilter,
           onCaptureTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const CaptureScreen(),
-              ),
-            );
+            // Switch to capture tab in main navigation
+            ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
           },
         ),
       ),
@@ -482,11 +479,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const CaptureScreen(),
-                            ),
-                          );
+                          // Switch to capture tab in main navigation
+                          ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
                         },
                         child: const Text('Capture a new memory'),
                       ),

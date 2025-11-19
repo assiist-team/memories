@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/screens/capture/capture_screen.dart';
 import 'package:memories/screens/timeline/unified_timeline_screen.dart';
 import 'package:memories/screens/settings/settings_screen.dart';
+import 'package:memories/providers/main_navigation_provider.dart';
 
 /// Main navigation shell that provides bottom navigation between main app screens
 /// 
@@ -18,27 +19,51 @@ class MainNavigationShell extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
-  int _currentIndex = 0; // Default to Capture screen (index 0)
-
   final List<Widget> _screens = const [
     CaptureScreen(),
     UnifiedTimelineScreen(),
     SettingsScreen(),
   ];
 
+  int _getTabIndex(MainNavigationTab tab) {
+    switch (tab) {
+      case MainNavigationTab.capture:
+        return 0;
+      case MainNavigationTab.timeline:
+        return 1;
+      case MainNavigationTab.settings:
+        return 2;
+    }
+  }
+
+  MainNavigationTab _getTabFromIndex(int index) {
+    switch (index) {
+      case 0:
+        return MainNavigationTab.capture;
+      case 1:
+        return MainNavigationTab.timeline;
+      case 2:
+        return MainNavigationTab.settings;
+      default:
+        return MainNavigationTab.capture;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedTab = ref.watch(mainNavigationTabNotifierProvider);
+    final currentIndex = _getTabIndex(selectedTab);
+
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
+        index: currentIndex,
         children: _screens,
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex: currentIndex,
         onDestinationSelected: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
+          final tab = _getTabFromIndex(index);
+          ref.read(mainNavigationTabNotifierProvider.notifier).setTab(tab);
         },
         destinations: const [
           NavigationDestination(

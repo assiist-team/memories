@@ -6,7 +6,7 @@ import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/moment_detail_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/timeline_provider.dart';
-import 'package:memories/screens/capture/capture_screen.dart';
+import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/widgets/media_carousel.dart';
 import 'package:memories/widgets/moment_metadata_section.dart';
@@ -539,15 +539,14 @@ class MomentDetailScreen extends ConsumerWidget {
       locationStatus: moment.locationData?.status,
     );
 
-    // Navigate to capture screen for editing
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const CaptureScreen(),
-      ),
-    ).then((_) {
-      // Refresh detail view after returning from edit
-      ref.read(momentDetailNotifierProvider(moment.id).notifier).refresh();
-    });
+    // Pop back to main navigation shell, then switch to capture tab
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    // Switch to capture tab in main navigation
+    ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
+    // Refresh detail view after switching (in case user navigates back)
+    ref.read(momentDetailNotifierProvider(moment.id).notifier).refresh();
   }
 
   /// Show delete confirmation bottom sheet
