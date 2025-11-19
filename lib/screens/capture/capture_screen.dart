@@ -149,46 +149,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
   Future<void> _handleAddTag() async {
     final notifier = ref.read(captureStateNotifierProvider.notifier);
-    final textController = TextEditingController();
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Tag'),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(
-            hintText: 'Enter tag name',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (value) {
-            if (value.trim().isNotEmpty) {
-              notifier.addTag(value.trim());
-              Navigator.pop(context);
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (textController.text.trim().isNotEmpty) {
-                notifier.addTag(textController.text.trim());
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
+      builder: (context) => _AddTagDialog(
+        onTagAdded: (tag) => notifier.addTag(tag),
       ),
     );
-
-    textController.dispose();
   }
 
   Future<void> _handleSave() async {
@@ -1485,6 +1452,70 @@ class _SwipeHint extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialog widget for adding tags
+/// Properly manages TextEditingController lifecycle to prevent disposal errors
+class _AddTagDialog extends StatefulWidget {
+  final ValueChanged<String> onTagAdded;
+
+  const _AddTagDialog({
+    required this.onTagAdded,
+  });
+
+  @override
+  State<_AddTagDialog> createState() => _AddTagDialogState();
+}
+
+class _AddTagDialogState extends State<_AddTagDialog> {
+  late final TextEditingController _textController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  void _handleSubmit() {
+    final value = _textController.text.trim();
+    if (value.isNotEmpty) {
+      widget.onTagAdded(value);
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Tag'),
+      content: TextField(
+        controller: _textController,
+        decoration: const InputDecoration(
+          hintText: 'Enter tag name',
+          border: OutlineInputBorder(),
+        ),
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _handleSubmit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _handleSubmit,
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }
