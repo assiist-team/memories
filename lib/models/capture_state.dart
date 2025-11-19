@@ -1,5 +1,14 @@
 import 'package:memories/models/memory_type.dart';
 
+/// Input mode for memory capture
+enum InputMode {
+  /// Dictation mode - voice input with microphone controls
+  dictation,
+  
+  /// Type mode - manual text input
+  type,
+}
+
 /// Model representing the state of a memory being captured
 class CaptureState {
   /// The type of memory being captured
@@ -60,6 +69,9 @@ class CaptureState {
   
   /// Error message if any
   final String? errorMessage;
+  
+  /// Current input mode (dictation or type)
+  final InputMode inputMode;
 
   const CaptureState({
     this.memoryType = MemoryType.moment,
@@ -81,6 +93,7 @@ class CaptureState {
     this.locationStatus,
     this.hasUnsavedChanges = false,
     this.errorMessage,
+    this.inputMode = InputMode.dictation,
   });
 
   /// Create a copy with updated fields
@@ -104,6 +117,7 @@ class CaptureState {
     String? locationStatus,
     bool? hasUnsavedChanges,
     String? errorMessage,
+    InputMode? inputMode,
     bool clearInputText = false,
     bool clearError = false,
     bool clearLocation = false,
@@ -131,6 +145,7 @@ class CaptureState {
       locationStatus: clearLocation ? null : (locationStatus ?? this.locationStatus),
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      inputMode: inputMode ?? this.inputMode,
     );
   }
 

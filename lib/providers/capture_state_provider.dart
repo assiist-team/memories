@@ -472,6 +472,11 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     state = state.copyWith(capturedAt: timestamp);
   }
 
+  /// Set input mode (dictation or type)
+  void setInputMode(InputMode mode) {
+    state = state.copyWith(inputMode: mode);
+  }
+
   /// Load existing moment data into capture state for editing
   /// 
   /// Preloads inputText, tags, location, and memory type from a MomentDetail

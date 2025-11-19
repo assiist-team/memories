@@ -55,7 +55,7 @@ Stream<bool> get connectivityStream {
    - This prevents the scheduler crash that was interfering with dictation initialization.
 
 2. **Retest dictation after the fix**
-   - Rebuild the app, launch on the device, and trigger dictation.
+r   - Rebuild the app, launch on the device, and trigger dictation.
    - Confirm no scheduler exceptions appear, `NativeDictationService` logs `=== START LISTENING COMPLETE ===`, and audio capture succeeds.
    - Verify Memory Sync continues to subscribe (connectivity toggles still enqueue sync attempts).
 

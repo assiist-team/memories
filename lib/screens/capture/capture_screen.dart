@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dictation/flutter_dictation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/queued_moment.dart';
 import 'package:memories/models/queued_story.dart';
 import 'package:memories/providers/capture_state_provider.dart';
@@ -17,7 +18,6 @@ import 'package:memories/screens/moment/moment_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/queue_status_chips.dart';
-import 'package:memories/widgets/tag_chip_input.dart';
 
 /// Unified capture screen for creating Moments, Stories, and Mementos
 /// 
@@ -145,6 +145,50 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (path != null && mounted) {
       notifier.addVideo(path);
     }
+  }
+
+  Future<void> _handleAddTag() async {
+    final notifier = ref.read(captureStateNotifierProvider.notifier);
+    final textController = TextEditingController();
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Tag'),
+        content: TextField(
+          controller: textController,
+          decoration: const InputDecoration(
+            hintText: 'Enter tag name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) {
+              notifier.addTag(value.trim());
+              Navigator.pop(context);
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (textController.text.trim().isNotEmpty) {
+                notifier.addTag(textController.text.trim());
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    
+    textController.dispose();
   }
 
   Future<void> _handleSave() async {
@@ -448,61 +492,71 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Dictation control (iOS only)
-                    if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb)
-                      _DictationControl(
-                        isDictating: state.isDictating,
-                        transcript: state.inputText ?? '',
-                        elapsedDuration: state.elapsedDuration,
-                        errorMessage: state.errorMessage,
-                        onStart: () => notifier.startDictation(),
-                        onStop: () => notifier.stopDictation(),
-                        onCancel: () => notifier.cancelDictation(),
-                      )
-                    else if (defaultTargetPlatform != TargetPlatform.iOS && !kIsWeb)
-                      // Platform not supported banner
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Voice dictation is currently available on iOS. Android support coming soon.',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
+                    // Media add buttons (Tag, Video, Photo) - positioned above text input
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Semantics(
+                            label: 'Add tag',
+                            button: true,
+                            child: OutlinedButton.icon(
+                              onPressed: _handleAddTag,
+                              icon: const Icon(Icons.tag, size: 18),
+                              label: const Text('Tag', style: TextStyle(fontSize: 13)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    const SizedBox(height: 24),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Semantics(
+                            label: 'Add video',
+                            button: true,
+                            child: OutlinedButton.icon(
+                              onPressed: state.canAddVideo ? _handleAddVideo : null,
+                              icon: const Icon(Icons.videocam, size: 18),
+                              label: const Text('Video', style: TextStyle(fontSize: 13)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Semantics(
+                            label: 'Add photo',
+                            button: true,
+                            child: OutlinedButton.icon(
+                              onPressed: state.canAddPhoto ? _handleAddPhoto : null,
+                              icon: const Icon(Icons.photo_camera, size: 18),
+                              label: const Text('Photo', style: TextStyle(fontSize: 13)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
 
-                    // Input text field
-                    Semantics(
-                      label: 'Input text',
-                      textField: true,
-                      child: TextField(
-                        controller: _descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description (optional)',
-                          hintText: 'Add any additional details...',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 4,
-                        onChanged: (value) => notifier.updateInputText(value.isEmpty ? null : value),
-                      ),
+                    // Swipeable input container (dictation and type modes)
+                    _SwipeableInputContainer(
+                      inputMode: state.inputMode,
+                      memoryType: state.memoryType,
+                      isDictating: state.isDictating,
+                      transcript: state.inputText ?? '',
+                      elapsedDuration: state.elapsedDuration,
+                      errorMessage: state.errorMessage,
+                      descriptionController: _descriptionController,
+                      onInputModeChanged: (mode) => notifier.setInputMode(mode),
+                      onStartDictation: () => notifier.startDictation(),
+                      onStopDictation: () => notifier.stopDictation(),
+                      onCancelDictation: () => notifier.cancelDictation(),
+                      onTextChanged: (value) => notifier.updateInputText(value.isEmpty ? null : value),
                     ),
                     const SizedBox(height: 24),
 
@@ -517,100 +571,98 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Media add buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Semantics(
-                            label: 'Add photo',
-                            button: true,
-                            child: OutlinedButton.icon(
-                              onPressed: state.canAddPhoto ? _handleAddPhoto : null,
-                              icon: const Icon(Icons.photo_camera),
-                              label: const Text('Photo'),
+                    // Display tags as chips if any exist
+                    if (state.tags.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (int i = 0; i < state.tags.length; i++)
+                            InputChip(
+                              label: Text(state.tags[i]),
+                              onDeleted: () => notifier.removeTag(i),
+                              deleteIcon: const Icon(Icons.close, size: 18),
+                              visualDensity: VisualDensity.compact,
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Semantics(
-                            label: 'Add video',
-                            button: true,
-                            child: OutlinedButton.icon(
-                              onPressed: state.canAddVideo ? _handleAddVideo : null,
-                              icon: const Icon(Icons.videocam),
-                              label: const Text('Video'),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Tagging input
-                    TagChipInput(
-                      tags: state.tags,
-                      onTagAdded: (tag) => notifier.addTag(tag),
-                      onTagRemoved: (index) => notifier.removeTag(index),
-                      hintText: 'Add tags (optional)',
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Save button with progress indicator
-                    Semantics(
-                      label: 'Save memory',
-                      button: true,
-                      child: ElevatedButton(
-                        onPressed: (state.canSave && !_isSaving) ? _handleSave : null,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          minimumSize: const Size(0, 48),
-                        ),
-                        child: _isSaving
-                            ? Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Semantics(
-                                    label: _saveProgressMessage ?? 'Saving memory',
-                                    value: _saveProgress != null
-                                        ? '${(_saveProgress! * 100).toInt()}% complete'
-                                        : null,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        ),
-                                        if (_saveProgressMessage != null) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            _saveProgressMessage!,
-                                            style: const TextStyle(fontSize: 12),
-                                          ),
-                                        ],
-                                        if (_saveProgress != null) ...[
-                                          const SizedBox(height: 4),
-                                          LinearProgressIndicator(
-                                            value: _saveProgress,
-                                            backgroundColor: Colors.white.withOpacity(0.3),
-                                            valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const Text('Save'),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
                   ],
                 ),
+              ),
+            ),
+            // Bottom section with buttons anchored above navigation bar
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Save button with progress indicator
+                  Semantics(
+                    label: 'Save memory',
+                    button: true,
+                    child: ElevatedButton(
+                      onPressed: (state.canSave && !_isSaving) ? _handleSave : null,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        minimumSize: const Size(0, 48),
+                      ),
+                      child: _isSaving
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Semantics(
+                                  label: _saveProgressMessage ?? 'Saving memory',
+                                  value: _saveProgress != null
+                                      ? '${(_saveProgress! * 100).toInt()}% complete'
+                                      : null,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                      if (_saveProgressMessage != null) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _saveProgressMessage!,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ],
+                                      if (_saveProgress != null) ...[
+                                        const SizedBox(height: 4),
+                                        LinearProgressIndicator(
+                                          value: _saveProgress,
+                                          backgroundColor: Colors.white.withOpacity(0.3),
+                                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Text('Save'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -659,131 +711,578 @@ class _MemoryTypeToggle extends StatelessWidget {
   }
 }
 
-class _DictationControl extends ConsumerWidget {
+/// Text container widget for dictation mode - contains only the transcription display
+/// This is separated from controls/hints to ensure consistent sizing with type mode
+class _DictationTextContainer extends StatelessWidget {
+  final String transcript;
+  final MemoryType memoryType;
+  final bool isDictating;
+  final bool showSwipeHint;
+
+  const _DictationTextContainer({
+    required this.transcript,
+    required this.memoryType,
+    required this.isDictating,
+    required this.showSwipeHint,
+  });
+  
+  /// Get contextual hint text based on memory type (for inside container)
+  String _getTapMicText(MemoryType memoryType) {
+    switch (memoryType) {
+      case MemoryType.moment:
+        return 'Describe the moment';
+      case MemoryType.story:
+        return 'Tell your story';
+      case MemoryType.memento:
+        return 'Describe the object and its significance';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSimulator = PlatformUtils.isSimulator;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Determine display text - show immediately without delay
+          final displayText = transcript.isNotEmpty
+              ? transcript
+              : (isSimulator 
+                  ? 'Dictation unavailable on simulator'
+                  : (showSwipeHint ? _getTapMicText(memoryType) : ''));
+          
+          final isEmpty = transcript.isEmpty && !isDictating;
+          
+          // Build the transcript widget - use AnimatedSwitcher for smooth transitions
+          // When empty, center the placeholder text both vertically and horizontally
+          // When not empty, use SingleChildScrollView to allow scrolling when content exceeds container
+          final transcriptWidget = isEmpty
+              ? Center(
+                  child: Semantics(
+                    label: 'Dictation transcript',
+                    liveRegion: true,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      child: Text(
+                        displayText,
+                        key: ValueKey(displayText),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: Semantics(
+                    label: 'Dictation transcript',
+                    liveRegion: true,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      child: Text(
+                        displayText,
+                        key: ValueKey(displayText),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                        textAlign: TextAlign.start,
+                      ),
+                    ),
+                  ),
+                );
+          
+          // Return the transcript widget - it will expand to fill available space
+          // since the parent Container is wrapped in Expanded
+          return transcriptWidget;
+        },
+      ),
+    );
+  }
+}
+
+
+/// Swipeable input container that allows switching between dictation and type modes
+class _SwipeableInputContainer extends ConsumerStatefulWidget {
+  final InputMode inputMode;
+  final MemoryType memoryType;
   final bool isDictating;
   final String transcript;
   final Duration elapsedDuration;
   final String? errorMessage;
-  final VoidCallback onStart;
-  final VoidCallback onStop;
-  final VoidCallback onCancel;
+  final TextEditingController descriptionController;
+  final ValueChanged<InputMode> onInputModeChanged;
+  final VoidCallback onStartDictation;
+  final VoidCallback onStopDictation;
+  final VoidCallback onCancelDictation;
+  final ValueChanged<String> onTextChanged;
 
-  const _DictationControl({
+  const _SwipeableInputContainer({
+    required this.inputMode,
+    required this.memoryType,
     required this.isDictating,
     required this.transcript,
-    this.elapsedDuration = Duration.zero,
+    required this.elapsedDuration,
     this.errorMessage,
-    required this.onStart,
-    required this.onStop,
-    required this.onCancel,
+    required this.descriptionController,
+    required this.onInputModeChanged,
+    required this.onStartDictation,
+    required this.onStopDictation,
+    required this.onCancelDictation,
+    required this.onTextChanged,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final waveformController = ref.watch(waveformControllerProvider);
-    final isSimulator = PlatformUtils.isSimulator;
+  ConsumerState<_SwipeableInputContainer> createState() => _SwipeableInputContainerState();
+}
+
+class _SwipeableInputContainerState extends ConsumerState<_SwipeableInputContainer> {
+  late PageController _pageController;
+  bool _isDragging = false;
+  final FocusNode _textFieldFocusNode = FocusNode();
+  double? _dragStartX;
+  double? _cachedHeight; // Cache height to prevent resizing during swipe
+  bool _isTextFieldFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize page controller to dictation mode (page 0) or type mode (page 1)
+    _pageController = PageController(
+      initialPage: widget.inputMode == InputMode.dictation ? 0 : 1,
+    );
     
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Simulator warning banner
-        if (isSimulator)
-          Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Voice dictation is unavailable on iOS Simulator. Please test on a physical device.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    // Listen to page controller position changes to detect dragging
+    _pageController.addListener(_onPageControllerChanged);
+    
+    // Listen to focus changes to update text alignment
+    _textFieldFocusNode.addListener(_onFocusChanged);
+  }
+  
+  void _onFocusChanged() {
+    if (_textFieldFocusNode.hasFocus != _isTextFieldFocused) {
+      setState(() {
+        _isTextFieldFocused = _textFieldFocusNode.hasFocus;
+      });
+    }
+  }
+  
+  void _onPageControllerChanged() {
+    if (!_pageController.hasClients) return;
+    
+    final page = _pageController.page ?? 0;
+    final isDragging = page % 1 != 0; // Page is fractional when dragging
+    
+    if (_isDragging != isDragging) {
+      setState(() {
+        _isDragging = isDragging;
+        // Reset cached height when drag ends to allow recalculation if needed
+        if (!isDragging) {
+          _cachedHeight = null;
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_SwipeableInputContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync page controller if input mode changed externally
+    if (oldWidget.inputMode != widget.inputMode) {
+      final targetPage = widget.inputMode == InputMode.dictation ? 0 : 1;
+      if (_pageController.hasClients && _pageController.page?.round() != targetPage) {
+        // Reset cached height when mode changes externally to allow recalculation
+        _cachedHeight = null;
+        _pageController.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.removeListener(_onPageControllerChanged);
+    _pageController.dispose();
+    _textFieldFocusNode.removeListener(_onFocusChanged);
+    _textFieldFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int page) {
+    final newMode = page == 0 ? InputMode.dictation : InputMode.type;
+    if (newMode != widget.inputMode) {
+      // Reset cached height when page changes to allow recalculation
+      _cachedHeight = null;
+      widget.onInputModeChanged(newMode);
+    }
+  }
+
+  /// Get placeholder text based on memory type
+  String _getPlaceholderText(MemoryType memoryType) {
+    switch (memoryType) {
+      case MemoryType.moment:
+        return 'Describe the moment';
+      case MemoryType.story:
+        return 'Tell your story';
+      case MemoryType.memento:
+        return 'Describe the object and its significance';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isIOS = defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb;
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate max height: screen height minus app bar, queue chips, padding, other content, and navigation bar
+        // Use a reasonable max height that ensures content doesn't scroll beyond the menu
+        final screenHeight = MediaQuery.of(context).size.height;
+        final maxHeight = screenHeight * 0.4; // Max 40% of screen height
+        final minHeight = 200.0; // Minimum height for consistent layout
         
-        // Use AudioControlsDecorator for dictation controls
-        AudioControlsDecorator(
-          isListening: isDictating,
-          elapsedTime: elapsedDuration,
-          // Disable mic button when on simulator
-          onMicPressed: isSimulator ? null : (isDictating ? onStop : onStart),
-          onCancelPressed: isDictating ? onCancel : null,
-          waveformController: waveformController,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Semantics(
-              label: 'Dictation transcript',
-              liveRegion: true,
-              child: Text(
-                transcript.isEmpty && !isDictating
-                    ? (isSimulator 
-                        ? 'Dictation unavailable on simulator'
-                        : 'Tap the microphone to start dictating')
-                    : transcript,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: transcript.isEmpty && !isDictating
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
-                    ),
-                textAlign: transcript.isEmpty && !isDictating
-                    ? TextAlign.center
-                    : TextAlign.start,
-              ),
-            ),
-          ),
-        ),
+        // Cache height calculation - only recalculate if not dragging or if cached value is null
+        // This prevents resizing during swipe transitions
+        if (_cachedHeight == null || !_isDragging) {
+          _cachedHeight = constraints.maxHeight.isInfinite 
+              ? minHeight.clamp(minHeight, maxHeight)
+              : constraints.maxHeight.clamp(minHeight, maxHeight);
+        }
         
-        // Error message display
-        if (errorMessage != null)
-          Semantics(
-            label: 'Error message',
-            liveRegion: true,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(top: 8, bottom: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
+        // Account for simulator banner if shown (it's outside the text container area)
+        final simulatorBannerHeight = (isIOS && PlatformUtils.isSimulator) ? 60.0 : 0.0;
+        final adjustedTotalHeight = _cachedHeight! + simulatorBannerHeight;
+        
+        final hasError = widget.errorMessage != null;
+        
+        // Determine if swipe hints should be visible
+        // Show hints immediately - don't wait for drag state to update
+        final shouldShowDictationHint = widget.transcript.isEmpty && 
+            widget.descriptionController.text.isEmpty &&
+            !widget.isDictating;
+        final shouldShowTypeHint = widget.transcript.isEmpty && 
+            widget.descriptionController.text.isEmpty &&
+            !widget.isDictating;
+        
+        return SizedBox(
+          height: adjustedTotalHeight,
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            children: [
+              // Page 0: Dictation mode
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      errorMessage!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onErrorContainer,
+                  // Simulator warning banner (if applicable)
+                  if (isIOS && PlatformUtils.isSimulator)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Voice dictation is unavailable on iOS Simulator. Please test on a physical device.',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Text container - Expanded so it can grow, starts at same size as type mode
+                  Expanded(
+                    child: isIOS
+                        ? _DictationTextContainer(
+                            transcript: widget.transcript,
+                            memoryType: widget.memoryType,
+                            isDictating: widget.isDictating,
+                            showSwipeHint: shouldShowDictationHint,
+                          )
+                        : // Platform not supported banner
+                        Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 20,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Voice dictation is currently available on iOS. Android support coming soon.',
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                  // Swipe hint - consistent positioning
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Opacity(
+                      opacity: (widget.transcript.isEmpty && !widget.isDictating && shouldShowDictationHint) ? 1.0 : 0.0,
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Tap to talk',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                    fontSize: 12,
+                                  ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_downward,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Swipe to type',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                    fontSize: 12,
+                                  ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+                  // AudioControlsDecorator for mic button
+                  AudioControlsDecorator(
+                    isListening: widget.isDictating,
+                    elapsedTime: widget.elapsedDuration,
+                    onMicPressed: isIOS ? (widget.isDictating ? widget.onStopDictation : widget.onStartDictation) : null,
+                    onCancelPressed: widget.isDictating ? widget.onCancelDictation : null,
+                    waveformController: ref.watch(waveformControllerProvider),
+                    child: const SizedBox(height: 0),
+                  ),
+                  // Error message display
+                  if (widget.errorMessage != null)
+                    Semantics(
+                      label: 'Error message',
+                      liveRegion: true,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(top: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.errorMessage!,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onErrorContainer,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            ),
+          
+              // Page 1: Type mode
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Text container - Expanded so it can grow, starts at same size as dictation mode
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragStart: (details) {
+                        // Unfocus text field when horizontal drag starts to allow PageView swipe
+                        _textFieldFocusNode.unfocus();
+                        _dragStartX = details.globalPosition.dx;
+                      },
+                      onHorizontalDragUpdate: (details) {
+                        // If horizontal drag is significant, ensure text field stays unfocused
+                        if (_dragStartX != null) {
+                          final deltaX = (details.globalPosition.dx - _dragStartX!).abs();
+                          if (deltaX > 10) {
+                            _textFieldFocusNode.unfocus();
+                          }
+                        }
+                      },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Semantics(
+                        label: 'Input text',
+                        textField: true,
+                        hint: _getPlaceholderText(widget.memoryType),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final shouldShowPlaceholder = widget.descriptionController.text.isEmpty && !_isTextFieldFocused;
+                            return Stack(
+                              children: [
+                                TextField(
+                                  controller: widget.descriptionController,
+                                  focusNode: _textFieldFocusNode,
+                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                        color: Theme.of(context).colorScheme.onSurface,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  maxLines: null,
+                                  expands: true,
+                                  textAlign: TextAlign.start,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  keyboardType: TextInputType.multiline,
+                                  onChanged: (value) {
+                                    widget.onTextChanged(value);
+                                    // Update placeholder visibility when text changes
+                                    setState(() {});
+                                  },
+                                ),
+                                if (shouldShowPlaceholder)
+                                  IgnorePointer(
+                                    child: SizedBox.expand(
+                                      child: Center(
+                                        child: Text(
+                                          _getPlaceholderText(widget.memoryType),
+                                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    ),
+                  ),
+                  // Swipe hint - consistent positioning
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: _SwipeHint(
+                      currentMode: InputMode.type,
+                      isVisible: shouldShowTypeHint,
+                    ),
+                  ),
+                  // Spacer to match AudioControlsDecorator height
+                  const SizedBox(height: 80),
+                  // Spacer for error message area (matches dictation mode layout)
+                  if (hasError) const SizedBox(height: 60),
+                ],
+              ),
+            ],
           ),
-      ],
+        );
+      },
+    );
+  }
+}
+
+/// Subtle swipe hint widget showing direction to switch modes
+class _SwipeHint extends StatelessWidget {
+  final InputMode currentMode;
+  final bool isVisible;
+
+  const _SwipeHint({
+    required this.currentMode,
+    required this.isVisible,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDictationMode = currentMode == InputMode.dictation;
+    final hintText = isDictationMode ? 'Swipe to type' : 'Swipe to talk';
+    final arrowIcon = isDictationMode ? Icons.arrow_forward : Icons.arrow_back;
+
+    // Always render but control visibility with opacity to prevent layout shifts
+    return Opacity(
+      opacity: isVisible ? 1.0 : 0.0,
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isDictationMode) ...[
+              Icon(
+                arrowIcon,
+                size: 14,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              hintText,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+                    fontSize: 12,
+                  ),
+            ),
+            if (isDictationMode) ...[
+              const SizedBox(width: 4),
+              Icon(
+                arrowIcon,
+                size: 14,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
