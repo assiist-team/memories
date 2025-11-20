@@ -1,55 +1,56 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:memories/models/moment_detail.dart';
+import 'package:memories/models/memory_detail.dart';
 import 'package:memories/providers/capture_state_provider.dart';
-import 'package:memories/providers/moment_detail_provider.dart';
+import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/timeline_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/widgets/media_strip.dart';
 import 'package:memories/widgets/media_preview.dart';
-import 'package:memories/widgets/moment_metadata_section.dart';
+import 'package:memories/widgets/memory_metadata_section.dart';
 import 'package:memories/widgets/rich_text_content.dart';
 import 'package:memories/widgets/sticky_audio_player.dart';
 
-/// Moment detail screen showing full moment content
+/// Memory detail screen showing full memory content
 /// 
 /// Displays title, description, media strip with preview, and metadata in a scrollable
 /// layout with app bar and skeleton loaders while loading.
-class MomentDetailScreen extends ConsumerStatefulWidget {
-  final String momentId;
+class MemoryDetailScreen extends ConsumerStatefulWidget {
+  final String memoryId;
   final String? heroTag; // Optional hero tag for transition animation
 
-  const MomentDetailScreen({
+  const MemoryDetailScreen({
     super.key,
-    required this.momentId,
+    required this.memoryId,
     this.heroTag,
   });
 
   @override
-  ConsumerState<MomentDetailScreen> createState() => _MomentDetailScreenState();
+  ConsumerState<MemoryDetailScreen> createState() => _MemoryDetailScreenState();
 }
 
-class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
+class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   int? _selectedMediaIndex;
 
   @override
   Widget build(BuildContext context) {
-    final detailState = ref.watch(momentDetailNotifierProvider(widget.momentId));
+    final detailState = ref.watch(memoryDetailNotifierProvider(widget.memoryId));
     final connectivityService = ref.read(connectivityServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
         actions: [
           // Edit icon in app bar - disabled when offline
-          if (detailState.moment != null)
+          if (detailState.memory != null)
             FutureBuilder<bool>(
               future: connectivityService.isOnline(),
               builder: (context, snapshot) {
                 final isOnline = snapshot.data ?? false;
-                final memoryType = detailState.moment!.memoryType;
+                final memoryType = detailState.memory!.memoryType;
                 final editLabel = memoryType == 'story' 
                     ? 'Edit story' 
                     : memoryType == 'memento'
@@ -61,7 +62,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                   child: IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: isOnline
-                        ? () => _handleEdit(context, ref, detailState.moment!)
+                        ? () => _handleEdit(context, ref, detailState.memory!)
                         : () => _showOfflineTooltip(context, 'Edit requires internet connection'),
                     tooltip: isOnline ? 'Edit' : 'Edit unavailable offline',
                   ),
@@ -74,9 +75,9 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
             builder: (context, snapshot) {
               final isOnline = snapshot.data ?? false;
               final canShare = isOnline && 
-                  detailState.moment != null && 
+                  detailState.memory != null && 
                   !detailState.isFromCache;
-              final memoryType = detailState.moment?.memoryType ?? 'moment';
+              final memoryType = detailState.memory?.memoryType ?? 'moment';
               final shareLabel = memoryType == 'story' 
                   ? 'Share story' 
                   : memoryType == 'memento'
@@ -88,7 +89,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                 child: IconButton(
                   icon: const Icon(Icons.share),
                   onPressed: canShare
-                      ? () => _handleShare(context, ref, detailState.moment!)
+                      ? () => _handleShare(context, ref, detailState.memory!)
                       : null,
                   tooltip: canShare 
                       ? 'Share' 
@@ -105,8 +106,8 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
         children: [
           _buildBody(context, detailState, ref),
           // Floating action button for delete
-          if (detailState.moment != null)
-            _buildFloatingActions(context, ref, detailState.moment!),
+          if (detailState.memory != null)
+            _buildFloatingActions(context, ref, detailState.memory!),
         ],
       ),
     );
@@ -114,19 +115,19 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
 
   Widget _buildBody(
     BuildContext context,
-    MomentDetailViewState state,
+    MemoryDetailViewState state,
     WidgetRef ref,
   ) {
     switch (state.state) {
-      case MomentDetailState.initial:
-      case MomentDetailState.loading:
+      case MemoryDetailState.initial:
+      case MemoryDetailState.loading:
         return _buildLoadingState(context);
-      case MomentDetailState.error:
+      case MemoryDetailState.error:
         return _buildErrorState(context, state.errorMessage ?? 'Unknown error', ref);
-      case MomentDetailState.loaded:
+      case MemoryDetailState.loaded:
         return _buildLoadedState(
           context,
-          state.moment!,
+          state.memory!,
           isFromCache: state.isFromCache,
         );
     }
@@ -274,7 +275,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Failed to load moment',
+                            'Failed to load memory',
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                   color: Theme.of(context).colorScheme.onErrorContainer,
                                   fontWeight: FontWeight.w600,
@@ -295,7 +296,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          ref.read(momentDetailNotifierProvider(widget.momentId).notifier).refresh();
+                          ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier).refresh();
                         },
                         icon: const Icon(Icons.refresh),
                         label: const Text('Retry'),
@@ -317,11 +318,11 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
 
   Widget _buildLoadedState(
     BuildContext context,
-    MomentDetail moment, {
+    MemoryDetail memory, {
     bool isFromCache = false,
   }) {
-    final isStory = moment.memoryType == 'story';
-    final hasMedia = moment.photos.isNotEmpty || moment.videos.isNotEmpty;
+    final isStory = memory.memoryType == 'story';
+    final hasMedia = memory.photos.isNotEmpty || memory.videos.isNotEmpty;
     
     return CustomScrollView(
       slivers: [
@@ -336,18 +337,18 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
             delegate: SliverChildListDelegate([
               // Title section - handles empty title via displayTitle
               Text(
-                moment.displayTitle,
+                memory.displayTitle,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
               ),
               // Tags underneath title
-              if (moment.tags.isNotEmpty) ...[
+              if (memory.tags.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: moment.tags.map((tag) => Chip(
+                  children: memory.tags.map((tag) => Chip(
                     label: Text(tag),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
@@ -367,9 +368,9 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: StickyAudioPlayer(
-                  audioUrl: null, // TODO: Add audioUrl when available in moment_detail
-                  duration: null, // TODO: Add duration when available in moment_detail
-                  storyId: moment.id,
+                  audioUrl: null, // TODO: Add audioUrl when available in memory_detail
+                  duration: null, // TODO: Add duration when available in memory_detail
+                  storyId: memory.id,
                 ),
               ),
             ),
@@ -383,21 +384,21 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
               if (isStory) ...[
                 // Narrative text (uses displayText which prefers processed_text)
                 RichTextContent(
-                  text: moment.displayText,
+                  text: memory.displayText,
                 ),
               ] else ...[
-                // Moment layout: description → media strip → media preview
+                // Memory layout: description → media strip → media preview
                 // Rich text description with markdown support and "Read more" functionality
                 // Handles empty/absent description gracefully (returns SizedBox.shrink)
                 RichTextContent(
-                  text: moment.displayText,
+                  text: memory.displayText,
                 ),
                 // Media strip - horizontally scrolling thumbnails
                 if (hasMedia) ...[
                   const SizedBox(height: 24),
                   MediaStrip(
-                    photos: moment.photos,
-                    videos: moment.videos,
+                    photos: memory.photos,
+                    videos: memory.videos,
                     selectedIndex: _selectedMediaIndex,
                     onThumbnailSelected: (index) {
                       setState(() {
@@ -409,8 +410,8 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                   if (_selectedMediaIndex != null) ...[
                     const SizedBox(height: 16),
                     MediaPreview(
-                      photos: moment.photos,
-                      videos: moment.videos,
+                      photos: memory.photos,
+                      videos: memory.videos,
                       selectedIndex: _selectedMediaIndex,
                     ),
                   ],
@@ -419,7 +420,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
               
               const SizedBox(height: 24),
               // Metadata section: timestamp, location, and related memories
-              MomentMetadataSection(moment: moment),
+              MemoryMetadataSection(memory: memory),
             ]),
           ),
         ),
@@ -465,7 +466,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
   Widget _buildFloatingActions(
     BuildContext context,
     WidgetRef ref,
-    MomentDetail moment,
+    MemoryDetail memory,
   ) {
     final connectivityService = ref.read(connectivityServiceProvider);
     
@@ -473,48 +474,48 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
       future: connectivityService.isOnline(),
       builder: (context, snapshot) {
         final isOnline = snapshot.data ?? false;
+        final memoryType = memory.memoryType;
+        final deleteLabel = memoryType == 'story' 
+            ? 'Delete story' 
+            : memoryType == 'memento'
+                ? 'Delete memento'
+                : 'Delete moment';
         
         return Positioned(
           bottom: 16,
           right: 16,
-          child: // Delete button - red icon, no red background
-            Semantics(
-              label: moment.memoryType == 'story' 
-                  ? 'Delete story' 
-                  : moment.memoryType == 'memento'
-                      ? 'Delete memento'
-                      : 'Delete moment',
-              button: true,
-              child: FloatingActionButton(
-                heroTag: 'delete_${moment.memoryType}_${moment.id}',
-                mini: true,
-                onPressed: isOnline
-                    ? () => _showDeleteConfirmation(context, ref, moment)
-                    : () => _showOfflineTooltip(context, 'Delete requires internet connection'),
-                tooltip: isOnline ? 'Delete' : 'Delete unavailable offline',
-                child: Icon(
-                  Icons.delete,
-                  color: Theme.of(context).colorScheme.error,
-                ),
+          child: Semantics(
+            label: deleteLabel,
+            button: true,
+            child: IconButton(
+              icon: Icon(
+                Icons.delete,
+                color: Theme.of(context).colorScheme.error,
               ),
+              onPressed: isOnline
+                  ? () => _showDeleteConfirmation(context, ref, memory)
+                  : () => _showOfflineTooltip(context, 'Delete requires internet connection'),
+              tooltip: isOnline ? 'Delete' : 'Delete unavailable offline',
             ),
+          ),
         );
       },
     );
   }
 
+
   /// Handle share action
   Future<void> _handleShare(
     BuildContext context,
     WidgetRef ref,
-    MomentDetail moment,
+    MemoryDetail memory,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(momentDetailNotifierProvider(widget.momentId).notifier);
+    final notifier = ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
 
     try {
       // Track share attempt
-      analytics.trackMomentShare(moment.id, shareToken: moment.publicShareToken);
+      analytics.trackMemoryShare(memory.id, shareToken: memory.publicShareToken);
 
       // Get share link
       final shareLink = await notifier.getShareLink();
@@ -536,7 +537,7 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
       if (context.mounted) {
         await Share.share(
           shareLink,
-          subject: moment.displayTitle,
+          subject: memory.displayTitle,
         );
       }
     } catch (e) {
@@ -555,20 +556,28 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
   void _handleEdit(
     BuildContext context,
     WidgetRef ref,
-    MomentDetail moment,
+    MemoryDetail memory,
   ) {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    analytics.trackMomentDetailEdit(moment.id);
+    analytics.trackMemoryDetailEdit(memory.id);
 
-    // Load moment data into capture state for editing
+    // Load memory data into capture state for editing
     final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
-    captureNotifier.loadMomentForEdit(
-      captureType: moment.memoryType,
-      inputText: moment.inputText, // Use inputText for editing (raw user text)
-      tags: moment.tags,
-      latitude: moment.locationData?.latitude,
-      longitude: moment.locationData?.longitude,
-      locationStatus: moment.locationData?.status,
+    
+    // Extract existing media URLs
+    final existingPhotoUrls = memory.photos.map((p) => p.url).toList();
+    final existingVideoUrls = memory.videos.map((v) => v.url).toList();
+    
+    captureNotifier.loadMemoryForEdit(
+      memoryId: memory.id,
+      captureType: memory.memoryType,
+      inputText: memory.inputText, // Use inputText for editing (raw user text)
+      tags: memory.tags,
+      latitude: memory.locationData?.latitude,
+      longitude: memory.locationData?.longitude,
+      locationStatus: memory.locationData?.status,
+      existingPhotoUrls: existingPhotoUrls,
+      existingVideoUrls: existingVideoUrls,
     );
 
     // Pop back to main navigation shell, then switch to capture tab
@@ -578,14 +587,14 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
     // Switch to capture tab in main navigation
     ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
     // Refresh detail view after switching (in case user navigates back)
-    ref.read(momentDetailNotifierProvider(moment.id).notifier).refresh();
+    ref.read(memoryDetailNotifierProvider(memory.id).notifier).refresh();
   }
 
   /// Show delete confirmation bottom sheet
   void _showDeleteConfirmation(
     BuildContext context,
     WidgetRef ref,
-    MomentDetail moment,
+    MemoryDetail memory,
   ) {
     showModalBottomSheet(
       context: context,
@@ -600,14 +609,14 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Delete "${moment.displayTitle}"?',
+              'Delete "${memory.displayTitle}"?',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              moment.memoryType == 'story'
+              memory.memoryType == 'story'
                   ? 'This action cannot be undone. The story and all its content will be permanently deleted.'
-                  : moment.memoryType == 'memento'
+                  : memory.memoryType == 'memento'
                       ? 'This action cannot be undone. The memento and all its media will be permanently deleted.'
                       : 'This action cannot be undone. The moment and all its media will be permanently deleted.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -630,7 +639,16 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
                   ),
                   onPressed: () async {
                     Navigator.of(context).pop();
-                    await _handleDelete(context, ref, moment);
+                    // Show loading feedback immediately
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Deleting...'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                    await _handleDelete(context, ref, memory);
                   },
                   child: const Text('Delete'),
                 ),
@@ -646,11 +664,11 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
   Future<void> _handleDelete(
     BuildContext context,
     WidgetRef ref,
-    MomentDetail moment,
+    MemoryDetail memory,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(momentDetailNotifierProvider(widget.momentId).notifier);
-    final isStory = moment.memoryType == 'story';
+    final notifier = ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
+    final isStory = memory.memoryType == 'story';
     
     // Get the appropriate timeline notifier based on memory type
     final timelineNotifier = isStory
@@ -658,64 +676,68 @@ class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
         : ref.read(unifiedTimelineFeedNotifierProvider.notifier);
 
     // Track delete action
-    analytics.trackMomentDetailDelete(moment.id);
+    analytics.trackMemoryDetailDelete(memory.id);
 
     try {
       // Optimistically remove from timeline
-      timelineNotifier.removeMoment(moment.id);
+      timelineNotifier.removeMemory(memory.id);
 
       // Delete from backend
-      final success = await notifier.deleteMoment();
+      final success = await notifier.deleteMemory();
+
+      if (!context.mounted) return;
 
       if (success) {
         // Pop detail screen and show success message
-        if (context.mounted) {
-          Navigator.of(context).pop();
-          final deleteMessage = isStory 
-              ? 'Story deleted' 
-              : moment.memoryType == 'memento'
-                  ? 'Memento deleted'
-                  : 'Moment deleted';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(deleteMessage),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        Navigator.of(context).pop();
+        final deleteMessage = isStory 
+            ? 'Story deleted' 
+            : memory.memoryType == 'memento'
+                ? 'Memento deleted'
+                : 'Moment deleted';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(deleteMessage),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       } else {
-        // Refresh timeline to restore the moment if delete failed
+        // Refresh timeline to restore the memory if delete failed
         timelineNotifier.refresh();
-        if (context.mounted) {
-          final errorMessage = isStory 
-              ? 'Failed to delete story. Please try again.'
-              : moment.memoryType == 'memento'
-                  ? 'Failed to delete memento. Please try again.'
-                  : 'Failed to delete moment. Please try again.';
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Refresh timeline to restore the moment
-      timelineNotifier.refresh();
-      if (context.mounted) {
         final errorMessage = isStory 
-            ? 'Failed to delete story: $e'
-            : moment.memoryType == 'memento'
-                ? 'Failed to delete memento: $e'
-                : 'Failed to delete moment: $e';
+            ? 'Failed to delete story. Please try again.'
+            : memory.memoryType == 'memento'
+                ? 'Failed to delete memento. Please try again.'
+                : 'Failed to delete memory. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
-            duration: const Duration(seconds: 3),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
+    } catch (e, stackTrace) {
+      debugPrint('[MemoryDetailScreen] Error in _handleDelete: $e');
+      debugPrint('[MemoryDetailScreen] Stack trace: $stackTrace');
+      
+      // Refresh timeline to restore the memory
+      timelineNotifier.refresh();
+      
+      if (!context.mounted) return;
+      
+      final errorMessage = isStory 
+          ? 'Failed to delete story: ${e.toString()}'
+          : memory.memoryType == 'memento'
+              ? 'Failed to delete memento: ${e.toString()}'
+              : 'Failed to delete memory: ${e.toString()}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 

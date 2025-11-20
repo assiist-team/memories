@@ -196,7 +196,7 @@ To verify accessibility:
 
 **Example:**
 ```dart
-analytics.trackMomentDetailView('moment-uuid', source: 'timeline');
+analytics.trackMemoryDetailView('moment-uuid', source: 'timeline');
 ```
 
 ### Event: `moment_detail_share`
@@ -209,7 +209,7 @@ analytics.trackMomentDetailView('moment-uuid', source: 'timeline');
 
 **Example:**
 ```dart
-analytics.trackMomentShare('moment-uuid', shareToken: 'abc123');
+analytics.trackMemoryShare('moment-uuid', shareToken: 'abc123');
 ```
 
 ### Event: `moment_detail_edit`
@@ -221,7 +221,7 @@ analytics.trackMomentShare('moment-uuid', shareToken: 'abc123');
 
 **Example:**
 ```dart
-analytics.trackMomentDetailEdit('moment-uuid');
+analytics.trackMemoryDetailEdit('moment-uuid');
 ```
 
 ### Event: `moment_detail_delete`
@@ -233,7 +233,7 @@ analytics.trackMomentDetailEdit('moment-uuid');
 
 **Example:**
 ```dart
-analytics.trackMomentDetailDelete('moment-uuid');
+analytics.trackMemoryDetailDelete('moment-uuid');
 ```
 
 ## 5. Share Behavior Documentation

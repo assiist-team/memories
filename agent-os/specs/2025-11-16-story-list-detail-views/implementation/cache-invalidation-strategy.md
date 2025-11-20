@@ -12,11 +12,11 @@ This document defines the cache invalidation strategy to ensure Story edits and 
 
 **State Management:**
 - `TimelineFeedState` holds the current list of moments/stories
-- `removeMoment()` method provides optimistic updates for deletions
+- `removeMemory()` method provides optimistic updates for deletions
 - `refresh()` method reloads the feed from the server
 
 **Invalidation Strategy:**
-- **Story Deleted**: Call `removeMoment(storyId)` immediately after successful deletion
+- **Story Deleted**: Call `removeMemory(storyId)` immediately after successful deletion
 - **Story Edited**: Call `refresh()` after successful edit to reload affected items
 - **Story Created**: Call `refresh()` after successful creation (or use pull-to-refresh)
 
@@ -55,7 +55,7 @@ This document defines the cache invalidation strategy to ensure Story edits and 
 await momentDetailService.deleteMoment(storyId);
 
 // 2. Optimistic update to timeline provider
-ref.read(timelineFeedNotifierProvider.notifier).removeMoment(storyId);
+ref.read(timelineFeedNotifierProvider.notifier).removeMemory(storyId);
 
 // 3. Clear detail cache
 final prefs = await SharedPreferences.getInstance();
@@ -93,12 +93,12 @@ await ref.read(timelineFeedNotifierProvider.notifier).refresh();
 ### Timeline Provider Methods
 
 **Existing Methods:**
-- `removeMoment(String momentId)` - Removes item from state (optimistic update)
+- `removeMemory(String memoryId)` - Removes item from state (optimistic update)
 - `refresh({String? searchQuery})` - Reloads feed from server
 - `loadInitial({String? searchQuery})` - Loads initial feed
 
 **Usage:**
-- Use `removeMoment()` for immediate UI updates on deletion
+- Use `removeMemory()` for immediate UI updates on deletion
 - Use `refresh()` for edits/creations to ensure data consistency
 
 ### Moment Detail Provider
@@ -186,7 +186,7 @@ For bulk operations (future):
 ### Failed Deletion
 
 If deletion fails:
-- Don't call `removeMoment()` (item should remain)
+- Don't call `removeMemory()` (item should remain)
 - Don't clear cache (data is still valid)
 - Show error to user
 

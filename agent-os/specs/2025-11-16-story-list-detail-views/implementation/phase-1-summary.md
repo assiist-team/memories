@@ -69,14 +69,14 @@ Phase 1 implements the data and backend alignment for Story list and detail view
 - Defined invalidation patterns for edit/delete/create operations
 
 **Key Strategy:**
-- **Deletions**: Optimistic update via `removeMoment()` + cache clear
+- **Deletions**: Optimistic update via `removeMemory()` + cache clear
 - **Edits**: Provider refresh via `refresh()` + cache clear
 - **Creations**: Provider refresh only (no cache to clear)
 
 **Implementation Pattern:**
 ```dart
 // Delete: Optimistic update + cache clear
-removeMoment(storyId);
+removeMemory(storyId);
 clearDetailCache(storyId);
 
 // Edit: Refresh + cache clear

@@ -186,7 +186,7 @@ These relationships are many-to-many and bidirectional.
 
 When a Story is edited or deleted, the timeline provider should be notified to refresh:
 
-1. **Optimistic Updates**: The provider's `removeMoment()` method can be called immediately for deletions
+1. **Optimistic Updates**: The provider's `removeMemory()` method can be called immediately for deletions
 2. **Cache Invalidation**: SharedPreferences cache keys should be cleared for affected Stories
 3. **Provider Refresh**: Call `refresh()` on the timeline provider after successful edit/delete operations
 

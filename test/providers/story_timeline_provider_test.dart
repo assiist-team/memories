@@ -163,7 +163,7 @@ void main() {
     });
 
     group('Provider Updates', () {
-      test('removeMoment removes Story from timeline', () async {
+      test('removeMemory removes Story from timeline', () async {
         final testStory1 = TimelineMoment(
           id: 'story-1',
           userId: 'user-1',
@@ -203,14 +203,14 @@ void main() {
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
         
         // Remove story-1
-        notifier.removeMoment('story-1');
+        notifier.removeMemory('story-1');
         
         final state = container.read(storyTimelineFeedNotifierProvider);
         expect(state.moments.length, 1);
         expect(state.moments.first.id, 'story-2');
       });
 
-      test('removeMoment handles non-existent Story gracefully', () async {
+      test('removeMemory handles non-existent Story gracefully', () async {
         final testStory = TimelineMoment(
           id: 'story-1',
           userId: 'user-1',
@@ -235,7 +235,7 @@ void main() {
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
         
         // Try to remove non-existent story
-        notifier.removeMoment('non-existent');
+        notifier.removeMemory('non-existent');
         
         final state = container.read(storyTimelineFeedNotifierProvider);
         // Should still have the original story

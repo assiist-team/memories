@@ -10,12 +10,13 @@ import 'package:memories/models/queued_story.dart';
 import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/media_picker_provider.dart';
 import 'package:memories/providers/queue_status_provider.dart';
+import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/media_picker_service.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/queue_status_chips.dart';
@@ -341,49 +342,82 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         }
       }
 
-      // Step 3: Save moment with progress updates (or queue if offline)
+      // Step 3: Save or update memory with progress updates (or queue if offline)
       final saveService = ref.read(memorySaveServiceProvider);
       final queueService = ref.read(offlineQueueServiceProvider);
       MemorySaveResult? result;
+      final isEditing = finalState.isEditing;
+      final editingMemoryId = finalState.editingMemoryId;
 
       try {
-        result = await saveService.saveMoment(
-          state: finalState,
-          onProgress: ({message, progress}) {
-            if (mounted) {
-              setState(() {
-                _saveProgressMessage = message;
-                _saveProgress = progress;
-              });
-            }
-          },
-        );
-      } on OfflineException {
-        // Queue for offline sync
-        final localId = OfflineQueueService.generateLocalId();
-        final queuedMoment = QueuedMoment.fromCaptureState(
-          localId: localId,
-          state: finalState,
-          capturedAt: capturedAt,
-        );
-        await queueService.enqueue(queuedMoment);
-
-        // Invalidate queue status to refresh UI
-        ref.invalidate(queueStatusProvider);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                  'Memory queued for sync when connection is restored'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
+        if (isEditing && editingMemoryId != null) {
+          // Update existing memory
+          result = await saveService.updateMemory(
+            memoryId: editingMemoryId,
+            state: finalState,
+            onProgress: ({message, progress}) {
+              if (mounted) {
+                setState(() {
+                  _saveProgressMessage = message;
+                  _saveProgress = progress;
+                });
+              }
+            },
           );
-          await notifier.clear(keepAudioIfQueued: true);
-          // Only pop if there's a route to pop (i.e., if this screen was pushed)
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
+        } else {
+          // Create new memory
+          result = await saveService.saveMoment(
+            state: finalState,
+            onProgress: ({message, progress}) {
+              if (mounted) {
+                setState(() {
+                  _saveProgressMessage = message;
+                  _saveProgress = progress;
+                });
+              }
+            },
+          );
+        }
+      } on OfflineException {
+        // Queue for offline sync (only for new memories, not edits)
+        if (!isEditing) {
+          final localId = OfflineQueueService.generateLocalId();
+          final queuedMoment = QueuedMoment.fromCaptureState(
+            localId: localId,
+            state: finalState,
+            capturedAt: capturedAt,
+          );
+          await queueService.enqueue(queuedMoment);
+
+          // Invalidate queue status to refresh UI
+          ref.invalidate(queueStatusProvider);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                    'Memory queued for sync when connection is restored'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+            await notifier.clear(keepAudioIfQueued: true);
+            // Only pop if there's a route to pop (i.e., if this screen was pushed)
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+            return;
+          }
+        } else {
+          // Editing requires online connection
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Editing requires internet connection'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
           }
           return;
         }
@@ -391,7 +425,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
       if (result == null) return; // Should not happen, but safety check
 
-      // Step 4: Show success message and navigate to detail view
+      // Step 4: Show success message and navigate appropriately
       if (mounted) {
         final mediaCount = result.photoUrls.length + result.videoUrls.length;
         final locationText = result.hasLocation ? ' with location' : '';
@@ -401,27 +435,41 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Memory saved$locationText$mediaText'),
+            content: Text(
+              isEditing ? 'Memory updated$locationText$mediaText' : 'Memory saved$locationText$mediaText',
+            ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
         );
 
-        // Clear state and navigate to detail view
+        // Clear state completely (including editingMemoryId)
         await notifier.clear();
-        // Only pop if there's a route to pop (i.e., if this screen was pushed)
-        // If this is the root screen in navigation shell, just navigate to detail
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        // Navigate to moment detail view
-        final savedMomentId = result.momentId;
-        if (savedMomentId.isNotEmpty) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => MomentDetailScreen(momentId: savedMomentId),
-            ),
-          );
+
+        if (isEditing) {
+          // When editing, navigate back to detail screen
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          // Refresh detail screen to show updated content
+          if (editingMemoryId != null) {
+            ref.read(memoryDetailNotifierProvider(editingMemoryId).notifier).refresh();
+          }
+        } else {
+          // When creating, navigate to detail view
+          // Only pop if there's a route to pop (i.e., if this screen was pushed)
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          // Navigate to memory detail view
+          final savedMemoryId = result.memoryId;
+          if (savedMemoryId.isNotEmpty) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => MemoryDetailScreen(memoryId: savedMemoryId),
+              ),
+            );
+          }
         }
       }
     } on OfflineException {
@@ -510,14 +558,27 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       _syncInputTextController(state.inputText);
     });
 
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: _MemoryTypeToggle(
-          selectedType: state.memoryType,
-          onTypeChanged: (type) => notifier.setMemoryType(type),
+    return PopScope(
+      canPop: !state.hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (!didPop && state.hasUnsavedChanges) {
+          final shouldCancel = await _showCancelConfirmation(context);
+          if (shouldCancel == true && mounted) {
+            await _handleCancel(context, ref, notifier);
+            if (mounted && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: _MemoryTypeToggle(
+            selectedType: state.memoryType,
+            onTypeChanged: (type) => notifier.setMemoryType(type),
+          ),
         ),
-      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -690,6 +751,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                           // Combined container for tags and media
                           if (state.photoPaths.isNotEmpty ||
                               state.videoPaths.isNotEmpty ||
+                              state.existingPhotoUrls.isNotEmpty ||
+                              state.existingVideoUrls.isNotEmpty ||
                               state.tags.isNotEmpty)
                             Container(
                               margin: const EdgeInsets.symmetric(horizontal: 5),
@@ -716,16 +779,26 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                 children: [
                                   // Media strip - horizontally scrolling
                                   if (state.photoPaths.isNotEmpty ||
-                                      state.videoPaths.isNotEmpty)
+                                      state.videoPaths.isNotEmpty ||
+                                      state.existingPhotoUrls.isNotEmpty ||
+                                      state.existingVideoUrls.isNotEmpty)
                                     SizedBox(
                                       height: 100,
                                       child: MediaTray(
                                         photoPaths: state.photoPaths,
                                         videoPaths: state.videoPaths,
+                                        existingPhotoUrls: state.existingPhotoUrls,
+                                        existingVideoUrls: state.existingVideoUrls,
                                         onPhotoRemoved: (index) =>
                                             notifier.removePhoto(index),
                                         onVideoRemoved: (index) =>
                                             notifier.removeVideo(index),
+                                        onExistingPhotoRemoved: state.isEditing
+                                            ? (index) => notifier.removeExistingPhoto(index)
+                                            : null,
+                                        onExistingVideoRemoved: state.isEditing
+                                            ? (index) => notifier.removeExistingVideo(index)
+                                            : null,
                                         canAddPhoto: state.canAddPhoto,
                                         canAddVideo: state.canAddVideo,
                                       ),
@@ -827,7 +900,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.05),
@@ -840,65 +912,98 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Save button with progress indicator
-                  Semantics(
-                    label: 'Save memory',
-                    button: true,
-                    child: ElevatedButton(
-                      onPressed:
-                          (state.canSave && !_isSaving) ? _handleSave : null,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        minimumSize: const Size(0, 48),
+                  // Cancel and Save buttons side by side
+                  Row(
+                    children: [
+                      // Cancel button
+                      Expanded(
+                        child: Semantics(
+                          label: 'Cancel',
+                          button: true,
+                          enabled: state.hasUnsavedChanges || state.isEditing,
+                          child: ElevatedButton(
+                            onPressed: (state.hasUnsavedChanges || state.isEditing)
+                                ? () => _handleCancelWithConfirmation(context, ref, notifier)
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              minimumSize: const Size(0, 48),
+                              backgroundColor: (state.hasUnsavedChanges || state.isEditing)
+                                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                                  : null,
+                              foregroundColor: (state.hasUnsavedChanges || state.isEditing)
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : null,
+                              elevation: (state.hasUnsavedChanges || state.isEditing) ? 1 : 0,
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
                       ),
-                      child: _isSaving
-                          ? Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Semantics(
-                                  label:
-                                      _saveProgressMessage ?? 'Saving memory',
-                                  value: _saveProgress != null
-                                      ? '${(_saveProgress! * 100).toInt()}% complete'
-                                      : null,
-                                  child: Column(
+                      const SizedBox(width: 12),
+                      // Save button with progress indicator
+                      Expanded(
+                        child: Semantics(
+                          label: 'Save memory',
+                          button: true,
+                          child: ElevatedButton(
+                            onPressed:
+                                (state.canSave && !_isSaving) ? _handleSave : null,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              minimumSize: const Size(0, 48),
+                            ),
+                            child: _isSaving
+                                ? Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                  Colors.white),
+                                      Semantics(
+                                        label:
+                                            _saveProgressMessage ?? 'Saving memory',
+                                        value: _saveProgress != null
+                                            ? '${(_saveProgress! * 100).toInt()}% complete'
+                                            : null,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                    AlwaysStoppedAnimation<Color>(
+                                                        Colors.white),
+                                              ),
+                                            ),
+                                            if (_saveProgressMessage != null) ...[
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                _saveProgressMessage!,
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ],
+                                            if (_saveProgress != null) ...[
+                                              const SizedBox(height: 4),
+                                              LinearProgressIndicator(
+                                                value: _saveProgress,
+                                                backgroundColor:
+                                                    Colors.white.withOpacity(0.3),
+                                                valueColor:
+                                                    const AlwaysStoppedAnimation<
+                                                        Color>(Colors.white),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
-                                      if (_saveProgressMessage != null) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          _saveProgressMessage!,
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                      ],
-                                      if (_saveProgress != null) ...[
-                                        const SizedBox(height: 4),
-                                        LinearProgressIndicator(
-                                          value: _saveProgress,
-                                          backgroundColor:
-                                              Colors.white.withOpacity(0.3),
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<
-                                                  Color>(Colors.white),
-                                        ),
-                                      ],
                                     ],
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const Text('Save'),
-                    ),
+                                  )
+                                : const Text('Save'),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -906,7 +1011,61 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           ],
         ),
       ),
+      ),
     );
+  }
+
+  /// Show cancel confirmation dialog
+  Future<bool?> _showCancelConfirmation(BuildContext context) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text(
+          'You have unsaved changes. Are you sure you want to discard them?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Handle cancel with confirmation dialog
+  Future<void> _handleCancelWithConfirmation(
+    BuildContext context,
+    WidgetRef ref,
+    CaptureStateNotifier notifier,
+  ) async {
+    final shouldCancel = await _showCancelConfirmation(context);
+    if (shouldCancel == true && mounted) {
+      await _handleCancel(context, ref, notifier);
+    }
+  }
+
+  /// Handle cancel action - clears state and navigates appropriately
+  Future<void> _handleCancel(
+    BuildContext context,
+    WidgetRef ref,
+    CaptureStateNotifier notifier,
+  ) async {
+    final state = ref.read(captureStateNotifierProvider);
+    
+    // Clear state completely
+    await notifier.clear();
+    
+    // Navigate back if editing (to detail screen)
+    // If creating, stay on capture screen (or pop if screen was pushed)
+    if (state.isEditing && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 }
 

@@ -121,7 +121,7 @@ class MemorySyncService {
         await _queueService.update(
           queuedMemory.copyWith(
             status: 'completed',
-            serverMomentId: result.momentId,
+            serverMomentId: result.memoryId,
           ),
         );
 
@@ -183,7 +183,7 @@ class MemorySyncService {
         await _storyQueueService.update(
           queuedStory.copyWith(
             status: 'completed',
-            serverStoryId: result.momentId,
+            serverStoryId: result.memoryId,
           ),
         );
 
@@ -244,7 +244,7 @@ class MemorySyncService {
         await _queueService.update(
           queuedMemory.copyWith(
             status: 'completed',
-            serverMomentId: result.momentId,
+            serverMomentId: result.memoryId,
           ),
         );
 
@@ -281,7 +281,7 @@ class MemorySyncService {
         await _storyQueueService.update(
           queuedStory.copyWith(
             status: 'completed',
-            serverStoryId: result.momentId,
+            serverStoryId: result.memoryId,
           ),
         );
 

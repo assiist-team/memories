@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
-import 'package:memories/providers/moment_detail_provider.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
+import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/timeline_analytics_service.dart';
-import 'package:memories/models/moment_detail.dart';
+import 'package:memories/models/memory_detail.dart';
 
 // Mock classes
 class MockSupabaseClient extends Mock implements SupabaseClient {}
@@ -19,13 +19,13 @@ class MockTimelineAnalyticsService extends Mock implements TimelineAnalyticsServ
 class MockConnectivityService extends Mock implements ConnectivityService {}
 
 // Mock notifier that returns a fixed state
-class MockMomentDetailNotifier extends MomentDetailNotifier {
-  final MomentDetailViewState _state;
+class MockMemoryDetailNotifier extends MemoryDetailNotifier {
+  final MemoryDetailViewState _state;
 
-  MockMomentDetailNotifier(this._state);
+  MockMemoryDetailNotifier(this._state);
 
   @override
-  MomentDetailViewState build(String momentId) {
+  MemoryDetailViewState build(String memoryId) {
     return _state;
   }
 
@@ -33,14 +33,14 @@ class MockMomentDetailNotifier extends MomentDetailNotifier {
   Future<String?> getShareLink() async => null;
 
   @override
-  Future<bool> deleteMoment() async => true;
+  Future<bool> deleteMemory() async => true;
 
   @override
   Future<void> refresh() async {}
 }
 
 void main() {
-  group('MomentDetailScreen', () {
+  group('MemoryDetailScreen', () {
     late MockSupabaseClient mockSupabase;
     late MockTimelineAnalyticsService mockAnalytics;
     late MockConnectivityService mockConnectivity;
@@ -54,7 +54,7 @@ void main() {
       when(() => mockConnectivity.isOnline()).thenAnswer((_) async => true);
     });
 
-    Widget createWidget(String momentId) {
+    Widget createWidget(String memoryId) {
       return ProviderScope(
         overrides: [
           supabaseClientProvider.overrideWithValue(mockSupabase),
@@ -62,7 +62,7 @@ void main() {
           connectivityServiceProvider.overrideWithValue(mockConnectivity),
         ],
         child: MaterialApp(
-          home: MomentDetailScreen(momentId: momentId),
+          home: MemoryDetailScreen(memoryId: memoryId),
         ),
       );
     }
@@ -80,10 +80,10 @@ void main() {
       testWidgets('displays error state with retry button',
           (WidgetTester tester) async {
         // Create a provider override that returns error state
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.error,
-            errorMessage: 'Failed to load moment',
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.error,
+            errorMessage: 'Failed to load memory',
           ),
         );
 
@@ -93,11 +93,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -105,19 +105,19 @@ void main() {
         await tester.pump();
 
         // Error message appears in both title and body
-        expect(find.text('Failed to load moment'), findsWidgets);
+        expect(find.text('Failed to load memory'), findsWidgets);
         expect(find.text('Retry'), findsOneWidget);
       });
 
-      testWidgets('displays loaded state with moment content',
+      testWidgets('displays loaded state with memory content',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
-          title: 'Test Moment',
-          textDescription: 'Test description',
+          title: 'Test Memory',
+          inputText: 'Test description',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -127,10 +127,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -140,11 +140,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -152,18 +152,18 @@ void main() {
         await tester.pump();
 
         // Title appears in both app bar and content
-        expect(find.text('Test Moment'), findsWidgets);
+        expect(find.text('Test Memory'), findsWidgets);
         expect(find.text('Test description'), findsOneWidget);
       });
 
       testWidgets('displays "Untitled Moment" when title is empty',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: '',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -173,10 +173,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -186,11 +186,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -205,12 +205,12 @@ void main() {
     group('Carousel Interactions', () {
       testWidgets('displays media carousel when photos are present',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -229,16 +229,16 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
-                  .overrideWith(() => MockMomentDetailNotifier(
-                        MomentDetailViewState(
-                          state: MomentDetailState.loaded,
-                          moment: moment,
+              memoryDetailNotifierProvider('test-id')
+                  .overrideWith(() => MockMemoryDetailNotifier(
+                        MemoryDetailViewState(
+                          state: MemoryDetailState.loaded,
+                          memory: memory,
                         ),
                       )),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -251,12 +251,12 @@ void main() {
 
       testWidgets('displays page indicators for multiple media items',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -270,10 +270,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -283,11 +283,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -302,12 +302,12 @@ void main() {
     group('Destructive Actions', () {
       testWidgets('shows delete confirmation bottom sheet when delete is tapped',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -317,10 +317,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -330,11 +330,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -357,12 +357,12 @@ void main() {
 
       testWidgets('tracks delete analytics event when delete is confirmed',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -372,10 +372,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -385,11 +385,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -405,17 +405,17 @@ void main() {
         await tester.pump();
 
         // Verify analytics was called
-        verify(() => mockAnalytics.trackMomentDetailDelete('test-id')).called(1);
+        verify(() => mockAnalytics.trackMemoryDetailDelete('test-id')).called(1);
       });
 
       testWidgets('shows edit button and tracks edit analytics',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -425,10 +425,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -438,11 +438,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -458,19 +458,19 @@ void main() {
         await tester.pump();
 
         // Verify analytics was called
-        verify(() => mockAnalytics.trackMomentDetailEdit('test-id')).called(1);
+        verify(() => mockAnalytics.trackMemoryDetailEdit('test-id')).called(1);
       });
     });
 
     group('Share Functionality', () {
       testWidgets('shows share button in app bar when online',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -480,10 +480,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -493,11 +493,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -510,12 +510,12 @@ void main() {
 
       testWidgets('tracks share analytics when share is tapped',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -525,10 +525,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -538,11 +538,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -554,7 +554,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify analytics was called
-        verify(() => mockAnalytics.trackMomentShare('test-id', shareToken: null))
+        verify(() => mockAnalytics.trackMemoryShare('test-id', shareToken: null))
             .called(1);
       });
     });
@@ -563,12 +563,12 @@ void main() {
       testWidgets('disables share when offline', (WidgetTester tester) async {
         when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
 
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -578,10 +578,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
           ),
         );
 
@@ -591,11 +591,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );
@@ -614,12 +614,12 @@ void main() {
 
       testWidgets('shows offline banner when viewing cached data',
           (WidgetTester tester) async {
-        final moment = MomentDetail(
+        final memory = MemoryDetail(
           id: 'test-id',
           userId: 'user-id',
           title: 'Test Moment',
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
           capturedAt: DateTime(2025, 1, 17),
           createdAt: DateTime(2025, 1, 17),
           updatedAt: DateTime(2025, 1, 17),
@@ -629,10 +629,10 @@ void main() {
           relatedMementos: [],
         );
 
-        final mockNotifier = MockMomentDetailNotifier(
-          MomentDetailViewState(
-            state: MomentDetailState.loaded,
-            moment: moment,
+        final mockNotifier = MockMemoryDetailNotifier(
+          MemoryDetailViewState(
+            state: MemoryDetailState.loaded,
+            memory: memory,
             isFromCache: true,
           ),
         );
@@ -643,11 +643,11 @@ void main() {
               supabaseClientProvider.overrideWithValue(mockSupabase),
               timelineAnalyticsServiceProvider.overrideWithValue(mockAnalytics),
               connectivityServiceProvider.overrideWithValue(mockConnectivity),
-              momentDetailNotifierProvider('test-id')
+              memoryDetailNotifierProvider('test-id')
                   .overrideWith(() => mockNotifier),
             ],
             child: MaterialApp(
-              home: MomentDetailScreen(momentId: 'test-id'),
+              home: MemoryDetailScreen(memoryId: 'test-id'),
             ),
           ),
         );

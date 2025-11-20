@@ -451,7 +451,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       );
     }
 
-    state = const CaptureState().copyWith(clearAudio: true);
+    state = const CaptureState().copyWith(clearAudio: true, clearEditingMemoryId: true);
   }
 
   /// Set error message
@@ -504,29 +504,70 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     state = state.copyWith(inputMode: mode);
   }
 
-  /// Load existing moment data into capture state for editing
+  /// Load existing memory data into capture state for editing
   ///
-  /// Preloads inputText, tags, location, and memory type from a MomentDetail
-  /// Note: Media files (photos/videos) are not loaded as they're already uploaded
-  /// and cannot be edited. Users can add new media during edit.
-  void loadMomentForEdit({
+  /// Preloads inputText, tags, location, memory type, and existing media URLs
+  /// from a MemoryDetail. Sets editingMemoryId to track edit mode.
+  void loadMemoryForEdit({
+    required String memoryId,
     required String captureType,
     String? inputText,
     List<String>? tags,
     double? latitude,
     double? longitude,
     String? locationStatus,
+    List<String>? existingPhotoUrls,
+    List<String>? existingVideoUrls,
   }) {
     final memoryType = MemoryTypeExtension.fromApiValue(captureType);
 
     state = state.copyWith(
+      editingMemoryId: memoryId,
       memoryType: memoryType,
       inputText: inputText,
       tags: tags ?? [],
       latitude: latitude,
       longitude: longitude,
       locationStatus: locationStatus,
+      existingPhotoUrls: existingPhotoUrls ?? [],
+      existingVideoUrls: existingVideoUrls ?? [],
+      deletedPhotoUrls: const [],
+      deletedVideoUrls: const [],
       hasUnsavedChanges: false, // Reset since we're loading existing data
+    );
+  }
+
+  /// Remove an existing photo URL (mark for deletion on save)
+  void removeExistingPhoto(int index) {
+    if (index < 0 || index >= state.existingPhotoUrls.length) {
+      return;
+    }
+
+    final updatedExisting = List<String>.from(state.existingPhotoUrls);
+    final removedUrl = updatedExisting.removeAt(index);
+    final updatedDeleted = [...state.deletedPhotoUrls, removedUrl];
+
+    state = state.copyWith(
+      existingPhotoUrls: updatedExisting,
+      deletedPhotoUrls: updatedDeleted,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Remove an existing video URL (mark for deletion on save)
+  void removeExistingVideo(int index) {
+    if (index < 0 || index >= state.existingVideoUrls.length) {
+      return;
+    }
+
+    final updatedExisting = List<String>.from(state.existingVideoUrls);
+    final removedUrl = updatedExisting.removeAt(index);
+    final updatedDeleted = [...state.deletedVideoUrls, removedUrl];
+
+    state = state.copyWith(
+      existingVideoUrls: updatedExisting,
+      deletedVideoUrls: updatedDeleted,
+      hasUnsavedChanges: true,
     );
   }
 }

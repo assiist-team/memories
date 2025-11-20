@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:memories/models/moment_detail.dart';
+import 'package:memories/models/memory_detail.dart';
 
-/// Widget displaying moment metadata: timestamp, location, and related memories
+/// Widget displaying memory metadata: timestamp, location, and related memories
 /// 
 /// Renders only rows that have data, ensuring seamless layout collapse when
 /// metadata is missing.
-class MomentMetadataSection extends StatelessWidget {
-  final MomentDetail moment;
+class MemoryMetadataSection extends StatelessWidget {
+  final MemoryDetail memory;
 
-  const MomentMetadataSection({
+  const MemoryMetadataSection({
     super.key,
-    required this.moment,
+    required this.memory,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasLocation = moment.locationData?.formattedLocation != null;
-    final hasRelatedStories = moment.relatedStories.isNotEmpty;
-    final hasRelatedMementos = moment.relatedMementos.isNotEmpty;
+    final hasLocation = memory.locationData?.formattedLocation != null;
+    final hasRelatedStories = memory.relatedStories.isNotEmpty;
+    final hasRelatedMementos = memory.relatedMementos.isNotEmpty;
     final hasRelatedMemories = hasRelatedStories || hasRelatedMementos;
 
     // If no metadata to show, return empty widget
@@ -47,8 +47,8 @@ class MomentMetadataSection extends StatelessWidget {
   }
 
   Widget _buildTimestampRow(BuildContext context, ThemeData theme) {
-    final absoluteTime = _formatAbsoluteTimestamp(moment.capturedAt);
-    final relativeTime = _formatRelativeTimestamp(moment.capturedAt);
+    final absoluteTime = _formatAbsoluteTimestamp(memory.capturedAt);
+    final relativeTime = _formatRelativeTimestamp(memory.capturedAt);
 
     return Semantics(
       label: 'Captured $absoluteTime, $relativeTime',
@@ -91,7 +91,7 @@ class MomentMetadataSection extends StatelessWidget {
   }
 
   Widget _buildLocationRow(BuildContext context, ThemeData theme) {
-    final locationText = moment.locationData!.formattedLocation!;
+    final locationText = memory.locationData!.formattedLocation!;
 
     return Semantics(
       label: 'Location: $locationText',
@@ -133,7 +133,7 @@ class MomentMetadataSection extends StatelessWidget {
           runSpacing: 8,
           children: [
             // Story chips
-            ...moment.relatedStories.map((storyId) => _buildMemoryChip(
+            ...memory.relatedStories.map((storyId) => _buildMemoryChip(
                   context,
                   theme,
                   label: 'Story',
@@ -141,7 +141,7 @@ class MomentMetadataSection extends StatelessWidget {
                   memoryType: 'story',
                 )),
             // Memento chips
-            ...moment.relatedMementos.map((mementoId) => _buildMemoryChip(
+            ...memory.relatedMementos.map((mementoId) => _buildMemoryChip(
                   context,
                   theme,
                   label: 'Memento',

@@ -157,11 +157,11 @@ class TimelineFeedNotifier extends _$TimelineFeedNotifier {
     await loadInitial(searchQuery: searchQuery);
   }
 
-  /// Remove a moment from the timeline (optimistic update)
+  /// Remove a memory from the timeline (optimistic update)
   /// 
-  /// [momentId] is the ID of the moment to remove
-  void removeMoment(String momentId) {
-    final updatedMoments = state.moments.where((m) => m.id != momentId).toList();
+  /// [memoryId] is the ID of the memory to remove
+  void removeMemory(String memoryId) {
+    final updatedMoments = state.moments.where((m) => m.id != memoryId).toList();
     state = state.copyWith(moments: updatedMoments);
   }
 

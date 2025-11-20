@@ -73,6 +73,21 @@ class CaptureState {
   /// Current input mode (dictation or type)
   final InputMode inputMode;
 
+  /// ID of memory being edited (null when creating new)
+  final String? editingMemoryId;
+
+  /// List of existing photo URLs from the memory being edited
+  final List<String> existingPhotoUrls;
+
+  /// List of existing video URLs from the memory being edited
+  final List<String> existingVideoUrls;
+
+  /// List of existing photo URLs that should be deleted on save
+  final List<String> deletedPhotoUrls;
+
+  /// List of existing video URLs that should be deleted on save
+  final List<String> deletedVideoUrls;
+
   const CaptureState({
     this.memoryType = MemoryType.moment,
     this.inputText,
@@ -94,6 +109,11 @@ class CaptureState {
     this.hasUnsavedChanges = false,
     this.errorMessage,
     this.inputMode = InputMode.dictation,
+    this.editingMemoryId,
+    this.existingPhotoUrls = const [],
+    this.existingVideoUrls = const [],
+    this.deletedPhotoUrls = const [],
+    this.deletedVideoUrls = const [],
   });
 
   /// Create a copy with updated fields
@@ -118,10 +138,16 @@ class CaptureState {
     bool? hasUnsavedChanges,
     String? errorMessage,
     InputMode? inputMode,
+    String? editingMemoryId,
+    List<String>? existingPhotoUrls,
+    List<String>? existingVideoUrls,
+    List<String>? deletedPhotoUrls,
+    List<String>? deletedVideoUrls,
     bool clearInputText = false,
     bool clearError = false,
     bool clearLocation = false,
     bool clearAudio = false,
+    bool clearEditingMemoryId = false,
   }) {
     return CaptureState(
       memoryType: memoryType ?? this.memoryType,
@@ -146,6 +172,11 @@ class CaptureState {
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       inputMode: inputMode ?? this.inputMode,
+      editingMemoryId: clearEditingMemoryId ? null : (editingMemoryId ?? this.editingMemoryId),
+      existingPhotoUrls: existingPhotoUrls ?? this.existingPhotoUrls,
+      existingVideoUrls: existingVideoUrls ?? this.existingVideoUrls,
+      deletedPhotoUrls: deletedPhotoUrls ?? this.deletedPhotoUrls,
+      deletedVideoUrls: deletedVideoUrls ?? this.deletedVideoUrls,
     );
   }
 
@@ -156,6 +187,7 @@ class CaptureState {
   /// - Moments: require at least one of {inputText, photo, video}
   /// - Mementos: require at least one of {inputText, photo, video}
   /// 
+  /// When editing, existing media counts toward the requirement.
   /// Tags alone are never sufficient to unlock save.
   bool get canSave {
     // Stories: audio is the only required input
@@ -163,24 +195,33 @@ class CaptureState {
       return audioPath != null && audioPath!.isNotEmpty;
     }
     
+    // Calculate total media count (existing + new - deleted)
+    final totalPhotos = existingPhotoUrls.length + photoPaths.length - deletedPhotoUrls.length;
+    final totalVideos = existingVideoUrls.length + videoPaths.length - deletedVideoUrls.length;
+    
     // Mementos: require at least one of inputText, photo, or video
     if (memoryType == MemoryType.memento) {
       return (inputText?.trim().isNotEmpty ?? false) ||
-          photoPaths.isNotEmpty ||
-          videoPaths.isNotEmpty;
+          totalPhotos > 0 ||
+          totalVideos > 0;
     }
     
     // Moments: require at least one of inputText, photo, or video
     // Tags alone are NOT sufficient
     return (inputText?.trim().isNotEmpty ?? false) ||
-        photoPaths.isNotEmpty ||
-        videoPaths.isNotEmpty;
+        totalPhotos > 0 ||
+        totalVideos > 0;
   }
 
   /// Check if photo limit has been reached (10 photos max)
-  bool get canAddPhoto => photoPaths.length < 10;
+  /// Includes both new photos and existing photos
+  bool get canAddPhoto => (photoPaths.length + existingPhotoUrls.length - deletedPhotoUrls.length) < 10;
 
   /// Check if video limit has been reached (3 videos max)
-  bool get canAddVideo => videoPaths.length < 3;
+  /// Includes both new videos and existing videos
+  bool get canAddVideo => (videoPaths.length + existingVideoUrls.length - deletedVideoUrls.length) < 3;
+
+  /// Whether we're currently editing an existing memory
+  bool get isEditing => editingMemoryId != null;
 }
 

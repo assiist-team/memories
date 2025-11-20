@@ -108,43 +108,43 @@ class TimelineAnalyticsService {
     _logEvent('timeline_search_clear', {});
   }
 
-  /// Track moment detail view
+  /// Track memory detail view
   /// 
-  /// [momentId] is the ID of the moment being viewed
+  /// [memoryId] is the ID of the memory being viewed
   /// [source] is where the view originated from (e.g., 'timeline', 'search', 'share_link')
-  void trackMomentDetailView(String momentId, {String? source}) {
-    _logEvent('moment_detail_view', {
-      'moment_id': momentId,
+  void trackMemoryDetailView(String memoryId, {String? source}) {
+    _logEvent('memory_detail_view', {
+      'memory_id': memoryId,
       if (source != null) 'source': source,
     });
   }
 
-  /// Track moment share action
+  /// Track memory share action
   /// 
-  /// [momentId] is the ID of the moment being shared
+  /// [memoryId] is the ID of the memory being shared
   /// [shareToken] is the public share token (if available)
-  void trackMomentShare(String momentId, {String? shareToken}) {
-    _logEvent('moment_detail_share', {
-      'moment_id': momentId,
+  void trackMemoryShare(String memoryId, {String? shareToken}) {
+    _logEvent('memory_detail_share', {
+      'memory_id': memoryId,
       if (shareToken != null) 'share_token': shareToken,
     });
   }
 
-  /// Track moment edit action from detail view
+  /// Track memory edit action from detail view
   /// 
-  /// [momentId] is the ID of the moment being edited
-  void trackMomentDetailEdit(String momentId) {
-    _logEvent('moment_detail_edit', {
-      'moment_id': momentId,
+  /// [memoryId] is the ID of the memory being edited
+  void trackMemoryDetailEdit(String memoryId) {
+    _logEvent('memory_detail_edit', {
+      'memory_id': memoryId,
     });
   }
 
-  /// Track moment delete action from detail view
+  /// Track memory delete action from detail view
   /// 
-  /// [momentId] is the ID of the moment being deleted
-  void trackMomentDetailDelete(String momentId) {
-    _logEvent('moment_detail_delete', {
-      'moment_id': momentId,
+  /// [memoryId] is the ID of the memory being deleted
+  void trackMemoryDetailDelete(String memoryId) {
+    _logEvent('memory_detail_delete', {
+      'memory_id': memoryId,
     });
   }
 

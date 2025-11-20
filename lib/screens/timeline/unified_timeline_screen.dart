@@ -14,7 +14,7 @@ import 'package:memories/widgets/unified_feed_skeleton.dart';
 import 'package:memories/widgets/global_search_bar.dart';
 import 'package:memories/widgets/search_results_list.dart';
 import 'package:memories/providers/search_provider.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 
 /// Unified Timeline screen displaying Stories, Moments, and Mementos
 /// in a single reverse-chronological feed with filtering and grouping.
@@ -99,8 +99,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MomentDetailScreen(
-          momentId: memory.id,
+        builder: (context) => MemoryDetailScreen(
+          memoryId: memory.id,
           heroTag: memory.primaryMedia != null
               ? 'memory_thumbnail_${memory.id}'
               : null,

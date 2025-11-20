@@ -59,33 +59,43 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
         index: currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Stack(
-        children: [
-          NavigationBar(
-            backgroundColor: const Color(0xFFF5F5F5), // Match scaffold background
-            selectedIndex: currentIndex,
-            onDestinationSelected: (index) {
-              final tab = _getTabFromIndex(index);
-              ref.read(mainNavigationTabNotifierProvider.notifier).setTab(tab);
-            },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.camera_alt_outlined),
-                selectedIcon: Icon(Icons.camera_alt),
-                label: 'Capture',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.timeline_outlined),
-                selectedIcon: Icon(Icons.timeline),
-                label: 'Timeline',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: 'Settings',
-              ),
-            ],
-          ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            NavigationBar(
+              backgroundColor: const Color(0xFFF5F5F5), // Match scaffold background
+              selectedIndex: currentIndex,
+              onDestinationSelected: (index) {
+                final tab = _getTabFromIndex(index);
+                ref.read(mainNavigationTabNotifierProvider.notifier).setTab(tab);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.camera_alt_outlined),
+                  selectedIcon: Icon(Icons.camera_alt),
+                  label: 'Capture',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.timeline_outlined),
+                  selectedIcon: Icon(Icons.timeline),
+                  label: 'Timeline',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: 'Settings',
+                ),
+              ],
+            ),
           // Custom top border indicator for selected item
           Positioned(
             top: 0,
@@ -122,6 +132,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

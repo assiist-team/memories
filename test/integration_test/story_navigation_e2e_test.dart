@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/screens/timeline/story_timeline_screen.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/providers/timeline_provider.dart';
 import 'package:memories/providers/supabase_provider.dart';
@@ -87,7 +87,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
-            home: MomentDetailScreen(momentId: 'story-1'),
+            home: MemoryDetailScreen(memoryId: 'story-1'),
           ),
         ),
       );

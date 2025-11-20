@@ -1,8 +1,8 @@
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
-/// Model representing detailed Moment data for the detail view
-class MomentDetail {
+/// Model representing detailed Memory data for the detail view
+class MemoryDetail {
   final String id;
   final String userId;
   final String title;
@@ -21,7 +21,7 @@ class MomentDetail {
   final List<String> relatedStories;
   final List<String> relatedMementos;
 
-  MomentDetail({
+  MemoryDetail({
     required this.id,
     required this.userId,
     required this.title,
@@ -71,7 +71,7 @@ class MomentDetail {
   }
 
   /// Create from Supabase RPC response
-  factory MomentDetail.fromJson(Map<String, dynamic> json) {
+  factory MemoryDetail.fromJson(Map<String, dynamic> json) {
     final photosJson = json['photos'] as List<dynamic>?;
     final photos = photosJson
             ?.map((e) => PhotoMedia.fromJson(e as Map<String, dynamic>))
@@ -80,23 +80,23 @@ class MomentDetail {
     
     // Log photo URLs for debugging
     if (photos.isNotEmpty) {
-      debugPrint('[MomentDetail] Parsed ${photos.length} photos for moment ${json['id']}');
+      debugPrint('[MemoryDetail] Parsed ${photos.length} photos for memory ${json['id']}');
       for (final photo in photos) {
-        debugPrint('[MomentDetail]   Photo index ${photo.index}: url="${photo.url}"');
+        debugPrint('[MemoryDetail]   Photo index ${photo.index}: url="${photo.url}"');
       }
       developer.log(
-        'MomentDetail.fromJson: Parsed ${photos.length} photos for moment ${json['id']}',
-        name: 'MomentDetail',
+        'MemoryDetail.fromJson: Parsed ${photos.length} photos for memory ${json['id']}',
+        name: 'MemoryDetail',
       );
       for (final photo in photos) {
         developer.log(
           '  Photo index ${photo.index}: url="${photo.url}"',
-          name: 'MomentDetail',
+          name: 'MemoryDetail',
         );
       }
     }
     
-    return MomentDetail(
+    return MemoryDetail(
       id: json['id'] as String,
       userId: json['user_id'] as String,
       title: json['title'] as String? ?? '',
@@ -132,7 +132,7 @@ class MomentDetail {
   }
 }
 
-/// Location data for a Moment
+/// Location data for a Memory
 class LocationData {
   final String? city;
   final String? state;

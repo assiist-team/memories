@@ -20,7 +20,7 @@ void main() {
         container.dispose();
       });
 
-      test('removeMoment removes Story from timeline', () {
+      test('removeMemory removes Story from timeline', () {
         final container = ProviderContainer();
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
 
@@ -60,7 +60,7 @@ void main() {
         );
 
         // Remove story-1
-        notifier.removeMoment('story-1');
+        notifier.removeMemory('story-1');
 
         final state = container.read(storyTimelineFeedNotifierProvider);
         expect(state.moments.length, 1);
@@ -69,7 +69,7 @@ void main() {
         container.dispose();
       });
 
-      test('removeMoment handles non-existent Story gracefully', () {
+      test('removeMemory handles non-existent Story gracefully', () {
         final container = ProviderContainer();
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
 
@@ -94,7 +94,7 @@ void main() {
         );
 
         // Try to remove non-existent story
-        notifier.removeMoment('non-existent');
+        notifier.removeMemory('non-existent');
 
         final state = container.read(storyTimelineFeedNotifierProvider);
         // Should still have the original story
@@ -103,7 +103,7 @@ void main() {
         container.dispose();
       });
 
-      test('removeMoment handles empty list', () {
+      test('removeMemory handles empty list', () {
         final container = ProviderContainer();
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
 
@@ -114,14 +114,14 @@ void main() {
         );
 
         // Try to remove from empty list
-        notifier.removeMoment('any-id');
+        notifier.removeMemory('any-id');
 
         final state = container.read(storyTimelineFeedNotifierProvider);
         expect(state.moments, isEmpty);
         container.dispose();
       });
 
-      test('removeMoment preserves other Stories', () {
+      test('removeMemory preserves other Stories', () {
         final container = ProviderContainer();
         final notifier = container.read(storyTimelineFeedNotifierProvider.notifier);
 
@@ -146,7 +146,7 @@ void main() {
         );
 
         // Remove middle story
-        notifier.removeMoment('story-2');
+        notifier.removeMemory('story-2');
 
         final state = container.read(storyTimelineFeedNotifierProvider);
         expect(state.moments.length, 4);

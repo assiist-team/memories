@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/screens/timeline/story_timeline_screen.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 import '../helpers/test_supabase_setup.dart';
 
 /// Integration tests for Story timeline using real Supabase instance
@@ -148,7 +148,7 @@ void main() {
         ProviderScope(
           parent: container,
           child: MaterialApp(
-            home: MomentDetailScreen(momentId: testStoryId),
+            home: MemoryDetailScreen(memoryId: testStoryId),
           ),
         ),
       );
@@ -156,7 +156,7 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
       // Verify detail screen loads (may show loading, error, or content)
-      expect(find.byType(MomentDetailScreen), findsOneWidget);
+      expect(find.byType(MemoryDetailScreen), findsOneWidget);
     });
   });
 }

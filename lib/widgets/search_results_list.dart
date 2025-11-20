@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/search_result.dart';
 import 'package:memories/providers/search_provider.dart';
 import 'package:memories/widgets/search_result_card.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 
 /// List widget for displaying search results with pagination
 /// 
@@ -83,8 +83,8 @@ class SearchResultsList extends ConsumerWidget {
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MomentDetailScreen(
-          momentId: result.id,
+        builder: (context) => MemoryDetailScreen(
+          memoryId: result.id,
         ),
       ),
     );

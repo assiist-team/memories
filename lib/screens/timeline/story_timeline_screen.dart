@@ -9,7 +9,7 @@ import 'package:memories/widgets/global_search_bar.dart';
 import 'package:memories/widgets/search_results_list.dart';
 import 'package:memories/providers/search_provider.dart';
 import 'package:memories/widgets/skeleton_loader.dart';
-import 'package:memories/screens/moment/moment_detail_screen.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 
@@ -84,8 +84,8 @@ class _StoryTimelineScreenState extends ConsumerState<StoryTimelineScreen> {
     );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MomentDetailScreen(
-          momentId: storyId,
+        builder: (context) => MemoryDetailScreen(
+          memoryId: storyId,
         ),
       ),
     );

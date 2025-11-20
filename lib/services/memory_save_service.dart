@@ -12,7 +12,7 @@ part 'memory_save_service.g.dart';
 
 /// Result of saving a memory
 class MemorySaveResult {
-  final String momentId;
+  final String memoryId;
   final String? generatedTitle;
   final DateTime? titleGeneratedAt;
   final List<String> photoUrls;
@@ -20,7 +20,7 @@ class MemorySaveResult {
   final bool hasLocation;
 
   MemorySaveResult({
-    required this.momentId,
+    required this.memoryId,
     this.generatedTitle,
     this.titleGeneratedAt,
     required this.photoUrls,
@@ -239,7 +239,7 @@ class MemorySaveService {
           .select('id')
           .single();
 
-      final momentId = response['id'] as String;
+      final memoryId = response['id'] as String;
 
       // Step 3.5: Create story_fields row if this is a story
       if (state.memoryType == MemoryType.story) {
@@ -250,7 +250,7 @@ class MemorySaveService {
             final audioFile = File(state.audioPath!);
             if (await audioFile.exists()) {
               final audioFileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
-              final audioStoragePath = 'stories/audio/${_supabase.auth.currentUser?.id}/$momentId/$audioFileName';
+              final audioStoragePath = 'stories/audio/${_supabase.auth.currentUser?.id}/$memoryId/$audioFileName';
               
               await _supabase.storage.from('stories-audio').upload(
                 audioStoragePath,
@@ -271,7 +271,7 @@ class MemorySaveService {
 
         // Create story_fields row with initial processing status
         await _supabase.from('story_fields').insert({
-          'memory_id': momentId,
+          'memory_id': memoryId,
           'story_status': 'processing',
           'audio_path': audioPath,
           'retry_count': 0,
@@ -311,7 +311,7 @@ class MemorySaveService {
                 'generated_title': generatedTitle,
                 'title_generated_at': titleGeneratedAt.toIso8601String(),
               })
-              .eq('id', momentId);
+              .eq('id', memoryId);
         } catch (e) {
           // Title generation failed, use fallback
           final fallbackTitle = _getFallbackTitle(state.memoryType);
@@ -322,7 +322,7 @@ class MemorySaveService {
               .update({
                 'title': fallbackTitle,
               })
-              .eq('id', momentId);
+              .eq('id', memoryId);
         }
       } else {
         // No text available for title generation, use fallback title
@@ -334,13 +334,13 @@ class MemorySaveService {
             .update({
               'title': fallbackTitle,
             })
-            .eq('id', momentId);
+            .eq('id', memoryId);
       }
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
 
       return MemorySaveResult(
-        momentId: momentId,
+        memoryId: memoryId,
         generatedTitle: generatedTitle,
         titleGeneratedAt: titleGeneratedAt,
         photoUrls: photoUrls,
@@ -374,6 +374,308 @@ class MemorySaveService {
       
       // Generic error
       throw SaveException('Failed to save moment: ${e.toString()}');
+    }
+  }
+
+  /// Update an existing memory with new data
+  ///
+  /// This method:
+  /// 1. Checks connectivity - throws OfflineException if offline
+  /// 2. Uploads new photos and videos to Supabase Storage
+  /// 3. Deletes removed media from Supabase Storage
+  /// 4. Updates the memory record in the database
+  /// 5. Optionally generates a new title if text changed
+  ///
+  /// Returns the updated memory ID
+  /// Throws OfflineException if offline
+  Future<MemorySaveResult> updateMemory({
+    required String memoryId,
+    required CaptureState state,
+    SaveProgressCallback? onProgress,
+  }) async {
+    // Check connectivity first
+    final isOnline = await _connectivityService.isOnline();
+    if (!isOnline) {
+      throw OfflineException('Device is offline. Please try again when connected.');
+    }
+
+    try {
+      // Step 1: Upload new media files
+      onProgress?.call(message: 'Uploading new media...', progress: 0.1);
+      final newPhotoUrls = <String>[];
+      final newVideoUrls = <String>[];
+
+      // Upload new photos with retry logic
+      for (int i = 0; i < state.photoPaths.length; i++) {
+        final photoPath = state.photoPaths[i];
+        final file = File(photoPath);
+        if (!await file.exists()) {
+          continue;
+        }
+
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final storagePath = '${_supabase.auth.currentUser?.id}/$fileName';
+
+        // Retry upload with exponential backoff
+        String? publicUrl;
+        Exception? lastError;
+        
+        for (int attempt = 0; attempt < _maxRetries; attempt++) {
+          try {
+            await _supabase.storage.from(_photosBucket).upload(
+              storagePath,
+              file,
+              fileOptions: const FileOptions(
+                upsert: false,
+                contentType: 'image/jpeg',
+              ),
+            ).timeout(_uploadTimeout);
+
+            publicUrl = _supabase.storage.from(_photosBucket).getPublicUrl(storagePath);
+            break; // Success, exit retry loop
+          } catch (e) {
+            lastError = e is Exception ? e : Exception(e.toString());
+            if (attempt < _maxRetries - 1) {
+              final delay = Duration(seconds: 1 << attempt);
+              await Future.delayed(delay);
+              onProgress?.call(
+                message: 'Retrying photo upload... (${i + 1}/${state.photoPaths.length})',
+                progress: 0.1 + (0.3 * (i + 1) / state.photoPaths.length),
+              );
+            }
+          }
+        }
+
+        if (publicUrl == null) {
+          throw Exception('Failed to upload photo after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+        }
+
+        newPhotoUrls.add(publicUrl);
+        onProgress?.call(
+          message: 'Uploading photos... (${i + 1}/${state.photoPaths.length})',
+          progress: 0.1 + (0.3 * (i + 1) / state.photoPaths.length),
+        );
+      }
+
+      // Upload new videos with retry logic
+      for (int i = 0; i < state.videoPaths.length; i++) {
+        final videoPath = state.videoPaths[i];
+        final file = File(videoPath);
+        if (!await file.exists()) {
+          continue;
+        }
+
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
+        final storagePath = '${_supabase.auth.currentUser?.id}/$fileName';
+
+        // Retry upload with exponential backoff
+        String? publicUrl;
+        Exception? lastError;
+        
+        for (int attempt = 0; attempt < _maxRetries; attempt++) {
+          try {
+            await _supabase.storage.from(_videosBucket).upload(
+              storagePath,
+              file,
+              fileOptions: const FileOptions(
+                upsert: false,
+                contentType: 'video/mp4',
+              ),
+            ).timeout(_uploadTimeout);
+
+            publicUrl = _supabase.storage.from(_videosBucket).getPublicUrl(storagePath);
+            break; // Success, exit retry loop
+          } catch (e) {
+            lastError = e is Exception ? e : Exception(e.toString());
+            if (attempt < _maxRetries - 1) {
+              final delay = Duration(seconds: 1 << attempt);
+              await Future.delayed(delay);
+              onProgress?.call(
+                message: 'Retrying video upload... (${i + 1}/${state.videoPaths.length})',
+                progress: 0.4 + (0.2 * (i + 1) / state.videoPaths.length),
+              );
+            }
+          }
+        }
+
+        if (publicUrl == null) {
+          throw Exception('Failed to upload video after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+        }
+
+        newVideoUrls.add(publicUrl);
+        onProgress?.call(
+          message: 'Uploading videos... (${i + 1}/${state.videoPaths.length})',
+          progress: 0.4 + (0.2 * (i + 1) / state.videoPaths.length),
+        );
+      }
+
+      // Step 2: Delete removed media files
+      onProgress?.call(message: 'Removing deleted media...', progress: 0.6);
+      
+      // Delete removed photos
+      for (final photoUrl in state.deletedPhotoUrls) {
+        try {
+          // Extract storage path from public URL
+          final uri = Uri.parse(photoUrl);
+          final pathSegments = uri.pathSegments;
+          // Find the bucket name and path
+          final bucketIndex = pathSegments.indexOf(_photosBucket);
+          if (bucketIndex != -1 && bucketIndex < pathSegments.length - 1) {
+            final storagePath = pathSegments.sublist(bucketIndex + 1).join('/');
+            await _supabase.storage.from(_photosBucket).remove([storagePath]);
+          }
+        } catch (e) {
+          // Log error but continue - deletion failure shouldn't block update
+          print('Failed to delete photo: $photoUrl - $e');
+        }
+      }
+
+      // Delete removed videos
+      for (final videoUrl in state.deletedVideoUrls) {
+        try {
+          // Extract storage path from public URL
+          final uri = Uri.parse(videoUrl);
+          final pathSegments = uri.pathSegments;
+          final bucketIndex = pathSegments.indexOf(_videosBucket);
+          if (bucketIndex != -1 && bucketIndex < pathSegments.length - 1) {
+            final storagePath = pathSegments.sublist(bucketIndex + 1).join('/');
+            await _supabase.storage.from(_videosBucket).remove([storagePath]);
+          }
+        } catch (e) {
+          // Log error but continue - deletion failure shouldn't block update
+          print('Failed to delete video: $videoUrl - $e');
+        }
+      }
+
+      // Step 3: Combine existing and new media URLs
+      final allPhotoUrls = [...state.existingPhotoUrls, ...newPhotoUrls];
+      final allVideoUrls = [...state.existingVideoUrls, ...newVideoUrls];
+
+      // Step 4: Prepare location data
+      String? locationWkt;
+      if (state.latitude != null && state.longitude != null) {
+        locationWkt = 'POINT(${state.longitude} ${state.latitude})';
+      }
+
+      // Step 5: Update memory record
+      onProgress?.call(message: 'Updating memory...', progress: 0.7);
+      final now = DateTime.now().toUtc();
+      
+      final updateData = <String, dynamic>{
+        'input_text': state.inputText,
+        'processed_text': null, // Clear processed text - will be regenerated
+        'photo_urls': allPhotoUrls,
+        'video_urls': allVideoUrls,
+        'tags': state.tags,
+        'location_status': state.locationStatus,
+        'updated_at': now.toIso8601String(),
+      };
+
+      // Add location if available
+      if (locationWkt != null) {
+        updateData['captured_location'] = locationWkt;
+      } else {
+        // Clear location if not provided
+        updateData['captured_location'] = null;
+      }
+
+      await _supabase
+          .from('memories')
+          .update(updateData)
+          .eq('id', memoryId);
+
+      // Step 6: Generate title if text changed
+      String? generatedTitle;
+      DateTime? titleGeneratedAt;
+      
+      String? textForTitleGeneration;
+      textForTitleGeneration = state.inputText?.trim().isNotEmpty == true
+          ? state.inputText!.trim()
+          : null;
+      
+      if (textForTitleGeneration != null && textForTitleGeneration.isNotEmpty) {
+        onProgress?.call(message: 'Generating title...', progress: 0.85);
+        
+        try {
+          final titleResponse = await _titleService.generateTitle(
+            transcript: textForTitleGeneration,
+            memoryType: state.memoryType,
+          );
+          
+          generatedTitle = titleResponse.title;
+          titleGeneratedAt = titleResponse.generatedAt;
+
+          // Update memory with generated title
+          await _supabase
+              .from('memories')
+              .update({
+                'title': generatedTitle,
+                'generated_title': generatedTitle,
+                'title_generated_at': titleGeneratedAt.toIso8601String(),
+              })
+              .eq('id', memoryId);
+        } catch (e) {
+          // Title generation failed, use fallback
+          final fallbackTitle = _getFallbackTitle(state.memoryType);
+          generatedTitle = fallbackTitle;
+          
+          await _supabase
+              .from('memories')
+              .update({
+                'title': fallbackTitle,
+              })
+              .eq('id', memoryId);
+        }
+      } else {
+        // No text available for title generation, use fallback title
+        final fallbackTitle = _getFallbackTitle(state.memoryType);
+        generatedTitle = fallbackTitle;
+        
+        await _supabase
+            .from('memories')
+            .update({
+              'title': fallbackTitle,
+            })
+            .eq('id', memoryId);
+      }
+
+      onProgress?.call(message: 'Complete!', progress: 1.0);
+
+      return MemorySaveResult(
+        memoryId: memoryId,
+        generatedTitle: generatedTitle,
+        titleGeneratedAt: titleGeneratedAt,
+        photoUrls: allPhotoUrls,
+        videoUrls: allVideoUrls,
+        hasLocation: locationWkt != null,
+      );
+    } on OfflineException {
+      rethrow;
+    } catch (e) {
+      final errorString = e.toString();
+      
+      // Handle storage quota errors
+      if (errorString.contains('413') || 
+          errorString.contains('quota') || 
+          errorString.contains('limit')) {
+        throw StorageQuotaException('Storage limit reached. Please delete some memories.');
+      }
+      
+      // Handle permission errors
+      if (errorString.contains('403') || 
+          errorString.contains('permission')) {
+        throw PermissionException('Permission denied. Please check app settings.');
+      }
+      
+      // Handle network errors
+      if (errorString.contains('SocketException') || 
+          errorString.contains('TimeoutException') ||
+          errorString.contains('network')) {
+        throw NetworkException('Network error. Check your connection and try again.');
+      }
+      
+      // Generic error
+      throw SaveException('Failed to update memory: ${e.toString()}');
     }
   }
 

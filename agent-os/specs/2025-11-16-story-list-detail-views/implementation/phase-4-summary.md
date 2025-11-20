@@ -68,8 +68,8 @@ Created comprehensive test suite for Story timeline provider covering:
    - Verify pagination appends Stories correctly
 
 3. **Provider Updates Tests:**
-   - Verify removeMoment removes Story from timeline (for edit/delete scenarios)
-   - Verify removeMoment handles non-existent Story gracefully
+   - Verify removeMemory removes Story from timeline (for edit/delete scenarios)
+   - Verify removeMemory handles non-existent Story gracefully
    - Tests support optimistic updates when Stories are edited/deleted
 
 4. **Offline Behavior Tests:**
@@ -90,7 +90,7 @@ Created comprehensive test suite for Story timeline provider covering:
 **Test Coverage:**
 - ✅ Pull-to-refresh functionality
 - ✅ Pagination logic
-- ✅ Provider state updates (removeMoment)
+- ✅ Provider state updates (removeMemory)
 - ✅ Offline state handling
 - ✅ Story filter application
 
@@ -162,10 +162,10 @@ Created comprehensive test suite for Story timeline provider covering:
      - `trackError()` - tracks errors with Story context
      - `trackPagination()` - tracks pagination with Story filter context
    - Story detail screen uses existing analytics for:
-     - `trackMomentDetailView()` - tracks Story detail views
-     - `trackMomentShare()` - tracks Story sharing (when online)
-     - `trackMomentDetailEdit()` - tracks Story editing
-     - `trackMomentDetailDelete()` - tracks Story deletion
+     - `trackMemoryDetailView()` - tracks Story detail views
+     - `trackMemoryShare()` - tracks Story sharing (when online)
+     - `trackMemoryDetailEdit()` - tracks Story editing
+     - `trackMemoryDetailDelete()` - tracks Story deletion
 
 2. **Performance Considerations:**
    - Story timeline reuses unified timeline infrastructure (same batching, pagination)
@@ -201,7 +201,7 @@ Created comprehensive test suite for Story timeline provider covering:
 
 ### Unit Tests
 - ✅ Story timeline provider logic tests created (no mocking - pure logic)
-- ✅ State management tests (removeMoment, state transitions)
+- ✅ State management tests (removeMemory, state transitions)
 - ✅ Cursor logic tests
 - ✅ Search query logic tests
 - ⚠️ Provider tests with RPC mocking (structure in place, requires RPC setup)

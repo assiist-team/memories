@@ -43,7 +43,7 @@ void main() {
     group('MemorySaveResult', () {
       test('creates result with all fields', () {
         final result = MemorySaveResult(
-          momentId: 'test-id',
+          memoryId: 'test-id',
           generatedTitle: 'Test Title',
           titleGeneratedAt: DateTime.now(),
           photoUrls: ['photo1.jpg', 'photo2.jpg'],
@@ -51,7 +51,7 @@ void main() {
           hasLocation: true,
         );
 
-        expect(result.momentId, equals('test-id'));
+        expect(result.memoryId, equals('test-id'));
         expect(result.generatedTitle, equals('Test Title'));
         expect(result.photoUrls.length, equals(2));
         expect(result.videoUrls.length, equals(1));
@@ -60,13 +60,13 @@ void main() {
 
       test('creates result without optional fields', () {
         final result = MemorySaveResult(
-          momentId: 'test-id',
+          memoryId: 'test-id',
           photoUrls: [],
           videoUrls: [],
           hasLocation: false,
         );
 
-        expect(result.momentId, equals('test-id'));
+        expect(result.memoryId, equals('test-id'));
         expect(result.generatedTitle, isNull);
         expect(result.titleGeneratedAt, isNull);
         expect(result.hasLocation, isFalse);
