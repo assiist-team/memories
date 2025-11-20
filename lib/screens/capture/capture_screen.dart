@@ -530,16 +530,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Inspirational quote - show when there's space
-                    // Optionally hide when media/tags are present (user can adjust this)
-                    // TEMPORARILY: Always show for debugging
+                    // Inspirational quote - hide when media/tags are present to make room
                     InspirationalQuote(
-                      showQuote: true, // TEMP: Always show for debugging
-                      // showQuote: state.photoPaths.isEmpty &&
-                      //     state.videoPaths.isEmpty &&
-                      //     state.tags.isEmpty &&
-                      //     (state.inputText == null ||
-                      //         state.inputText!.isEmpty),
+                      showQuote: state.photoPaths.isEmpty &&
+                          state.videoPaths.isEmpty &&
+                          state.tags.isEmpty &&
+                          (state.inputText == null || state.inputText!.isEmpty),
                     ),
                     // Centered capture controls section
                     Expanded(
@@ -580,7 +576,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                         height: 48,
                                         alignment: Alignment.center,
                                         child: Icon(
-                                          Icons.tag,
+                                          Icons.local_offer,
                                           size: 18,
                                           color: Theme.of(context)
                                               .colorScheme
@@ -781,8 +777,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                                   ),
                                                   visualDensity:
                                                       VisualDensity.compact,
-                                                  backgroundColor:
-                                                      Colors.transparent,
+                                                  backgroundColor: Theme.of(
+                                                          context)
+                                                      .scaffoldBackgroundColor,
                                                   side: BorderSide.none,
                                                   padding: const EdgeInsets
                                                       .symmetric(

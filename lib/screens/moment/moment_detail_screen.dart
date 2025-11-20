@@ -8,16 +8,17 @@ import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/timeline_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
-import 'package:memories/widgets/media_carousel.dart';
+import 'package:memories/widgets/media_strip.dart';
+import 'package:memories/widgets/media_preview.dart';
 import 'package:memories/widgets/moment_metadata_section.dart';
 import 'package:memories/widgets/rich_text_content.dart';
 import 'package:memories/widgets/sticky_audio_player.dart';
 
 /// Moment detail screen showing full moment content
 /// 
-/// Displays title, description, media carousel, and metadata in a scrollable
+/// Displays title, description, media strip with preview, and metadata in a scrollable
 /// layout with app bar and skeleton loaders while loading.
-class MomentDetailScreen extends ConsumerWidget {
+class MomentDetailScreen extends ConsumerStatefulWidget {
   final String momentId;
   final String? heroTag; // Optional hero tag for transition animation
 
@@ -28,18 +29,45 @@ class MomentDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailState = ref.watch(momentDetailNotifierProvider(momentId));
+  ConsumerState<MomentDetailScreen> createState() => _MomentDetailScreenState();
+}
+
+class _MomentDetailScreenState extends ConsumerState<MomentDetailScreen> {
+  int? _selectedMediaIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final detailState = ref.watch(momentDetailNotifierProvider(widget.momentId));
     final connectivityService = ref.read(connectivityServiceProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          detailState.moment?.displayTitle ?? 'Memory',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
         actions: [
+          // Edit icon in app bar - disabled when offline
+          if (detailState.moment != null)
+            FutureBuilder<bool>(
+              future: connectivityService.isOnline(),
+              builder: (context, snapshot) {
+                final isOnline = snapshot.data ?? false;
+                final memoryType = detailState.moment!.memoryType;
+                final editLabel = memoryType == 'story' 
+                    ? 'Edit story' 
+                    : memoryType == 'memento'
+                        ? 'Edit memento'
+                        : 'Edit moment';
+                return Semantics(
+                  label: editLabel,
+                  button: true,
+                  child: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: isOnline
+                        ? () => _handleEdit(context, ref, detailState.moment!)
+                        : () => _showOfflineTooltip(context, 'Edit requires internet connection'),
+                    tooltip: isOnline ? 'Edit' : 'Edit unavailable offline',
+                  ),
+                );
+              },
+            ),
           // Share icon in app bar - disabled when offline or viewing cached data
           FutureBuilder<bool>(
             future: connectivityService.isOnline(),
@@ -75,8 +103,8 @@ class MomentDetailScreen extends ConsumerWidget {
       ),
       body: Stack(
         children: [
-          _buildBody(context, detailState, ref, heroTag),
-          // Floating action buttons for edit/delete
+          _buildBody(context, detailState, ref),
+          // Floating action button for delete
           if (detailState.moment != null)
             _buildFloatingActions(context, ref, detailState.moment!),
         ],
@@ -88,7 +116,6 @@ class MomentDetailScreen extends ConsumerWidget {
     BuildContext context,
     MomentDetailViewState state,
     WidgetRef ref,
-    String? heroTag,
   ) {
     switch (state.state) {
       case MomentDetailState.initial:
@@ -100,7 +127,6 @@ class MomentDetailScreen extends ConsumerWidget {
         return _buildLoadedState(
           context,
           state.moment!,
-          heroTag,
           isFromCache: state.isFromCache,
         );
     }
@@ -269,7 +295,7 @@ class MomentDetailScreen extends ConsumerWidget {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          ref.read(momentDetailNotifierProvider(momentId).notifier).refresh();
+                          ref.read(momentDetailNotifierProvider(widget.momentId).notifier).refresh();
                         },
                         icon: const Icon(Icons.refresh),
                         label: const Text('Retry'),
@@ -291,11 +317,11 @@ class MomentDetailScreen extends ConsumerWidget {
 
   Widget _buildLoadedState(
     BuildContext context,
-    MomentDetail moment,
-    String? heroTag, {
+    MomentDetail moment, {
     bool isFromCache = false,
   }) {
     final isStory = moment.memoryType == 'story';
+    final hasMedia = moment.photos.isNotEmpty || moment.videos.isNotEmpty;
     
     return CustomScrollView(
       slivers: [
@@ -315,6 +341,19 @@ class MomentDetailScreen extends ConsumerWidget {
                       fontWeight: FontWeight.w600,
                     ),
               ),
+              // Tags underneath title
+              if (moment.tags.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: moment.tags.map((tag) => Chip(
+                    label: Text(tag),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  )).toList(),
+                ),
+              ],
               const SizedBox(height: 16),
             ]),
           ),
@@ -347,20 +386,35 @@ class MomentDetailScreen extends ConsumerWidget {
                   text: moment.displayText,
                 ),
               ] else ...[
-                // Moment layout: description → media carousel
+                // Moment layout: description → media strip → media preview
                 // Rich text description with markdown support and "Read more" functionality
                 // Handles empty/absent description gracefully (returns SizedBox.shrink)
                 RichTextContent(
                   text: moment.displayText,
                 ),
-                const SizedBox(height: 24),
-                // Media carousel with swipeable PageView, zoom, and lightbox
-                if (moment.photos.isNotEmpty || moment.videos.isNotEmpty)
-                  MediaCarousel(
+                // Media strip - horizontally scrolling thumbnails
+                if (hasMedia) ...[
+                  const SizedBox(height: 24),
+                  MediaStrip(
                     photos: moment.photos,
                     videos: moment.videos,
-                    heroTag: heroTag,
+                    selectedIndex: _selectedMediaIndex,
+                    onThumbnailSelected: (index) {
+                      setState(() {
+                        _selectedMediaIndex = index;
+                      });
+                    },
                   ),
+                  // Media preview - larger preview of selected thumbnail
+                  if (_selectedMediaIndex != null) ...[
+                    const SizedBox(height: 16),
+                    MediaPreview(
+                      photos: moment.photos,
+                      videos: moment.videos,
+                      selectedIndex: _selectedMediaIndex,
+                    ),
+                  ],
+                ],
               ],
               
               const SizedBox(height: 24),
@@ -407,7 +461,7 @@ class MomentDetailScreen extends ConsumerWidget {
     );
   }
 
-  /// Build floating action buttons for edit and delete
+  /// Build floating action button for delete
   Widget _buildFloatingActions(
     BuildContext context,
     WidgetRef ref,
@@ -423,49 +477,27 @@ class MomentDetailScreen extends ConsumerWidget {
         return Positioned(
           bottom: 16,
           right: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Edit button
-              Semantics(
-                label: moment.memoryType == 'story' 
-                    ? 'Edit story' 
-                    : moment.memoryType == 'memento'
-                        ? 'Edit memento'
-                        : 'Edit moment',
-                button: true,
-                child: FloatingActionButton(
-                  heroTag: 'edit_${moment.memoryType}_${moment.id}',
-                  mini: true,
-                  onPressed: isOnline
-                      ? () => _handleEdit(context, ref, moment)
-                      : () => _showOfflineTooltip(context, 'Edit requires internet connection'),
-                  tooltip: isOnline ? 'Edit' : 'Edit unavailable offline',
-                  child: const Icon(Icons.edit),
+          child: // Delete button - red icon, no red background
+            Semantics(
+              label: moment.memoryType == 'story' 
+                  ? 'Delete story' 
+                  : moment.memoryType == 'memento'
+                      ? 'Delete memento'
+                      : 'Delete moment',
+              button: true,
+              child: FloatingActionButton(
+                heroTag: 'delete_${moment.memoryType}_${moment.id}',
+                mini: true,
+                onPressed: isOnline
+                    ? () => _showDeleteConfirmation(context, ref, moment)
+                    : () => _showOfflineTooltip(context, 'Delete requires internet connection'),
+                tooltip: isOnline ? 'Delete' : 'Delete unavailable offline',
+                child: Icon(
+                  Icons.delete,
+                  color: Theme.of(context).colorScheme.error,
                 ),
               ),
-              const SizedBox(height: 8),
-              // Delete button
-              Semantics(
-                label: moment.memoryType == 'story' 
-                    ? 'Delete story' 
-                    : moment.memoryType == 'memento'
-                        ? 'Delete memento'
-                        : 'Delete moment',
-                button: true,
-                child: FloatingActionButton(
-                  heroTag: 'delete_${moment.memoryType}_${moment.id}',
-                  mini: true,
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  onPressed: isOnline
-                      ? () => _showDeleteConfirmation(context, ref, moment)
-                      : () => _showOfflineTooltip(context, 'Delete requires internet connection'),
-                  tooltip: isOnline ? 'Delete' : 'Delete unavailable offline',
-                  child: const Icon(Icons.delete),
-                ),
-              ),
-            ],
-          ),
+            ),
         );
       },
     );
@@ -478,7 +510,7 @@ class MomentDetailScreen extends ConsumerWidget {
     MomentDetail moment,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(momentDetailNotifierProvider(momentId).notifier);
+    final notifier = ref.read(momentDetailNotifierProvider(widget.momentId).notifier);
 
     try {
       // Track share attempt
@@ -617,7 +649,7 @@ class MomentDetailScreen extends ConsumerWidget {
     MomentDetail moment,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(momentDetailNotifierProvider(momentId).notifier);
+    final notifier = ref.read(momentDetailNotifierProvider(widget.momentId).notifier);
     final isStory = moment.memoryType == 'story';
     
     // Get the appropriate timeline notifier based on memory type
