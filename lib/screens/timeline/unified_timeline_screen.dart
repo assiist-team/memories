@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/models/memory_type.dart';
@@ -8,7 +9,7 @@ import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/widgets/unified_feed_segmented_control.dart';
 import 'package:memories/widgets/memory_card.dart';
-import 'package:memories/widgets/memory_header.dart';
+import 'package:memories/widgets/year_sidebar.dart';
 import 'package:memories/widgets/unified_feed_empty_state.dart';
 import 'package:memories/widgets/unified_feed_skeleton.dart';
 import 'package:memories/widgets/global_search_bar.dart';
@@ -31,6 +32,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
   final PageStorageKey _pageStorageKey =
       const PageStorageKey('unified_timeline');
   Set<MemoryType>? _previousSelectedTypes;
+  int? _activeYear;
+  final Map<int, GlobalKey> _yearKeys = {};
 
   @override
   void initState() {
@@ -62,6 +65,9 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
       });
     }
 
+    // Update active year based on scroll position
+    _updateActiveYear(position.pixels);
+
     // Load more when 80% scrolled
     if (position.pixels >= maxScroll * 0.8) {
       final tabState = ref.read(unifiedFeedTabNotifierProvider);
@@ -75,6 +81,73 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
           ref.read(controller.notifier).loadMore();
         }
       });
+    }
+  }
+
+  void _updateActiveYear(double scrollOffset) {
+    if (_yearKeys.isEmpty || !_scrollController.hasClients) return;
+
+    const revealThreshold = 120.0;
+    int? newActiveYear;
+
+    // Iterate from oldest to newest so the first match represents
+    // the deepest year currently revealed in the viewport.
+    for (final entry in _yearKeys.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key))) {
+      final year = entry.key;
+      final context = entry.value.currentContext;
+      if (context == null) continue;
+
+      final renderObject = context.findRenderObject();
+      if (renderObject == null || !renderObject.attached) continue;
+
+      try {
+        final viewport = RenderAbstractViewport.of(renderObject);
+        final targetOffset =
+            viewport.getOffsetToReveal(renderObject, 0).offset;
+        if (targetOffset <= scrollOffset + revealThreshold) {
+          newActiveYear = year;
+          break;
+        }
+      } catch (_) {
+        // Ignore measurement errors triggered during layout changes.
+      }
+    }
+
+    // Fallback: use first memory's year if at top
+    if (newActiveYear == null) {
+      final tabState = ref.read(unifiedFeedTabNotifierProvider);
+      tabState.whenData((selectedTypes) {
+        final controller = unifiedFeedControllerProvider(selectedTypes);
+        final feedState = ref.read(controller);
+        if (feedState.memories.isNotEmpty && scrollOffset < revealThreshold) {
+          newActiveYear = feedState.memories.first.year;
+        }
+      });
+    }
+
+    if (newActiveYear != null && newActiveYear != _activeYear) {
+      setState(() {
+        _activeYear = newActiveYear;
+      });
+    }
+  }
+
+  void _scrollToYear(int year) {
+    if (_activeYear != year) {
+      setState(() {
+        _activeYear = year;
+      });
+    }
+
+    final key = _yearKeys[year];
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+      );
     }
   }
 
@@ -126,6 +199,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         title: Consumer(
           builder: (context, ref, child) {
             final searchQuery = ref.watch(searchQueryProvider);
@@ -136,69 +210,85 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
           },
         ),
         centerTitle: true,
-        elevation: 0,
       ),
-      body: Column(
-        children: [
-          // Global search bar
-          const GlobalSearchBar(),
-          // Timeline content or search results
-          Expanded(
-            child: Consumer(
-              builder: (context, ref, child) {
-                final searchQuery = ref.watch(searchQueryProvider);
-                final searchResultsState = ref.watch(searchResultsProvider);
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Timeline content or search results
+              Column(
+                children: [
+                  // Spacer for search bar - will be measured dynamically
+                  const SizedBox(height: 64), // Approximate, will be adjusted
+                  // Timeline content or search results
+                  Expanded(
+                    child: Consumer(
+                      builder: (context, ref, child) {
+                        final searchQuery = ref.watch(searchQueryProvider);
+                        final searchResultsState = ref.watch(searchResultsProvider);
 
-                // Show search results if there's an active search query
-                if (searchQuery.isNotEmpty) {
-                  // Show search results list if we have results or are loading
-                  if (searchResultsState.items.isNotEmpty ||
-                      searchResultsState.isLoading) {
-                    return SearchResultsList(
-                      results: searchResultsState.items,
-                      query: searchQuery,
-                      hasMore: searchResultsState.hasMore,
-                      isLoadingMore: searchResultsState.isLoadingMore,
-                    );
-                  }
-                  // Empty/error states are handled by GlobalSearchBar
-                  return const SizedBox.shrink();
-                }
+                        // Show search results if there's an active search query
+                        if (searchQuery.isNotEmpty) {
+                          // Show search results list if we have results or are loading
+                          if (searchResultsState.items.isNotEmpty ||
+                              searchResultsState.isLoading) {
+                            return SearchResultsList(
+                              results: searchResultsState.items,
+                              query: searchQuery,
+                              hasMore: searchResultsState.hasMore,
+                              isLoadingMore: searchResultsState.isLoadingMore,
+                            );
+                          }
+                          // Empty/error states are handled by GlobalSearchBar
+                          return const SizedBox.shrink();
+                        }
 
-                // Otherwise show timeline content
-                // Watch selected types changes
-                final tabState = ref.watch(unifiedFeedTabNotifierProvider);
+                        // Otherwise show timeline content
+                        // Watch selected types changes
+                        final tabState = ref.watch(unifiedFeedTabNotifierProvider);
 
-                return tabState.when(
-                  data: (selectedTypes) {
-                    // Get the controller for the selected types
-                    final controller = unifiedFeedControllerProvider(selectedTypes);
-                    final feedState = ref.watch(controller);
+                        return tabState.when(
+                          data: (selectedTypes) {
+                            // Get the controller for the selected types
+                            final controller = unifiedFeedControllerProvider(selectedTypes);
+                            final feedState = ref.watch(controller);
 
-                    // Handle selection change - update filter which will reload
-                    if (_previousSelectedTypes != selectedTypes) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        ref.read(controller.notifier).setFilter(selectedTypes);
-                      });
-                      _previousSelectedTypes = selectedTypes;
-                    } else if (feedState.state == UnifiedFeedState.initial) {
-                      // Initial load for the current selection
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        ref.read(controller.notifier).loadInitial();
-                      });
-                    }
+                            // Handle selection change - update filter which will reload
+                            if (_previousSelectedTypes != selectedTypes) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                ref.read(controller.notifier).setFilter(selectedTypes);
+                              });
+                              _previousSelectedTypes = selectedTypes;
+                            } else if (feedState.state == UnifiedFeedState.initial) {
+                              // Initial load for the current selection
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                ref.read(controller.notifier).loadInitial();
+                              });
+                            }
 
-                    return _buildTimelineContent(feedState, selectedTypes);
-                  },
-                  loading: () => const UnifiedFeedSkeletonList(),
-                  error: (error, stack) => _buildErrorState(
-                    'Failed to load tab selection: ${error.toString()}',
+                            return _buildTimelineContent(feedState, selectedTypes);
+                          },
+                          loading: () => const UnifiedFeedSkeletonList(),
+                          error: (error, stack) => _buildErrorState(
+                            'Failed to load tab selection: ${error.toString()}',
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                );
-              },
-            ),
-          ),
-        ],
+                ],
+              ),
+              // Global search bar positioned on top - spans full width including over year sidebar
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: GlobalSearchBar(),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -326,8 +416,18 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     final isLoadingMore = state.state == UnifiedFeedState.appending;
     final isPaginationError = state.state == UnifiedFeedState.paginationError;
 
-    // Group memories by hierarchy: Year → Season → Month
-    final groupedMemories = _groupMemoriesByHierarchy(memories);
+    // Group memories by Year → Month (no season)
+    final groupedMemories = _groupMemoriesByYearAndMonth(memories);
+
+    // Extract years for sidebar
+    final years = groupedMemories.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    // Keep year marker keys synchronized with the available years
+    final yearSet = years.toSet();
+    _yearKeys.removeWhere((year, _) => !yearSet.contains(year));
+    for (final year in years) {
+      _yearKeys.putIfAbsent(year, () => GlobalKey());
+    }
 
     // Pre-calculate positions for all memories
     final memoryPositions = <String, int>{};
@@ -336,28 +436,50 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
       memoryPositions[memory.id] = position++;
     }
 
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      child: CustomScrollView(
-        key: _pageStorageKey,
-        controller: _scrollController,
-        slivers: [
-          // Build grouped list with headers
-          ...groupedMemories.entries.expand((entry) {
-            final year = entry.key;
-            final seasonMap = entry.value;
-            return [
-              MemoryYearHeader(year: year),
-              ...seasonMap.entries.expand((seasonEntry) {
-                final season = seasonEntry.key;
-                final monthMap = seasonEntry.value;
-                return [
-                  MemorySeasonHeader(season: season),
-                  ...monthMap.entries.expand((monthEntry) {
+    // Set initial active year if not set
+    if (_activeYear == null && years.isNotEmpty) {
+      _activeYear = years.first;
+    }
+
+    return Row(
+      children: [
+        // Year sidebar
+        YearSidebar(
+          years: years,
+          activeYear: _activeYear,
+          onYearTap: _scrollToYear,
+        ),
+        // Timeline content
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            child: CustomScrollView(
+              key: _pageStorageKey,
+              controller: _scrollController,
+              slivers: [
+                // Build grouped list with month headers (not pinned - they scroll normally)
+                ...groupedMemories.entries.expand((entry) {
+                  final year = entry.key;
+                  final monthMap = entry.value;
+                  
+                  return monthMap.entries.expand((monthEntry) {
                     final month = monthEntry.key;
                     final monthMemories = monthEntry.value;
+                    final sortedMonths = monthMap.keys.toList()..sort((a, b) => b.compareTo(a));
+                    final monthIndex = sortedMonths.indexOf(month);
+                    final isFirstMonth = monthIndex == 0;
+                    
                     return [
-                      MemoryMonthHeader(month: month),
+                      // Add invisible marker for year start (first month of each year)
+                      if (isFirstMonth)
+                        SliverToBoxAdapter(
+                          key: _yearKeys[year],
+                          child: const SizedBox(height: 0),
+                        ),
+                      // Month header (not pinned - scrolls normally)
+                      SliverToBoxAdapter(
+                        child: _buildMonthHeaderWidget(month, year),
+                      ),
                       SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
@@ -373,11 +495,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                         ),
                       ),
                     ];
-                  }),
-                ];
-              }),
-            ];
-          }),
+                  });
+                }),
           // Loading more indicator
           if (isLoadingMore)
             const SliverToBoxAdapter(
@@ -472,27 +591,74 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                 ),
               ),
             ),
-        ],
-      ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  /// Group memories by Year → Season → Month hierarchy
-  Map<int, Map<String, Map<int, List<TimelineMoment>>>>
-      _groupMemoriesByHierarchy(List<TimelineMoment> memories) {
-    final grouped = <int, Map<String, Map<int, List<TimelineMoment>>>>{};
+
+  /// Group memories by Year → Month (no season grouping)
+  Map<int, Map<int, List<TimelineMoment>>> _groupMemoriesByYearAndMonth(
+    List<TimelineMoment> memories,
+  ) {
+    final grouped = <int, Map<int, List<TimelineMoment>>>{};
 
     for (final memory in memories) {
       grouped.putIfAbsent(memory.year, () => {});
       final yearMap = grouped[memory.year]!;
 
-      yearMap.putIfAbsent(memory.season, () => {});
-      final seasonMap = yearMap[memory.season]!;
+      yearMap.putIfAbsent(memory.month, () => []);
+      yearMap[memory.month]!.add(memory);
+    }
 
-      seasonMap.putIfAbsent(memory.month, () => []);
-      seasonMap[memory.month]!.add(memory);
+    // Sort months within each year (descending - most recent first)
+    for (final yearMap in grouped.values) {
+      final sortedMonths = yearMap.keys.toList()..sort((a, b) => b.compareTo(a));
+      final sortedMap = <int, List<TimelineMoment>>{};
+      for (final month in sortedMonths) {
+        sortedMap[month] = yearMap[month]!;
+      }
+      yearMap.clear();
+      yearMap.addAll(sortedMap);
     }
 
     return grouped;
+  }
+
+  String _getMonthYearLabel(int month, int year) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${months[month - 1]} $year';
+  }
+
+  Widget _buildMonthHeaderWidget(int month, int year) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        _getMonthYearLabel(month, year),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              fontSize: 16,
+              letterSpacing: 0.15,
+            ),
+      ),
+    );
   }
 }

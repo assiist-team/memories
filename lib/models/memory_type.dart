@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Enum representing the different types of memories in the app
 enum MemoryType {
   /// A moment - a snapshot in time with optional text, photos, and videos
@@ -47,6 +49,18 @@ extension MemoryTypeExtension on MemoryType {
         return 'Story';
       case MemoryType.memento:
         return 'Memento';
+    }
+  }
+  
+  /// Get icon for UI
+  IconData get icon {
+    switch (this) {
+      case MemoryType.moment:
+        return Icons.access_time;
+      case MemoryType.story:
+        return Icons.edit;
+      case MemoryType.memento:
+        return Icons.inventory_2;
     }
   }
 }

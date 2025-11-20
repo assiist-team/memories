@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/memory_type.dart';
 
 /// Reusable card widget for displaying a Story in the timeline
 /// 
-/// Shows only title and friendly timestamp, maintaining minimum tap target size
-/// for accessibility. Uses the same card container styles as MomentCard for
+/// Normalized layout: image on left, title/date/memory type on right.
+/// Uses the same card container styles as MomentCard and MementoCard for
 /// visual consistency.
 class StoryCard extends ConsumerWidget {
   final TimelineMoment story;
@@ -56,47 +57,15 @@ class StoryCard extends ConsumerWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title - single line, ellipsized
-                  Text(
-                    story.displayTitle,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  // Friendly timestamp - shows relative time with absolute date fallback
-                  Semantics(
-                    label: 'Recorded ${_formatRelativeTimestamp(story.capturedAt).isNotEmpty ? _formatRelativeTimestamp(story.capturedAt) : _formatAbsoluteTimestamp(story.capturedAt, locale)}',
-                    excludeSemantics: true,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Semantics(
-                          label: 'Calendar icon',
-                          excludeSemantics: true,
-                          child: Icon(
-                            Icons.calendar_today,
-                            size: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _formatRelativeTimestamp(story.capturedAt).isNotEmpty
-                              ? _formatRelativeTimestamp(story.capturedAt)
-                              : _formatAbsoluteTimestamp(story.capturedAt, locale),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+                  // Thumbnail section - placeholder icon for stories
+                  _buildThumbnail(context, theme),
+                  const SizedBox(width: 16),
+                  // Content section
+                  Expanded(
+                    child: _buildContent(context, theme, locale),
                   ),
                 ],
               ),
@@ -104,6 +73,108 @@ class StoryCard extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildThumbnail(BuildContext context, ThemeData theme) {
+    const thumbnailSize = 80.0;
+
+    return Semantics(
+      label: 'Story icon',
+      image: true,
+      child: Container(
+        width: thumbnailSize,
+        height: thumbnailSize,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Icon(
+            MemoryType.story.icon,
+            size: 32,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, ThemeData theme, Locale locale) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Title - single line, ellipsized
+        Text(
+          story.displayTitle,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 8),
+        // Date - shows relative time with absolute date fallback
+        Semantics(
+          label: 'Recorded ${_formatRelativeTimestamp(story.capturedAt).isNotEmpty ? _formatRelativeTimestamp(story.capturedAt) : _formatAbsoluteTimestamp(story.capturedAt, locale)}',
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                label: 'Calendar icon',
+                excludeSemantics: true,
+                child: Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _formatRelativeTimestamp(story.capturedAt).isNotEmpty
+                    ? _formatRelativeTimestamp(story.capturedAt)
+                    : _formatAbsoluteTimestamp(story.capturedAt, locale),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Memory type badge
+        Semantics(
+          label: 'Story badge',
+          excludeSemantics: true,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  MemoryType.story.icon,
+                  size: 14,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Story',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

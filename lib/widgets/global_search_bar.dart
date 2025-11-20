@@ -113,17 +113,20 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Search field
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            border: Border(
-              bottom: BorderSide(
-                color: Theme.of(context).dividerColor.withOpacity(0.1),
-                width: 1,
-              ),
+        SizedBox(
+          width: double.infinity,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ),
           child: Semantics(
             label: 'Search memories',
             hint: 'Type to search your memories by title, description, or tags',
@@ -150,7 +153,7 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
                       )
                     : null,
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                fillColor: Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -161,6 +164,7 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
                 ),
               ),
             ),
+          ),
           ),
         ),
         

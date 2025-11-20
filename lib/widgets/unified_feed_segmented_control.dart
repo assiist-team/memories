@@ -19,41 +19,49 @@ class UnifiedFeedSegmentedControl extends ConsumerWidget {
       MemoryType.memento,
     };
 
-    return Semantics(
-      label: 'Memory type filter',
-      child: SegmentedButton<MemoryType>(
-        style: SegmentedButton.styleFrom(
-          selectedBackgroundColor: const Color(0xFF2B2B2B),
-          selectedForegroundColor: const Color(0xFFFFFFFF),
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF2B2B2B),
+    final theme = Theme.of(context);
+    final scaffoldBackground = theme.scaffoldBackgroundColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scaffoldBackground,
+      ),
+      child: Semantics(
+        label: 'Memory type filter',
+        child: SegmentedButton<MemoryType>(
+          style: SegmentedButton.styleFrom(
+            selectedBackgroundColor: const Color(0xFF2B2B2B),
+            selectedForegroundColor: const Color(0xFFFFFFFF),
+            backgroundColor: scaffoldBackground,
+            foregroundColor: theme.colorScheme.onSurfaceVariant,
+          ),
+          multiSelectionEnabled: true,
+          segments: [
+            ButtonSegment<MemoryType>(
+              value: MemoryType.story,
+              label: Text(MemoryType.story.displayName),
+              icon: Icon(MemoryType.story.icon),
+            ),
+            ButtonSegment<MemoryType>(
+              value: MemoryType.moment,
+              label: Text(MemoryType.moment.displayName),
+              icon: Icon(MemoryType.moment.icon),
+            ),
+            ButtonSegment<MemoryType>(
+              value: MemoryType.memento,
+              label: Text(MemoryType.memento.displayName),
+              icon: Icon(MemoryType.memento.icon),
+            ),
+          ],
+          selected: selectedTypes,
+          onSelectionChanged: (Set<MemoryType> selection) {
+            // Ensure at least one type is always selected
+            if (selection.isNotEmpty) {
+              ref.read(unifiedFeedTabNotifierProvider.notifier).setSelectedTypes(selection);
+            }
+            // If user tries to deselect all, keep the current selection
+          },
         ),
-        multiSelectionEnabled: true,
-        segments: [
-          ButtonSegment<MemoryType>(
-            value: MemoryType.story,
-            label: Text(MemoryType.story.displayName),
-            icon: const Icon(Icons.book),
-          ),
-          ButtonSegment<MemoryType>(
-            value: MemoryType.moment,
-            label: Text(MemoryType.moment.displayName),
-            icon: const Icon(Icons.access_time),
-          ),
-          ButtonSegment<MemoryType>(
-            value: MemoryType.memento,
-            label: Text(MemoryType.memento.displayName),
-            icon: const Icon(Icons.inventory_2),
-          ),
-        ],
-        selected: selectedTypes,
-        onSelectionChanged: (Set<MemoryType> selection) {
-          // Ensure at least one type is always selected
-          if (selection.isNotEmpty) {
-            ref.read(unifiedFeedTabNotifierProvider.notifier).setSelectedTypes(selection);
-          }
-          // If user tries to deselect all, keep the current selection
-        },
       ),
     );
   }

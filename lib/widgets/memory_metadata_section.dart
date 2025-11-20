@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memories/models/memory_detail.dart';
+import 'package:memories/models/memory_type.dart';
 
 /// Widget displaying memory metadata: timestamp, location, and related memories
 /// 
@@ -167,7 +168,11 @@ class MemoryMetadataSection extends StatelessWidget {
       child: ActionChip(
         label: Text(label),
         avatar: Icon(
-          memoryType == 'story' ? Icons.mic : Icons.bookmark,
+          memoryType == 'story' 
+              ? MemoryType.story.icon 
+              : memoryType == 'memento'
+                  ? MemoryType.memento.icon
+                  : MemoryType.moment.icon,
           size: 16,
         ),
         onPressed: () {

@@ -42,18 +42,20 @@ class MemorySeasonHeader extends StatelessWidget {
 
 /// Month header for unified feed
 /// 
-/// Displays the month name (e.g., "November") and sticks while scrolling
+/// Displays the month name and year (e.g., "November 2025") and sticks while scrolling
 class MemoryMonthHeader extends StatelessWidget {
   final int month;
+  final int year;
 
   const MemoryMonthHeader({
     super.key,
     required this.month,
+    required this.year,
   });
 
   @override
   Widget build(BuildContext context) {
-    return MonthHeader(month: month);
+    return MonthHeader(month: month, year: year);
   }
 }
 

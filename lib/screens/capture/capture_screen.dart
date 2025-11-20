@@ -1091,17 +1091,17 @@ class _MemoryTypeToggle extends StatelessWidget {
         ButtonSegment<MemoryType>(
           value: MemoryType.moment,
           label: Text(MemoryType.moment.displayName),
-          icon: const Icon(Icons.access_time),
+          icon: Icon(MemoryType.moment.icon),
         ),
         ButtonSegment<MemoryType>(
           value: MemoryType.story,
           label: Text(MemoryType.story.displayName),
-          icon: const Icon(Icons.book),
+          icon: Icon(MemoryType.story.icon),
         ),
         ButtonSegment<MemoryType>(
           value: MemoryType.memento,
           label: Text(MemoryType.memento.displayName),
-          icon: const Icon(Icons.inventory_2),
+          icon: Icon(MemoryType.memento.icon),
         ),
       ],
       selected: {selectedType},

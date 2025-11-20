@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_image_cache_provider.dart';
 import 'package:memories/services/timeline_image_cache_service.dart';
@@ -21,23 +22,23 @@ class MomentCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context);
     final supabase = ref.read(supabaseClientProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     // Build semantic label with all relevant information
+    final absoluteTime = _formatAbsoluteTimestamp(moment.capturedAt, locale);
+    final relativeTime = _formatRelativeTimestamp(moment.capturedAt);
     final semanticLabel = StringBuffer('Moment');
     if (moment.displayTitle.isNotEmpty && moment.displayTitle != 'Untitled Moment') {
       semanticLabel.write(' titled ${moment.displayTitle}');
     }
-    semanticLabel.write(' captured ${_formatDate(moment.capturedAt)}');
+    semanticLabel.write(' captured $absoluteTime');
+    if (relativeTime.isNotEmpty) {
+      semanticLabel.write(', $relativeTime');
+    }
     if (moment.primaryMedia != null) {
       semanticLabel.write(', ${moment.primaryMedia!.isPhoto ? 'photo' : 'video'}');
-    }
-    if (moment.snippetText != null && moment.snippetText!.isNotEmpty) {
-      semanticLabel.write('. ${moment.snippetText}');
-    }
-    if (moment.tags.isNotEmpty) {
-      semanticLabel.write('. Tags: ${moment.tags.join(', ')}');
     }
 
     return Semantics(
@@ -67,7 +68,7 @@ class MomentCard extends ConsumerWidget {
                   const SizedBox(width: 16),
                   // Content section
                   Expanded(
-                    child: _buildContent(context, theme),
+                    child: _buildContent(context, theme, locale),
                   ),
                 ],
               ),
@@ -93,8 +94,8 @@ class MomentCard extends ConsumerWidget {
             color: Theme.of(context).colorScheme.surfaceVariant,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Center(
-            child: Icon(Icons.text_fields, size: 32),
+          child: Center(
+            child: Icon(MemoryType.moment.icon, size: 32),
           ),
         ),
       );
@@ -216,9 +217,10 @@ class MomentCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, ThemeData theme) {
+  Widget _buildContent(BuildContext context, ThemeData theme, Locale locale) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Title - use textTheme to respect system text scaling
         Text(
@@ -229,79 +231,92 @@ class MomentCard extends ConsumerWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 4),
-        // Snippet - use textTheme to respect system text scaling
-        if (moment.snippetText != null && moment.snippetText!.isNotEmpty)
-          Text(
-            moment.snippetText!,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
         const SizedBox(height: 8),
-        // Metadata row
-        Wrap(
-          spacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            // Date
-            Semantics(
-              label: 'Captured ${_formatRelativeDate(moment.capturedAt)}',
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.calendar_today,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _formatRelativeDate(moment.capturedAt),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+        // Date - shows relative time with absolute date fallback
+        Semantics(
+          label: 'Captured ${_formatRelativeTimestamp(moment.capturedAt).isNotEmpty ? _formatRelativeTimestamp(moment.capturedAt) : _formatAbsoluteTimestamp(moment.capturedAt, locale)}',
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                label: 'Calendar icon',
+                excludeSemantics: true,
+                child: Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
+              const SizedBox(width: 4),
+              Text(
+                _formatRelativeTimestamp(moment.capturedAt).isNotEmpty
+                    ? _formatRelativeTimestamp(moment.capturedAt)
+                    : _formatAbsoluteTimestamp(moment.capturedAt, locale),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Memory type badge
+        Semantics(
+          label: 'Moment badge',
+          excludeSemantics: true,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(4),
             ),
-            // Tags (max 3)
-            if (moment.tags.isNotEmpty)
-              ...moment.tags.take(3).map((tag) => Semantics(
-                    label: 'Tag: $tag',
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Chip(
-                        label: Text(
-                          tag,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                          ),
-                        ),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
-                  )),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  MemoryType.moment.icon,
+                  size: 14,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Moment',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('MMMM d, y').format(date);
+  /// Format absolute timestamp: "Nov 3, 2025 at 4:12 PM" (locale aware)
+  String _formatAbsoluteTimestamp(DateTime date, Locale locale) {
+    final dateFormat = DateFormat('MMM d, y', locale.toString());
+    final timeFormat = DateFormat('h:mm a', locale.toString());
+    return '${dateFormat.format(date)} at ${timeFormat.format(date)}';
   }
 
-  String _formatRelativeDate(DateTime date) {
+  /// Format relative timestamp: "3 weeks ago" or empty if very recent
+  /// Matches the pattern used in StoryCard and MementoCard for consistency
+  String _formatRelativeTimestamp(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      return 'Today';
+      // Same day - show relative time within day
+      if (difference.inHours == 0) {
+        if (difference.inMinutes == 0) {
+          return 'Just now';
+        }
+        return '${difference.inMinutes}m ago';
+      }
+      return '${difference.inHours}h ago';
     } else if (difference.inDays == 1) {
       return 'Yesterday';
     } else if (difference.inDays < 7) {
@@ -309,8 +324,12 @@ class MomentCard extends ConsumerWidget {
     } else if (difference.inDays < 30) {
       final weeks = (difference.inDays / 7).floor();
       return '${weeks}w ago';
+    } else if (difference.inDays < 365) {
+      final months = (difference.inDays / 30).floor();
+      return '${months}mo ago';
     } else {
-      return _formatDate(date);
+      final years = (difference.inDays / 365).floor();
+      return '${years}y ago';
     }
   }
 }

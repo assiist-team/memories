@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:memories/models/memory_type.dart';
 
 /// First onboarding screen explaining the Capture pillar
 /// 
@@ -77,18 +78,18 @@ class OnboardingCaptureScreen extends StatelessWidget {
                       children: [
                         _buildExampleIcon(
                           context,
-                          Icons.mic_outlined,
-                          'Voice',
+                          MemoryType.story.icon,
+                          'Story',
                         ),
                         _buildExampleIcon(
                           context,
-                          Icons.photo_camera_outlined,
-                          'Photo',
+                          MemoryType.moment.icon,
+                          'Moment',
                         ),
                         _buildExampleIcon(
                           context,
-                          Icons.inventory_2_outlined,
-                          'Object',
+                          MemoryType.memento.icon,
+                          'Memento',
                         ),
                       ],
                     ),

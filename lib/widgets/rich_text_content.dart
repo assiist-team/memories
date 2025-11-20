@@ -80,13 +80,11 @@ class _RichTextContentState extends State<RichTextContent> {
       return const SizedBox.shrink();
     }
 
-    final markdownContent = _buildMarkdownContent(context, textStyle, linkColor);
-
-    // Always measure the content first
+    // Always measure the content first (without height constraint)
     final measuredContent = _MeasureWidget(
       key: _contentKey,
       onMeasure: _measureContent,
-      child: markdownContent,
+      child: _buildMarkdownContent(context, textStyle, linkColor, null),
     );
 
     // If we haven't measured yet or don't need collapse, show full content
@@ -106,14 +104,20 @@ class _RichTextContentState extends State<RichTextContent> {
         AnimatedSize(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: _isExpanded ? double.infinity : widget.maxCollapsedHeight,
-            ),
-            child: ClipRect(
-              child: markdownContent,
-            ),
-          ),
+          child: _isExpanded
+              ? _buildMarkdownContent(context, textStyle, linkColor, null)
+              : SizedBox(
+                  height: widget.maxCollapsedHeight,
+                  child: ClipRect(
+                    clipBehavior: Clip.hardEdge,
+                    child: _buildMarkdownContent(
+                      context,
+                      textStyle,
+                      linkColor,
+                      widget.maxCollapsedHeight,
+                    ),
+                  ),
+                ),
         ),
         const SizedBox(height: 8),
         GestureDetector(
@@ -134,10 +138,11 @@ class _RichTextContentState extends State<RichTextContent> {
     BuildContext context,
     TextStyle? baseStyle,
     Color linkColor,
+    double? maxHeight,
   ) {
     final theme = Theme.of(context);
     
-    return MarkdownBody(
+    final markdownBody = MarkdownBody(
       data: widget.text!,
       styleSheet: MarkdownStyleSheet(
         // Base paragraph style
@@ -213,6 +218,8 @@ class _RichTextContentState extends State<RichTextContent> {
       shrinkWrap: true,
       softLineBreak: true,
     );
+    
+    return markdownBody;
   }
 }
 

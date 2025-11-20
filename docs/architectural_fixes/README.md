@@ -58,6 +58,16 @@ See the master plan: [`../memory-implementation-fix-plan.md`](../memory-implemen
    - Renames `MomentSyncService` → `MemorySyncService`
    - Independent, can be done anytime
 
+9. **[Phase 9: Memory Type-Specific Edge Functions](./phase-9-memory-type-specific-edge-functions.md)**
+   - **Priority**: High
+   - **Risk**: Medium
+   - Refactors shared `generate-title` function into three separate functions:
+     - `process-moment` - Moment-specific AI processing
+     - `process-memento` - Memento-specific AI processing
+     - `process-story` - Story-specific AI processing (narrative + title generation)
+   - Enables proper separation of concerns and type-specific processing logic
+   - Independent, can be done anytime
+
 ## Execution Order
 
 ```
@@ -75,7 +85,9 @@ Phase 7 (Story Fields Extension)
     ↓
 Phase 8 (Sync Service Rename) ──┐
     ↓                            │ (Independent)
-Story Sync Service TODO ─────────┘ (Future work)
+Phase 9 (Edge Functions Refactor) ┘ (Independent)
+    ↓
+Story Sync Service TODO (Future work)
 ```
 
 **Note**: Phase 5 was superseded by Phase 6, which consolidates the table/enum renames along with text normalization.
@@ -92,6 +104,7 @@ Story Sync Service TODO ─────────┘ (Future work)
 | 6 | Models + Services + 4 DB migrations | Medium | None | ✅ Complete |
 | 7 | DB migration + models | Medium | None | 📋 Planned |
 | 8 | 2-3 files | Low | None | 📋 Planned |
+| 9 | 3 edge functions + services | Medium | None | 📋 Planned |
 
 ## Additional TODOs
 

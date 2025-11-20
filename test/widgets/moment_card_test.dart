@@ -5,6 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:memories/widgets/moment_card.dart';
 import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 
 // Mock classes
@@ -130,7 +131,7 @@ void main() {
 
       await tester.pumpWidget(createWidget(moment));
 
-      expect(find.byIcon(Icons.text_fields), findsOneWidget);
+      expect(find.byIcon(MemoryType.moment.icon), findsOneWidget);
     });
 
     testWidgets('calls onTap when card is tapped', (WidgetTester tester) async {

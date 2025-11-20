@@ -367,13 +367,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           SliverPersistentHeader(
             pinned: true,
             delegate: _StickyAudioPlayerDelegate(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: StickyAudioPlayer(
-                  audioUrl: null, // TODO: Add audioUrl when available in memory_detail
-                  duration: null, // TODO: Add duration when available in memory_detail
-                  storyId: memory.id,
-                ),
+              child: StickyAudioPlayer(
+                audioUrl: null, // TODO: Add audioUrl when available in memory_detail
+                duration: null, // TODO: Add duration when available in memory_detail
+                storyId: memory.id,
               ),
             ),
           ),
@@ -799,11 +796,16 @@ class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
 
   _StickyAudioPlayerDelegate({required this.child});
 
+  // Height matches actual painted child height to prevent layoutExtent > paintExtent errors
+  // Placeholder: ~58px (measured from actual render)
+  // Full player: ~80px (when audio is available)
+  // For pinned headers, layoutExtent must equal paintExtent
+  // Using 80px but ensuring child fills the space with padding
   @override
-  double get minExtent => 100;
+  double get minExtent => 80;
 
   @override
-  double get maxExtent => 100;
+  double get maxExtent => 80;
 
   @override
   Widget build(
@@ -811,9 +813,19 @@ class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: child,
+    // Force container to be exactly 80px tall to match extents
+    // This ensures layoutExtent equals paintExtent (both 80px)
+    // Padding is applied inside the delegate to ensure total height is 80px
+    // Use Align to ensure child is properly positioned within the 80px space
+    return SizedBox(
+      height: 80,
+      child: Container(
+        width: double.infinity,
+        color: Theme.of(context).scaffoldBackgroundColor,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        alignment: Alignment.center,
+        child: child,
+      ),
     );
   }
 

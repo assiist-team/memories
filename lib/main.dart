@@ -105,6 +105,7 @@ class MyApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFF5F5F5), // Match scaffold background
           elevation: 0,
+          scrolledUnderElevation: 0, // Disable scroll-based elevation change
         ),
         navigationBarTheme: NavigationBarThemeData(
           backgroundColor: const Color(0xFFF5F5F5), // Match scaffold background
