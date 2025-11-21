@@ -53,6 +53,7 @@ class MementoCard extends ConsumerWidget {
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         elevation: 2,
+        color: theme.colorScheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -97,7 +98,7 @@ class MementoCard extends ConsumerWidget {
           width: thumbnailSize,
           height: thumbnailSize,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            color: Theme.of(context).colorScheme.surfaceVariant,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(

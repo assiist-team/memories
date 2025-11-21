@@ -5,18 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Test helper for setting up a real Supabase client for integration tests
-/// 
+///
 /// Usage:
 /// ```dart
 /// await dotenv.load(fileName: '.env');
 /// final container = createTestSupabaseContainer();
 /// final supabase = container.read(supabaseClientProvider);
 /// ```
-/// 
+///
 /// Credentials are loaded from `.env` file:
 /// - SUPABASE_URL
 /// - SUPABASE_ANON_KEY
-/// 
+///
 /// Or use --dart-define flags (takes precedence):
 /// flutter test --dart-define=SUPABASE_URL=xxx --dart-define=SUPABASE_ANON_KEY=xxx
 ProviderContainer createTestSupabaseContainer() {
@@ -108,7 +108,7 @@ class _TestStorage implements LocalStorage {
 }
 
 /// Helper to clean up test data after integration tests
-/// 
+///
 /// Call this in tearDown to ensure test isolation
 Future<void> cleanupTestUser(SupabaseClient supabase, String userId) async {
   try {
@@ -121,7 +121,7 @@ Future<void> cleanupTestUser(SupabaseClient supabase, String userId) async {
 }
 
 /// Create a test user for integration tests
-/// 
+///
 /// Returns the created user and session
 Future<({User user, Session session})> createTestUser(
   SupabaseClient supabase, {
@@ -160,4 +160,3 @@ Future<Session> signInTestUser(
 
   return response.session!;
 }
-
