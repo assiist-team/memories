@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:memories/models/queued_story.dart';
+import 'package:memories/models/queue_change_event.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -20,6 +22,16 @@ OfflineStoryQueueService offlineStoryQueueService(OfflineStoryQueueServiceRef re
 }
 
 class OfflineStoryQueueService {
+  final _changeController = StreamController<QueueChangeEvent>.broadcast();
+  
+  /// Stream of queue change events
+  Stream<QueueChangeEvent> get changeStream => _changeController.stream;
+  
+  /// Dispose resources
+  void dispose() {
+    _changeController.close();
+  }
+
   /// Get all queued stories from storage
   Future<List<QueuedStory>> _getAllStories() async {
     final prefs = await SharedPreferences.getInstance();
@@ -50,10 +62,18 @@ class OfflineStoryQueueService {
   /// If a story with the same localId already exists, it will be updated.
   Future<void> enqueue(QueuedStory story) async {
     final stories = await _getAllStories();
+    final isUpdate = stories.any((s) => s.localId == story.localId);
     // Remove if already exists (update)
     stories.removeWhere((s) => s.localId == story.localId);
     stories.add(story);
     await _saveAllStories(stories);
+    
+    // Emit change event
+    _changeController.add(QueueChangeEvent(
+      localId: story.localId,
+      memoryType: story.memoryType,
+      type: isUpdate ? QueueChangeType.updated : QueueChangeType.added,
+    ));
   }
 
   /// Get all queued stories
@@ -81,7 +101,7 @@ class OfflineStoryQueueService {
 
   /// Update a queued story
   /// 
-  /// This is equivalent to enqueue() for this implementation.
+  /// This is equivalent to enqueue() for this implementation (emits updated event).
   Future<void> update(QueuedStory story) async {
     await enqueue(story);
   }
@@ -89,8 +109,20 @@ class OfflineStoryQueueService {
   /// Remove a queued story (after successful sync)
   Future<void> remove(String localId) async {
     final stories = await _getAllStories();
+    final story = stories.firstWhere(
+      (s) => s.localId == localId,
+      orElse: () => throw StateError('Story not found: $localId'),
+    );
+    final memoryType = story.memoryType;
     stories.removeWhere((s) => s.localId == localId);
     await _saveAllStories(stories);
+    
+    // Emit change event
+    _changeController.add(QueueChangeEvent(
+      localId: localId,
+      memoryType: memoryType,
+      type: QueueChangeType.removed,
+    ));
   }
 
   /// Get count of queued stories

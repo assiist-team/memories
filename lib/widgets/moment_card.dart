@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,7 @@ import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_image_cache_provider.dart';
+import 'package:memories/providers/memory_processing_status_provider.dart';
 import 'package:memories/services/timeline_image_cache_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -136,6 +138,11 @@ class MomentCard extends ConsumerWidget {
       badges.add(_buildPreviewOnlyChip(context));
     }
 
+    // Show processing indicator for server-backed memories that are still processing
+    if (!isQueuedOffline && moment.serverId != null) {
+      badges.add(_buildProcessingIndicator(context));
+    }
+
     if (badges.isEmpty) return const SizedBox.shrink();
 
     return Row(
@@ -145,6 +152,62 @@ class MomentCard extends ConsumerWidget {
               child: b,
             )),
       ],
+    );
+  }
+
+  Widget _buildProcessingIndicator(BuildContext context) {
+    // Only show for server-backed memories
+    if (moment.serverId == null) return const SizedBox.shrink();
+
+    return Consumer(
+      builder: (context, ref, child) {
+        final statusAsync = ref.watch(
+          memoryProcessingStatusStreamProvider(moment.serverId!),
+        );
+
+        return statusAsync.when(
+          data: (status) {
+            // Only show if processing is in progress
+            if (status == null || !status.isInProgress) {
+              return const SizedBox.shrink();
+            }
+
+            // Show a subtle processing indicator
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Processing',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade800,
+                          fontSize: 10,
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        );
+      },
     );
   }
 
@@ -238,6 +301,112 @@ class MomentCard extends ConsumerWidget {
     }
 
     final media = moment.primaryMedia!;
+    
+    // Branch on local vs remote media
+    if (media.isLocal) {
+      // Local file path - use Image.file or video placeholder
+      final path = media.url.replaceFirst('file://', '');
+      final file = File(path);
+      
+      if (!file.existsSync()) {
+        // File missing - show broken image placeholder
+        return Semantics(
+          label: 'Missing media file',
+          child: Container(
+            width: thumbnailSize,
+            height: thumbnailSize,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.broken_image),
+          ),
+        );
+      }
+      
+      // Hero tag for transition animation to detail view
+      final heroTag = 'moment_thumbnail_${moment.id}';
+      
+      if (media.isPhoto) {
+        return Semantics(
+          label: 'Photo thumbnail',
+          image: true,
+          child: Hero(
+            tag: heroTag,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                file,
+                width: thumbnailSize,
+                height: thumbnailSize,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Semantics(
+                    label: 'Failed to load thumbnail',
+                    child: Container(
+                      width: thumbnailSize,
+                      height: thumbnailSize,
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      child: const Icon(Icons.broken_image),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      } else {
+        // Video - show generic video chip
+        return Semantics(
+          label: 'Video thumbnail',
+          image: true,
+          child: Hero(
+            tag: heroTag,
+            child: Stack(
+              children: [
+                Container(
+                  width: thumbnailSize,
+                  height: thumbnailSize,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.videocam, size: 32),
+                ),
+                Positioned(
+                  bottom: 4,
+                  right: 4,
+                  child: Semantics(
+                    label: 'Video',
+                    excludeSemantics: true,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'VIDEO',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+    
+    // Remote Supabase media - use signed URL
     final bucket = media.isPhoto ? 'moments-photos' : 'moments-videos';
     
     // Get signed URL from cache or generate new one
@@ -309,8 +478,8 @@ class MomentCard extends ConsumerWidget {
                           ),
                         ),
                       ),
+                    ),
                   ),
-                ),
                 ],
               ),
             ),

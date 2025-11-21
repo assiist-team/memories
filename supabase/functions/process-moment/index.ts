@@ -8,7 +8,7 @@ interface ProcessMomentRequest {
 interface ProcessMomentResponse {
   title: string;
   processedText: string;
-  status: "success" | "fallback" | "partial";
+  status: "success";
   generatedAt: string;
 }
 
@@ -19,7 +19,6 @@ interface ErrorResponse {
 }
 
 const MAX_TITLE_LENGTH = 60;
-const FALLBACK_TITLE = "Untitled Moment";
 
 /**
  * Truncates a string to a maximum length, ensuring it doesn't break words
@@ -152,10 +151,11 @@ Return only the cleaned text, nothing else.`;
 }
 
 /**
- * Generates a title from processed text using LLM
+ * Generates a title from text using LLM
+ * Can accept either input_text or processed_text
  */
 async function generateTitleWithLLM(
-  processedText: string,
+  text: string,
 ): Promise<string | null> {
   const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
   
@@ -167,9 +167,9 @@ async function generateTitleWithLLM(
   const openaiUrl = Deno.env.get("OPENAI_API_URL") || 
     "https://api.openai.com/v1/chat/completions";
 
-  const prompt = `Generate a concise, engaging title (maximum ${MAX_TITLE_LENGTH} characters) for a brief moment or memory based on this cleaned text. The title should be descriptive but brief, capturing the essence of what happened. Return only the title text, nothing else.
+  const prompt = `Generate a concise, engaging title (maximum ${MAX_TITLE_LENGTH} characters) for a brief moment or memory based on this text. The title should be descriptive but brief, capturing the essence of what happened. Return only the title text, nothing else.
 
-Text: ${processedText.substring(0, 1000)}`;
+Text: ${text.substring(0, 1000)}`;
 
   const requestBody = {
     model: Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini",
@@ -441,84 +441,146 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const startTime = Date.now();
-    let processedText: string;
-    let title: string;
-    let status: "success" | "fallback" | "partial" = "fallback";
+    // Update processing status to 'processing'
+    const now = new Date().toISOString();
+    const { error: statusUpdateError } = await supabaseClient
+      .from("memory_processing_status")
+      .update({
+        state: "processing",
+        started_at: now,
+        last_updated_at: now,
+        metadata: {
+          memory_type: "moment",
+          phase: "text_processing",
+        },
+      })
+      .eq("memory_id", requestBody.memoryId);
 
-    // Step 1: Generate title from input text
-    const titleResult = await generateTitleWithLLM(inputText);
-    title = titleResult || FALLBACK_TITLE;
-
-    // Step 2: Process text
-    const processedTextResult = await processTextWithLLM(inputText);
-    processedText = processedTextResult || inputText; // Fallback to input_text if processing fails (inputText is guaranteed non-empty)
-
-    // Determine status
-    if (processedTextResult && titleResult) {
-      status = "success";
-    } else if (processedTextResult && !titleResult) {
-      status = "partial";
-    } else {
-      status = "fallback";
+    if (statusUpdateError) {
+      console.error("Error updating processing status:", statusUpdateError);
+      // Continue processing even if status update fails
     }
 
-    const duration = Date.now() - startTime;
+    const startTime = Date.now();
 
-    // Update database
-    const updateData: Record<string, unknown> = {
-      processed_text: processedText,
-      title: title,
-      title_generated_at: new Date().toISOString(),
-    };
+    try {
+      // Run text processing and title generation in parallel
+      const [processedTextResult, titleResult] = await Promise.all([
+        processTextWithLLM(inputText),
+        generateTitleWithLLM(inputText), // Generate title from input_text in parallel
+      ]);
+      
+      if (!processedTextResult) {
+        throw new Error("Failed to process text");
+      }
+      
+      if (!titleResult) {
+        throw new Error("Failed to generate title");
+      }
 
-    const { error: updateError } = await supabaseClient
-      .from("memories")
-      .update(updateData)
-      .eq("id", requestBody.memoryId);
+      const processedText = processedTextResult;
+      const title = titleResult;
+      const duration = Date.now() - startTime;
 
-    if (updateError) {
-      console.error("Error updating memory:", updateError);
+      // Update memory with processed text and title
+      const updateData: Record<string, unknown> = {
+        processed_text: processedText,
+        title: title,
+        title_generated_at: new Date().toISOString(),
+      };
+
+      const { error: updateError } = await supabaseClient
+        .from("memories")
+        .update(updateData)
+        .eq("id", requestBody.memoryId);
+
+      if (updateError) {
+        throw new Error(`Failed to update memory: ${updateError.message}`);
+      }
+
+      // Update processing status to 'complete'
+      const completedAt = new Date().toISOString();
+      await supabaseClient
+        .from("memory_processing_status")
+        .update({
+          state: "complete",
+          completed_at: completedAt,
+          last_updated_at: completedAt,
+          metadata: {
+            memory_type: "moment",
+            duration_ms: duration,
+          },
+        })
+        .eq("memory_id", requestBody.memoryId);
+
+      // Log generation event
+      const requestId = crypto.randomUUID();
+      console.log(
+        JSON.stringify({
+          event: "moment_processing",
+          userId: user.id,
+          memoryId: requestBody.memoryId,
+          titleLength: title.length,
+          processedTextLength: processedText.length,
+          inputTextLength: inputText.length,
+          durationMs: duration,
+          requestId: requestId,
+          timestamp: completedAt,
+        }),
+      );
+
+      const response: ProcessMomentResponse = {
+        title: title,
+        processedText: processedText,
+        status: "success",
+        generatedAt: completedAt,
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      // Handle processing failure
+      const processingError = error instanceof Error ? error.message : String(error);
+      const failedAt = new Date().toISOString();
+
+      // Get current attempts count
+      const { data: currentStatus } = await supabaseClient
+        .from("memory_processing_status")
+        .select("attempts")
+        .eq("memory_id", requestBody.memoryId)
+        .single();
+
+      const newAttempts = (currentStatus?.attempts || 0) + 1;
+
+      // Update processing status to 'failed'
+      await supabaseClient
+        .from("memory_processing_status")
+        .update({
+          state: "failed",
+          attempts: newAttempts,
+          last_error: processingError,
+          last_error_at: failedAt,
+          last_updated_at: failedAt,
+          metadata: {
+            memory_type: "moment",
+            error: processingError,
+            attempts: newAttempts,
+          },
+        })
+        .eq("memory_id", requestBody.memoryId);
+
       return new Response(
         JSON.stringify({
-          code: "INTERNAL_ERROR",
-          message: "Failed to update memory",
+          code: "PROCESSING_FAILED",
+          message: processingError,
         } as ErrorResponse),
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
         },
       );
-    }
-
-    // Log generation event
-    const requestId = crypto.randomUUID();
-    console.log(
-      JSON.stringify({
-        event: "moment_processing",
-        userId: user.id,
-        memoryId: requestBody.memoryId,
-        status: status,
-        titleLength: title.length,
-        processedTextLength: processedText.length,
-        inputTextLength: inputText.length,
-        durationMs: duration,
-        requestId: requestId,
-        timestamp: new Date().toISOString(),
-      }),
-    );
-
-    const response: ProcessMomentResponse = {
-      title: title,
-      processedText: processedText,
-      status: status,
-      generatedAt: new Date().toISOString(),
-    };
-
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
   } catch (error) {
     console.error("Unexpected error in process-moment function:", error);
 

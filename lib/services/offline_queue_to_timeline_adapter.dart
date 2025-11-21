@@ -1,6 +1,7 @@
 import 'package:memories/models/queued_moment.dart';
 import 'package:memories/models/queued_story.dart';
 import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/memory_detail.dart';
 
 /// Adapter service that converts queued offline memories (QueuedMoment/QueuedStory)
 /// into TimelineMoment instances for the unified feed.
@@ -92,12 +93,14 @@ class OfflineQueueToTimelineAdapter {
         type: 'photo',
         url: queued.photoPaths.first, // Local file path
         index: 0,
+        source: MediaSource.localFile,
       );
     } else if (queued.videoPaths.isNotEmpty) {
       primaryMedia = PrimaryMedia(
         type: 'video',
         url: queued.videoPaths.first, // Local file path
         index: 0,
+        source: MediaSource.localFile,
       );
     } else if (queued.audioPath != null) {
       // For stories, audio can be considered primary media
@@ -105,6 +108,7 @@ class OfflineQueueToTimelineAdapter {
         type: 'video', // Use video type for audio (or create audio type if needed)
         url: queued.audioPath!,
         index: 0,
+        source: MediaSource.localFile,
       );
     }
 

@@ -7,7 +7,7 @@ part of 'offline_memory_detail_provider.dart';
 // **************************************************************************
 
 String _$offlineMemoryDetailNotifierHash() =>
-    r'c617570b0303ffa54305a59ccff69f6d3c50d620';
+    r'07be72787fd116b4954b814eba79e6a22f9389c2';
 
 /// Copied from Dart SDK
 class _SystemHash {

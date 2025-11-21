@@ -4,7 +4,6 @@ import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
-import 'package:memories/services/memory_processing_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -41,13 +40,11 @@ typedef SaveProgressCallback = void Function({
 @riverpod
 MemorySaveService memorySaveService(MemorySaveServiceRef ref) {
   final supabase = ref.watch(supabaseClientProvider);
-  final processingService = ref.watch(memoryProcessingServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
   final offlineQueueService = ref.watch(offlineQueueServiceProvider);
   final offlineStoryQueueService = ref.watch(offlineStoryQueueServiceProvider);
   return MemorySaveService(
     supabase,
-    processingService,
     connectivityService,
     offlineQueueService,
     offlineStoryQueueService,
@@ -56,7 +53,6 @@ MemorySaveService memorySaveService(MemorySaveServiceRef ref) {
 
 class MemorySaveService {
   final SupabaseClient _supabase;
-  final MemoryProcessingService _processingService;
   final ConnectivityService _connectivityService;
   final OfflineQueueService _offlineQueueService;
   final OfflineStoryQueueService _offlineStoryQueueService;
@@ -67,7 +63,6 @@ class MemorySaveService {
 
   MemorySaveService(
     this._supabase,
-    this._processingService,
     this._connectivityService,
     this._offlineQueueService,
     this._offlineStoryQueueService,
@@ -296,88 +291,51 @@ class MemorySaveService {
           }
         }
 
-        // Create story_fields row with initial processing status
+        // Create story_fields row (no processing status here - handled by memory_processing_status)
         await _supabase.from('story_fields').insert({
           'memory_id': memoryId,
-          'story_status': 'processing',
           'audio_path': audioPath,
           'retry_count': 0,
         });
       }
 
-      // Step 4: Process memory (text processing + title generation)
-      String? generatedTitle;
-      DateTime? titleGeneratedAt;
-
-      // Check if we have input_text to process
+      // Step 4: Insert memory_processing_status row if we have input_text to process
+      // Processing will happen asynchronously via dispatcher
       final hasInputText = state.inputText?.trim().isNotEmpty == true;
+      String? generatedTitle;
 
       if (hasInputText) {
-        onProgress?.call(message: 'Processing text...', progress: 0.85);
-
+        // Insert processing status row - dispatcher will pick this up
         try {
-          MemoryProcessingResponse? processingResponse;
-
-          // Call appropriate processing function based on memory type
-          switch (state.memoryType) {
-            case MemoryType.moment:
-              processingResponse = await _processingService.processMoment(
-                memoryId: memoryId,
-              );
-              break;
-            case MemoryType.memento:
-              processingResponse = await _processingService.processMemento(
-                memoryId: memoryId,
-              );
-              break;
-            case MemoryType.story:
-              // For stories, process asynchronously (fire and forget)
-              // The processing updates the database directly
-              _processingService.processStory(memoryId: memoryId).then(
-                (_) {
-                  // Success - processing completed, database already updated
-                },
-                onError: (e) {
-                  // Log error but don't block save operation
-                  print('Story processing failed: $e');
-                },
-              );
-              // Use fallback title for now - will be updated when processing completes
-              generatedTitle = _getFallbackTitle(state.memoryType);
-              // Don't await - story processing happens asynchronously
-              break;
-          }
-
-          if (processingResponse != null) {
-            generatedTitle = processingResponse.title;
-            titleGeneratedAt = processingResponse.generatedAt;
-            // Note: processed_text and title are already updated in the database by the edge function
-          }
+          await _supabase.from('memory_processing_status').insert({
+            'memory_id': memoryId,
+            'state': 'queued',
+            'attempts': 0,
+            'metadata': {
+              'memory_type': state.memoryType.apiValue,
+            },
+          });
         } catch (e) {
-          // Processing failed, use fallback title
-          final fallbackTitle = _getFallbackTitle(state.memoryType);
-          generatedTitle = fallbackTitle;
-
-          await _supabase.from('memories').update({
-            'title': fallbackTitle,
-          }).eq('id', memoryId);
+          // Log but don't fail - processing status insert is best-effort
+          // The dispatcher can still process the memory
+          print('Warning: Failed to insert memory_processing_status: $e');
         }
-      } else {
-        // No text available for processing, use fallback title
-        final fallbackTitle = _getFallbackTitle(state.memoryType);
-        generatedTitle = fallbackTitle;
-
-        await _supabase.from('memories').update({
-          'title': fallbackTitle,
-        }).eq('id', memoryId);
       }
+
+      // Use fallback title for now - will be updated when processing completes
+      generatedTitle = _getFallbackTitle(state.memoryType);
+
+      // Set fallback title immediately
+      await _supabase.from('memories').update({
+        'title': generatedTitle,
+      }).eq('id', memoryId);
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
 
       return MemorySaveResult(
         memoryId: memoryId,
         generatedTitle: generatedTitle,
-        titleGeneratedAt: titleGeneratedAt,
+        titleGeneratedAt: null, // Will be set when processing completes
         photoUrls: photoUrls,
         videoUrls: videoUrls,
         hasLocation: locationWkt != null,
@@ -631,81 +589,66 @@ class MemorySaveService {
 
       await _supabase.from('memories').update(updateData).eq('id', memoryId);
 
-      // Step 6: Process memory if text changed (text processing + title generation)
-      String? generatedTitle;
-      DateTime? titleGeneratedAt;
-
-      // Check if we have input_text to process
+      // Step 6: Queue memory for processing if text changed
+      // Processing will happen asynchronously via dispatcher
       final hasInputText = state.inputText?.trim().isNotEmpty == true;
+      String? generatedTitle;
 
       if (hasInputText) {
-        onProgress?.call(message: 'Processing text...', progress: 0.85);
-
+        // Insert or update processing status row - dispatcher will pick this up
         try {
-          MemoryProcessingResponse? processingResponse;
+          // Check if processing status already exists
+          final existingStatus = await _supabase
+              .from('memory_processing_status')
+              .select('memory_id')
+              .eq('memory_id', memoryId)
+              .maybeSingle();
 
-          // Call appropriate processing function based on memory type
-          switch (state.memoryType) {
-            case MemoryType.moment:
-              processingResponse = await _processingService.processMoment(
-                memoryId: memoryId,
-              );
-              break;
-            case MemoryType.memento:
-              processingResponse = await _processingService.processMemento(
-                memoryId: memoryId,
-              );
-              break;
-            case MemoryType.story:
-              // For stories, process asynchronously (fire and forget)
-              // The processing updates the database directly
-              _processingService.processStory(memoryId: memoryId).then(
-                (_) {
-                  // Success - processing completed, database already updated
-                },
-                onError: (e) {
-                  // Log error but don't block update operation
-                  print('Story processing failed: $e');
-                },
-              );
-              // Use fallback title for now - will be updated when processing completes
-              generatedTitle = _getFallbackTitle(state.memoryType);
-              break;
+          if (existingStatus == null) {
+            // Insert new processing status
+            await _supabase.from('memory_processing_status').insert({
+              'memory_id': memoryId,
+              'state': 'queued',
+              'attempts': 0,
+              'metadata': {
+                'memory_type': state.memoryType.apiValue,
+              },
+            });
+          } else {
+            // Reset to queued state for reprocessing
+            await _supabase
+                .from('memory_processing_status')
+                .update({
+                  'state': 'queued',
+                  'attempts': 0,
+                  'last_error': null,
+                  'last_error_at': null,
+                  'metadata': {
+                    'memory_type': state.memoryType.apiValue,
+                  },
+                })
+                .eq('memory_id', memoryId);
           }
-
-          if (processingResponse != null) {
-            generatedTitle = processingResponse.title;
-            titleGeneratedAt = processingResponse.generatedAt;
-            // Note: processed_text and title are already updated in the database by the edge function
-          }
-        } catch (e, stackTrace) {
-          // Processing failed, use fallback title
-          print(
-              'ERROR: Memory processing failed for ${state.memoryType} (memoryId: $memoryId): $e');
-          print('ERROR: Stack trace: $stackTrace');
-          final fallbackTitle = _getFallbackTitle(state.memoryType);
-          generatedTitle = fallbackTitle;
-
-          await _supabase.from('memories').update({
-            'title': fallbackTitle,
-          }).eq('id', memoryId);
+        } catch (e) {
+          // Log but don't fail - processing status insert is best-effort
+          print('Warning: Failed to update memory_processing_status: $e');
         }
-      } else {
-        // No text available for processing, use fallback title
-        final fallbackTitle = _getFallbackTitle(state.memoryType);
-        generatedTitle = fallbackTitle;
-
-        await _supabase.from('memories').update({
-          'title': fallbackTitle,
-        }).eq('id', memoryId);
       }
+
+      // Use fallback title for now - will be updated when processing completes
+      generatedTitle = _getFallbackTitle(state.memoryType);
+
+      // Set fallback title immediately
+      await _supabase.from('memories').update({
+        'title': generatedTitle,
+      }).eq('id', memoryId);
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
 
       return MemorySaveResult(
         memoryId: memoryId,
         generatedTitle: generatedTitle,
-        titleGeneratedAt: titleGeneratedAt,
+        titleGeneratedAt: null, // Will be set when processing completes
         photoUrls: allPhotoUrls,
         videoUrls: allVideoUrls,
         hasLocation: locationWkt != null,

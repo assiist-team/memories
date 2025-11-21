@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:memories/models/memory_detail.dart';
 import 'package:memories/models/queued_moment.dart';
@@ -39,24 +40,46 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
     final capturedAt = queued.capturedAt ?? queued.createdAt;
 
     // Convert photo paths to PhotoMedia
-    final photos = queued.photoPaths.asMap().entries.map((entry) {
-      return PhotoMedia(
-        url: entry.value, // Local file path
-        index: entry.key,
-        caption: null,
-      );
-    }).toList();
+    final photos = queued.photoPaths.asMap().entries
+        .where((entry) {
+          // Filter out entries whose file no longer exists
+          final path = entry.value.replaceFirst('file://', '');
+          return File(path).existsSync();
+        })
+        .map((entry) {
+          // Normalize path to file:// form for clarity
+          final path = entry.value.replaceFirst('file://', '');
+          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
+          return PhotoMedia(
+            url: normalizedPath,
+            index: entry.key,
+            caption: null,
+            source: MediaSource.localFile,
+          );
+        })
+        .toList();
 
     // Convert video paths to VideoMedia
-    final videos = queued.videoPaths.asMap().entries.map((entry) {
-      return VideoMedia(
-        url: entry.value, // Local file path
-        index: entry.key,
-        duration: null,
-        posterUrl: null,
-        caption: null,
-      );
-    }).toList();
+    final videos = queued.videoPaths.asMap().entries
+        .where((entry) {
+          // Filter out entries whose file no longer exists
+          final path = entry.value.replaceFirst('file://', '');
+          return File(path).existsSync();
+        })
+        .map((entry) {
+          // Normalize path to file:// form for clarity
+          final path = entry.value.replaceFirst('file://', '');
+          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
+          return VideoMedia(
+            url: normalizedPath,
+            index: entry.key,
+            duration: null,
+            posterUrl: null,
+            caption: null,
+            source: MediaSource.localFile,
+          );
+        })
+        .toList();
 
     // Create location data if available
     LocationData? locationData;
@@ -99,24 +122,46 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
     final capturedAt = queued.capturedAt ?? queued.createdAt;
 
     // Convert photo paths to PhotoMedia
-    final photos = queued.photoPaths.asMap().entries.map((entry) {
-      return PhotoMedia(
-        url: entry.value, // Local file path
-        index: entry.key,
-        caption: null,
-      );
-    }).toList();
+    final photos = queued.photoPaths.asMap().entries
+        .where((entry) {
+          // Filter out entries whose file no longer exists
+          final path = entry.value.replaceFirst('file://', '');
+          return File(path).existsSync();
+        })
+        .map((entry) {
+          // Normalize path to file:// form for clarity
+          final path = entry.value.replaceFirst('file://', '');
+          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
+          return PhotoMedia(
+            url: normalizedPath,
+            index: entry.key,
+            caption: null,
+            source: MediaSource.localFile,
+          );
+        })
+        .toList();
 
     // Convert video paths to VideoMedia
-    final videos = queued.videoPaths.asMap().entries.map((entry) {
-      return VideoMedia(
-        url: entry.value, // Local file path
-        index: entry.key,
-        duration: null,
-        posterUrl: null,
-        caption: null,
-      );
-    }).toList();
+    final videos = queued.videoPaths.asMap().entries
+        .where((entry) {
+          // Filter out entries whose file no longer exists
+          final path = entry.value.replaceFirst('file://', '');
+          return File(path).existsSync();
+        })
+        .map((entry) {
+          // Normalize path to file:// form for clarity
+          final path = entry.value.replaceFirst('file://', '');
+          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
+          return VideoMedia(
+            url: normalizedPath,
+            index: entry.key,
+            duration: null,
+            posterUrl: null,
+            caption: null,
+            source: MediaSource.localFile,
+          );
+        })
+        .toList();
 
     // For stories, audio is stored separately - we'll handle it in the UI layer
     // The audioPath is available in QueuedStory but not in MemoryDetail model

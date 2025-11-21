@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:memories/models/queued_moment.dart';
+import 'package:memories/models/queue_change_event.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -19,6 +21,16 @@ OfflineQueueService offlineQueueService(OfflineQueueServiceRef ref) {
 }
 
 class OfflineQueueService {
+  final _changeController = StreamController<QueueChangeEvent>.broadcast();
+  
+  /// Stream of queue change events
+  Stream<QueueChangeEvent> get changeStream => _changeController.stream;
+  
+  /// Dispose resources
+  void dispose() {
+    _changeController.close();
+  }
+
   /// Get all queued moments from storage
   Future<List<QueuedMoment>> _getAllMoments() async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,10 +51,18 @@ class OfflineQueueService {
   /// Add a moment to the queue
   Future<void> enqueue(QueuedMoment moment) async {
     final moments = await _getAllMoments();
+    final isUpdate = moments.any((m) => m.localId == moment.localId);
     // Remove if already exists (update)
     moments.removeWhere((m) => m.localId == moment.localId);
     moments.add(moment);
     await _saveAllMoments(moments);
+    
+    // Emit change event
+    _changeController.add(QueueChangeEvent(
+      localId: moment.localId,
+      memoryType: moment.memoryType,
+      type: isUpdate ? QueueChangeType.updated : QueueChangeType.added,
+    ));
   }
 
   /// Get all queued moments
@@ -68,14 +88,26 @@ class OfflineQueueService {
 
   /// Update a queued moment
   Future<void> update(QueuedMoment moment) async {
-    await enqueue(moment); // Same as enqueue for this implementation
+    await enqueue(moment); // Same as enqueue for this implementation (emits updated event)
   }
 
   /// Remove a queued moment (after successful sync)
   Future<void> remove(String localId) async {
     final moments = await _getAllMoments();
+    final moment = moments.firstWhere(
+      (m) => m.localId == localId,
+      orElse: () => throw StateError('Moment not found: $localId'),
+    );
+    final memoryType = moment.memoryType;
     moments.removeWhere((m) => m.localId == localId);
     await _saveAllMoments(moments);
+    
+    // Emit change event
+    _changeController.add(QueueChangeEvent(
+      localId: localId,
+      memoryType: memoryType,
+      type: QueueChangeType.removed,
+    ));
   }
 
   /// Get count of queued moments

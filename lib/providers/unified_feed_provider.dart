@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/queue_change_event.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/memory_sync_service.dart';
@@ -104,6 +105,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   int _currentPageNumber = 1;
   Set<MemoryType> _memoryTypeFilters = {};
   StreamSubscription<SyncCompleteEvent>? _syncSub;
+  StreamSubscription<QueueChangeEvent>? _queueChangeSub;
+  StreamSubscription<QueueChangeEvent>? _storyQueueChangeSub;
 
   @override
   UnifiedFeedViewState build([Set<MemoryType>? memoryTypeFilters]) {
@@ -113,8 +116,11 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       MemoryType.memento,
     };
     _setupSyncListener();
+    _setupQueueChangeListeners();
     ref.onDispose(() {
       _syncSub?.cancel();
+      _queueChangeSub?.cancel();
+      _storyQueueChangeSub?.cancel();
     });
     return const UnifiedFeedViewState(state: UnifiedFeedState.initial);
   }
@@ -130,7 +136,54 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     });
   }
 
+  void _setupQueueChangeListeners() {
+    final queueService = ref.read(offlineQueueServiceProvider);
+    final storyQueueService = ref.read(offlineStoryQueueServiceProvider);
+
+    _queueChangeSub?.cancel();
+    _queueChangeSub = queueService.changeStream.listen((event) {
+      _handleQueueChange(event);
+    });
+
+    _storyQueueChangeSub?.cancel();
+    _storyQueueChangeSub = storyQueueService.changeStream.listen((event) {
+      _handleQueueChange(event);
+    });
+  }
+
+  void _handleQueueChange(QueueChangeEvent event) {
+    // Handle different change types
+    switch (event.type) {
+      case QueueChangeType.added:
+      case QueueChangeType.updated:
+        // For added/updated, re-fetch the feed to get latest queue state
+        // This ensures the feed reflects the latest queue contents
+        if (state.state == UnifiedFeedState.ready || state.state == UnifiedFeedState.empty) {
+          // Only refresh if feed is already loaded
+          _fetchPage(
+            cursor: null,
+            append: false,
+            pageNumber: 1,
+          );
+        }
+        break;
+      case QueueChangeType.removed:
+        // For removed, optimistically remove from feed immediately
+        _removeQueuedEntryByLocalId(event.localId);
+        break;
+    }
+  }
+
   void _removeQueuedEntry(String localId) {
+    final updated = state.memories
+        .where((m) => !(m.isOfflineQueued && m.localId == localId))
+        .toList();
+
+    state = state.copyWith(memories: updated);
+  }
+  
+  /// Handle queue change event - remove queued entry by localId
+  void _removeQueuedEntryByLocalId(String localId) {
     final updated = state.memories
         .where((m) => !(m.isOfflineQueued && m.localId == localId))
         .toList();

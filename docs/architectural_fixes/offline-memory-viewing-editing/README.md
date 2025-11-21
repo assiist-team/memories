@@ -66,6 +66,7 @@ Enable users to view and edit memories that were captured offline **before** the
 - When sync completes, offline memory transitions from queue to database
 - Timeline updates to show synced version (removes queue entry)
 - No duplicate entries during transition
+- As part of sync completion, a `memory_processing_status` row is created and the **event-driven processing pipeline** (see `../ui-improvements/memory-processing-pipeline-and-notification-architecture.md`) starts LLM processing immediately once the device is online, without any cron-introduced delay.
 
 ## Backward Compatibility Stance
 

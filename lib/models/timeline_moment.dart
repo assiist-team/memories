@@ -1,3 +1,5 @@
+import 'package:memories/models/memory_detail.dart';
+
 /// Status of offline sync for a memory
 enum OfflineSyncStatus {
   queued,
@@ -261,20 +263,30 @@ class TimelineMoment {
 /// Primary media metadata for a Moment
 class PrimaryMedia {
   final String type; // 'photo' or 'video'
-  final String url; // Supabase Storage path
+  final String url; // Supabase Storage path or local file path
   final int index;
+  final MediaSource source;
 
   PrimaryMedia({
     required this.type,
     required this.url,
     required this.index,
+    this.source = MediaSource.supabaseStorage,
   });
 
+  bool get isLocal => source == MediaSource.localFile;
+
   factory PrimaryMedia.fromJson(Map<String, dynamic> json) {
+    final sourceString = json['source'] as String?;
+    final source = sourceString == 'localFile'
+        ? MediaSource.localFile
+        : MediaSource.supabaseStorage;
+    
     return PrimaryMedia(
       type: json['type'] as String,
       url: json['url'] as String,
       index: json['index'] as int,
+      source: source,
     );
   }
 
@@ -283,6 +295,7 @@ class PrimaryMedia {
       'type': type,
       'url': url,
       'index': index,
+      'source': source == MediaSource.localFile ? 'localFile' : 'supabaseStorage',
     };
   }
 

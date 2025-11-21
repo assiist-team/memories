@@ -1,6 +1,15 @@
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
+/// Source of media content
+enum MediaSource {
+  /// Media stored in Supabase Storage
+  supabaseStorage,
+  
+  /// Media stored locally as a file
+  localFile,
+}
+
 /// Model representing detailed Memory data for the detail view
 class MemoryDetail {
   final String id;
@@ -177,11 +186,12 @@ class LocationData {
 
 /// Photo media metadata
 class PhotoMedia {
-  final String url; // Supabase Storage path
+  final String url; // Supabase Storage path or local file path
   final int index;
   final int? width;
   final int? height;
   final String? caption;
+  final MediaSource source;
 
   PhotoMedia({
     required this.url,
@@ -189,26 +199,47 @@ class PhotoMedia {
     this.width,
     this.height,
     this.caption,
+    this.source = MediaSource.supabaseStorage,
   });
 
+  bool get isLocal => source == MediaSource.localFile;
+
   factory PhotoMedia.fromJson(Map<String, dynamic> json) {
+    final sourceString = json['source'] as String?;
+    final source = sourceString == 'localFile'
+        ? MediaSource.localFile
+        : MediaSource.supabaseStorage;
+    
     return PhotoMedia(
       url: json['url'] as String,
       index: json['index'] as int,
       width: json['width'] as int?,
       height: json['height'] as int?,
       caption: json['caption'] as String?,
+      source: source,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'url': url,
+      'index': index,
+      'width': width,
+      'height': height,
+      'caption': caption,
+      'source': source == MediaSource.localFile ? 'localFile' : 'supabaseStorage',
+    };
   }
 }
 
 /// Video media metadata
 class VideoMedia {
-  final String url; // Supabase Storage path
+  final String url; // Supabase Storage path or local file path
   final int index;
   final double? duration; // seconds
   final String? posterUrl; // Supabase Storage path for poster frame
   final String? caption;
+  final MediaSource source;
 
   VideoMedia({
     required this.url,
@@ -216,9 +247,17 @@ class VideoMedia {
     this.duration,
     this.posterUrl,
     this.caption,
+    this.source = MediaSource.supabaseStorage,
   });
 
+  bool get isLocal => source == MediaSource.localFile;
+
   factory VideoMedia.fromJson(Map<String, dynamic> json) {
+    final sourceString = json['source'] as String?;
+    final source = sourceString == 'localFile'
+        ? MediaSource.localFile
+        : MediaSource.supabaseStorage;
+    
     return VideoMedia(
       url: json['url'] as String,
       index: json['index'] as int,
@@ -227,7 +266,19 @@ class VideoMedia {
           : null,
       posterUrl: json['poster_url'] as String?,
       caption: json['caption'] as String?,
+      source: source,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'url': url,
+      'index': index,
+      'duration': duration,
+      'poster_url': posterUrl,
+      'caption': caption,
+      'source': source == MediaSource.localFile ? 'localFile' : 'supabaseStorage',
+    };
   }
 }
 

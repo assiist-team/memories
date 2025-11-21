@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:memories/models/memory_detail.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/memory_processing_status.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/memory_detail_provider.dart';
@@ -12,6 +13,7 @@ import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/unified_feed_provider.dart';
 import 'package:memories/providers/unified_feed_tab_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
+import 'package:memories/providers/memory_processing_status_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
@@ -195,6 +197,109 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     }
   }
 
+  /// Build processing status banner for server-backed memories
+  Widget _buildProcessingStatusBanner(
+    BuildContext context,
+    WidgetRef ref,
+    String memoryId,
+  ) {
+    final statusAsync = ref.watch(memoryProcessingStatusStreamProvider(memoryId));
+
+    return statusAsync.when(
+      data: (status) {
+        // Only show if processing is in progress
+        if (status == null || !status.isInProgress) {
+          return const SizedBox.shrink();
+        }
+
+        String message;
+        Color background;
+        Color textColor;
+
+        switch (status.state) {
+          case MemoryProcessingState.queued:
+            message = 'Queued for processing…';
+            background = Colors.blue.shade50;
+            textColor = Colors.blue.shade900;
+            break;
+          case MemoryProcessingState.processing:
+            // Check metadata for phase information
+            final phase = status.phase;
+            if (phase != null) {
+              switch (phase) {
+                case 'title':
+                case 'title_generation':
+                  message = 'Generating title…';
+                  break;
+                case 'text':
+                case 'text_processing':
+                  message = 'Processing text…';
+                  break;
+                case 'narrative':
+                  message = 'Generating narrative…';
+                  break;
+                default:
+                  message = 'Processing in background…';
+              }
+            } else {
+              message = 'Processing in background…';
+            }
+            background = Colors.blue.shade50;
+            textColor = Colors.blue.shade900;
+            break;
+          case MemoryProcessingState.failed:
+            message = 'Processing failed. We\'ll retry automatically.';
+            background = Colors.red.shade50;
+            textColor = Colors.red.shade900;
+            break;
+          case MemoryProcessingState.complete:
+            return const SizedBox.shrink();
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: background,
+            border: Border(
+              bottom: BorderSide(color: textColor.withOpacity(0.25)),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (status.state == MemoryProcessingState.processing)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(textColor),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: textColor,
+                ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: textColor,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
   /// Build offline queued status banner
   Widget _buildOfflineQueuedBanner(
     BuildContext context,
@@ -329,7 +434,16 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       ),
       body: Stack(
         children: [
-          _buildBody(context, detailState, ref),
+          Column(
+            children: [
+              // Processing status banner for server-backed memories
+              if (detailState.memory != null)
+                _buildProcessingStatusBanner(context, ref, detailState.memory!.id),
+              Expanded(
+                child: _buildBody(context, detailState, ref),
+              ),
+            ],
+          ),
           // Floating action button for delete
           if (detailState.memory != null)
             _buildFloatingActions(context, ref, detailState.memory!),
@@ -706,18 +820,40 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     WidgetRef ref,
     MemoryDetail memory,
   ) {
+    final memoryType = memory.memoryType;
+    final deleteLabel = memoryType == 'story' 
+        ? 'Delete story' 
+        : memoryType == 'memento'
+            ? 'Delete memento'
+            : 'Delete moment';
+    
+    // For offline queued memories, delete is always available (local operation)
+    if (widget.isOfflineQueued) {
+      return Positioned(
+        bottom: 16,
+        right: 16,
+        child: Semantics(
+          label: deleteLabel,
+          button: true,
+          child: IconButton(
+            icon: Icon(
+              Icons.delete,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => _showDeleteConfirmationForQueued(context, ref, memory),
+            tooltip: 'Delete',
+          ),
+        ),
+      );
+    }
+    
+    // For server-backed memories, require online connection
     final connectivityService = ref.read(connectivityServiceProvider);
     
     return FutureBuilder<bool>(
       future: connectivityService.isOnline(),
       builder: (context, snapshot) {
         final isOnline = snapshot.data ?? false;
-        final memoryType = memory.memoryType;
-        final deleteLabel = memoryType == 'story' 
-            ? 'Delete story' 
-            : memoryType == 'memento'
-                ? 'Delete memento'
-                : 'Delete moment';
         
         return Positioned(
           bottom: 16,
@@ -865,6 +1001,76 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     ref.read(memoryDetailNotifierProvider(memory.id).notifier).refresh();
   }
 
+  /// Show delete confirmation bottom sheet for queued memories
+  void _showDeleteConfirmationForQueued(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Delete "${memory.displayTitle}"?',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              memory.memoryType == 'story'
+                  ? 'This action cannot be undone. The unsynced story and all its content will be permanently deleted.'
+                  : memory.memoryType == 'memento'
+                      ? 'This action cannot be undone. The unsynced memento and all its media will be permanently deleted.'
+                      : 'This action cannot be undone. The unsynced moment and all its media will be permanently deleted.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  ),
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    // Show loading feedback immediately
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Deleting...'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                    await _handleDeleteQueuedMemory(context, ref, memory);
+                  },
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Show delete confirmation bottom sheet
   void _showDeleteConfirmation(
     BuildContext context,
@@ -933,6 +1139,77 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Handle delete action for queued offline memories
+  Future<void> _handleDeleteQueuedMemory(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+  ) async {
+    final analytics = ref.read(timelineAnalyticsServiceProvider);
+    final queueService = ref.read(offlineQueueServiceProvider);
+    final storyQueueService = ref.read(offlineStoryQueueServiceProvider);
+    
+    // Track delete action
+    analytics.trackMemoryDetailDelete(memory.id);
+    
+    // Capture navigator and scaffold messenger before async operation
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final canPop = navigator.canPop();
+    
+    try {
+      // Determine which queue service to use based on memory type
+      if (memory.memoryType == 'story') {
+        await storyQueueService.remove(memory.id);
+      } else {
+        // Moments and mementos use the main queue
+        await queueService.remove(memory.id);
+      }
+      
+      // Queue-change event will drive unified feed update automatically
+      // No need to manually remove from feed here
+      
+      final deleteMessage = memory.memoryType == 'story' 
+          ? 'Story deleted' 
+          : memory.memoryType == 'memento'
+              ? 'Memento deleted'
+              : 'Moment deleted';
+      
+      // Switch to timeline tab
+      ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+      
+      // Pop detail screen
+      if (canPop) {
+        navigator.pop();
+      }
+      
+      // Show success message
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(deleteMessage),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      // Handle error
+      if (!context.mounted) return;
+      
+      final errorMessage = memory.memoryType == 'story' 
+          ? 'Failed to delete story. Please try again.'
+          : memory.memoryType == 'memento'
+              ? 'Failed to delete memento. Please try again.'
+              : 'Failed to delete memory. Please try again.';
+      
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   /// Handle delete action with optimistic UI removal

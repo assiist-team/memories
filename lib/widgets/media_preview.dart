@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/memory_detail.dart';
@@ -117,6 +118,46 @@ class _PhotoPreview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Branch on local vs remote media
+    if (photo.isLocal) {
+      final path = photo.url.replaceFirst('file://', '');
+      final file = File(path);
+      
+      if (!file.existsSync()) {
+        return Container(
+          color: Colors.white,
+          child: const Center(
+            child: Icon(
+              Icons.broken_image,
+              color: Colors.grey,
+              size: 64,
+            ),
+          ),
+        );
+      }
+      
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          file,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.white,
+              child: const Center(
+                child: Icon(
+                  Icons.broken_image,
+                  color: Colors.grey,
+                  size: 64,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    }
+    
+    // Remote Supabase media
     final supabase = ref.read(supabaseClientProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
@@ -192,6 +233,40 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
   }
 
   Future<void> _initializeVideo() async {
+    // Branch on local vs remote media
+    if (widget.video.isLocal) {
+      final path = widget.video.url.replaceFirst('file://', '');
+      final file = File(path);
+      
+      if (!file.existsSync()) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+          });
+        }
+        return;
+      }
+      
+      try {
+        _controller = VideoPlayerController.file(file);
+        await _controller!.initialize();
+        
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+          });
+        }
+      }
+      return;
+    }
+    
+    // Remote Supabase media
     final supabase = ref.read(supabaseClientProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
@@ -236,9 +311,6 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
-    final imageCache = ref.read(timelineImageCacheServiceProvider);
-
     return Stack(
       children: [
         // Video player or poster
@@ -249,15 +321,17 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
               child: VideoPlayer(_controller!),
             ),
           )
-        else
+        else if (!widget.video.isLocal && widget.video.posterUrl != null)
           FutureBuilder<String?>(
-            future: widget.video.posterUrl != null
-                ? imageCache.getSignedUrlForDetailView(
-                    supabase,
-                    'moments-photos',
-                    widget.video.posterUrl!,
-                  )
-                : Future.value(null),
+            future: () {
+              final supabase = ref.read(supabaseClientProvider);
+              final imageCache = ref.read(timelineImageCacheServiceProvider);
+              return imageCache.getSignedUrlForDetailView(
+                supabase,
+                'moments-photos',
+                widget.video.posterUrl!,
+              );
+            }(),
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 return ClipRRect(
@@ -274,6 +348,14 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
                 ),
               );
             },
+          )
+        else
+          const Center(
+            child: Icon(
+              Icons.videocam,
+              color: Colors.grey,
+              size: 64,
+            ),
           ),
         // Play/pause overlay
         if (_isInitialized && _controller != null)
@@ -491,9 +573,6 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
-    final imageCache = ref.read(timelineImageCacheServiceProvider);
-
     return GestureDetector(
       onDoubleTap: _handleDoubleTap,
       child: InteractiveViewer(
@@ -501,21 +580,24 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
         minScale: 1.0,
         maxScale: 3.0,
         child: Center(
-          child: FutureBuilder<String>(
-            future: imageCache.getSignedUrlForDetailView(
-              supabase,
-              'moments-photos',
-              widget.photo.url,
-            ),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const CircularProgressIndicator(
-                  color: Colors.white,
+          child: () {
+            // Branch on local vs remote media
+            if (widget.photo.isLocal) {
+              final path = widget.photo.url.replaceFirst('file://', '');
+              final file = File(path);
+              
+              if (!file.existsSync()) {
+                return const Center(
+                  child: Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64,
+                  ),
                 );
               }
-
-              return Image.network(
-                snapshot.data!,
+              
+              return Image.file(
+                file,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return const Center(
@@ -527,8 +609,41 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
                   );
                 },
               );
-            },
-          ),
+            }
+            
+            // Remote Supabase media
+            final supabase = ref.read(supabaseClientProvider);
+            final imageCache = ref.read(timelineImageCacheServiceProvider);
+            
+            return FutureBuilder<String>(
+              future: imageCache.getSignedUrlForDetailView(
+                supabase,
+                'moments-photos',
+                widget.photo.url,
+              ),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const CircularProgressIndicator(
+                    color: Colors.white,
+                  );
+                }
+
+                return Image.network(
+                  snapshot.data!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.white,
+                        size: 64,
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          }(),
         ),
       ),
     );
@@ -565,6 +680,40 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
   }
 
   Future<void> _initializeVideo() async {
+    // Branch on local vs remote media
+    if (widget.video.isLocal) {
+      final path = widget.video.url.replaceFirst('file://', '');
+      final file = File(path);
+      
+      if (!file.existsSync()) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+          });
+        }
+        return;
+      }
+      
+      try {
+        _controller = VideoPlayerController.file(file);
+        await _controller!.initialize();
+        
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+          });
+        }
+      }
+      return;
+    }
+    
+    // Remote Supabase media
     final supabase = ref.read(supabaseClientProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
@@ -608,9 +757,6 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
-    final imageCache = ref.read(timelineImageCacheServiceProvider);
-
     return Stack(
       children: [
         // Video player or poster
@@ -621,15 +767,17 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
               child: VideoPlayer(_controller!),
             ),
           )
-        else
+        else if (!widget.video.isLocal && widget.video.posterUrl != null)
           FutureBuilder<String?>(
-            future: widget.video.posterUrl != null
-                ? imageCache.getSignedUrlForDetailView(
-                    supabase,
-                    'moments-photos',
-                    widget.video.posterUrl!,
-                  )
-                : Future.value(null),
+            future: () {
+              final supabase = ref.read(supabaseClientProvider);
+              final imageCache = ref.read(timelineImageCacheServiceProvider);
+              return imageCache.getSignedUrlForDetailView(
+                supabase,
+                'moments-photos',
+                widget.video.posterUrl!,
+              );
+            }(),
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 return Center(
@@ -645,6 +793,14 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
                 ),
               );
             },
+          )
+        else
+          const Center(
+            child: Icon(
+              Icons.videocam,
+              color: Colors.white,
+              size: 64,
+            ),
           ),
         // Play/pause overlay
         if (_isInitialized && _controller != null)

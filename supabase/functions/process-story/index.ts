@@ -8,7 +8,7 @@ interface ProcessStoryRequest {
 interface ProcessStoryResponse {
   title: string;
   processedText: string;
-  status: "success" | "fallback" | "failed";
+  status: "success";
   generatedAt: string;
 }
 
@@ -19,7 +19,6 @@ interface ErrorResponse {
 }
 
 const MAX_TITLE_LENGTH = 60;
-const FALLBACK_TITLE = "Untitled Story";
 
 /**
  * Truncates a string to a maximum length, ensuring it doesn't break words
@@ -425,36 +424,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch story_fields to get current retry_count
-    const { data: storyFields } = await supabaseClient
-      .from("story_fields")
-      .select("retry_count")
-      .eq("memory_id", requestBody.memoryId)
-      .single();
-
-    const currentRetryCount = storyFields?.retry_count || 0;
-
     // Validate input_text
     const inputText = memory.input_text?.trim();
     if (!inputText || inputText.length === 0) {
-      const errorMessage = "Story has no input_text to process";
-      
-      // Update story_fields with failure
-      await supabaseClient
-        .from("story_fields")
-        .update({
-          story_status: "failed",
-          processing_error: errorMessage,
-          retry_count: currentRetryCount + 1,
-          last_retry_at: new Date().toISOString(),
-          processing_completed_at: new Date().toISOString(),
-        })
-        .eq("memory_id", requestBody.memoryId);
-
       return new Response(
         JSON.stringify({
           code: "INVALID_REQUEST",
-          message: errorMessage,
+          message: "Story has no input_text to process",
         } as ErrorResponse),
         {
           status: 400,
@@ -465,23 +441,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // Validate that input_text contains meaningful content (not just whitespace or single characters)
     if (inputText.length < 3 || inputText.replace(/\s/g, "").length < 2) {
-      const errorMessage = "Story input_text is too short or contains no meaningful content";
-      
-      await supabaseClient
-        .from("story_fields")
-        .update({
-          story_status: "failed",
-          processing_error: errorMessage,
-          retry_count: currentRetryCount + 1,
-          last_retry_at: new Date().toISOString(),
-          processing_completed_at: new Date().toISOString(),
-        })
-        .eq("memory_id", requestBody.memoryId);
-
       return new Response(
         JSON.stringify({
           code: "INVALID_REQUEST",
-          message: errorMessage,
+          message: "Story input_text is too short or contains no meaningful content",
         } as ErrorResponse),
         {
           status: 400,
@@ -490,39 +453,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Update processing status to 'processing'
+    const now = new Date().toISOString();
+    const { error: statusUpdateError } = await supabaseClient
+      .from("memory_processing_status")
+      .update({
+        state: "processing",
+        started_at: now,
+        last_updated_at: now,
+        metadata: {
+          memory_type: "story",
+          phase: "narrative_generation",
+        },
+      })
+      .eq("memory_id", requestBody.memoryId);
+
+    if (statusUpdateError) {
+      console.error("Error updating processing status:", statusUpdateError);
+      // Continue processing even if status update fails
+    }
+
     const startTime = Date.now();
-    let narrative: string | null = null;
-    let title: string | null = null;
-    let status: "success" | "fallback" | "failed" = "failed";
-    let errorMessage: string | null = null;
 
     try {
-      // Step 1: Generate title from input text
-      title = await generateTitleWithLLM(inputText);
+      // Run narrative generation and title generation in parallel
+      const [narrativeResult, titleResult] = await Promise.all([
+        generateNarrativeWithLLM(inputText),
+        generateTitleWithLLM(inputText), // Generate title from input_text in parallel
+      ]);
       
-      if (!title) {
-        title = FALLBACK_TITLE;
-        status = "fallback";
-      }
-
-      // Step 2: Generate narrative
-      narrative = await generateNarrativeWithLLM(inputText);
-      
-      if (!narrative) {
+      if (!narrativeResult) {
         throw new Error("Failed to generate narrative");
       }
 
-      // Update status based on both operations
-      if (title !== FALLBACK_TITLE && narrative) {
-        status = "success";
-      } else if (narrative) {
-        status = "fallback";
-      } else {
-        status = "failed";
+      if (!titleResult) {
+        throw new Error("Failed to generate title");
       }
 
+      const narrative = narrativeResult;
+      const title = titleResult;
+
       const duration = Date.now() - startTime;
-      const now = new Date().toISOString();
+      const completedAt = new Date().toISOString();
 
       // Update memories table with processed_text and title
       const { error: updateMemoryError } = await supabaseClient
@@ -530,7 +502,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .update({
           processed_text: narrative,
           title: title,
-          title_generated_at: now,
+          title_generated_at: completedAt,
         })
         .eq("id", requestBody.memoryId);
 
@@ -538,13 +510,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         throw new Error(`Failed to update memory: ${updateMemoryError.message}`);
       }
 
-      // Update story_fields table with success status
+      // Update story_fields table with narrative timestamp (processing status is in memory_processing_status)
       const { error: updateStoryFieldsError } = await supabaseClient
         .from("story_fields")
         .update({
-          story_status: "complete",
-          processing_completed_at: now,
-          narrative_generated_at: now,
+          narrative_generated_at: completedAt,
           processing_error: null,
         })
         .eq("memory_id", requestBody.memoryId);
@@ -553,6 +523,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
         throw new Error(`Failed to update story_fields: ${updateStoryFieldsError.message}`);
       }
 
+      // Update memory_processing_status to 'complete'
+      await supabaseClient
+        .from("memory_processing_status")
+        .update({
+          state: "complete",
+          completed_at: completedAt,
+          last_updated_at: completedAt,
+          metadata: {
+            memory_type: "story",
+            duration_ms: duration,
+          },
+        })
+        .eq("memory_id", requestBody.memoryId);
+
       // Log success event
       const requestId = crypto.randomUUID();
       console.log(
@@ -560,21 +544,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
           event: "story_processing",
           userId: user.id,
           memoryId: requestBody.memoryId,
-          status: status,
           titleLength: title.length,
           narrativeLength: narrative.length,
           inputTextLength: inputText.length,
           durationMs: duration,
           requestId: requestId,
-          timestamp: now,
+          timestamp: completedAt,
         }),
       );
 
       const response: ProcessStoryResponse = {
         title: title,
         processedText: narrative,
-        status: status,
-        generatedAt: now,
+        status: "success",
+        generatedAt: completedAt,
       };
 
       return new Response(JSON.stringify(response), {
@@ -583,21 +566,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     } catch (error) {
       // Handle processing failure
-      errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      status = "failed";
-      
-      const duration = Date.now() - startTime;
-      const now = new Date().toISOString();
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      const failedAt = new Date().toISOString();
 
-      // Update story_fields with failure
+      // Get current attempts count from memory_processing_status
+      const { data: currentStatus } = await supabaseClient
+        .from("memory_processing_status")
+        .select("attempts")
+        .eq("memory_id", requestBody.memoryId)
+        .single();
+
+      const newAttempts = (currentStatus?.attempts || 0) + 1;
+
+      // Update memory_processing_status to 'failed'
       await supabaseClient
-        .from("story_fields")
+        .from("memory_processing_status")
         .update({
-          story_status: "failed",
-          processing_error: errorMessage,
-          retry_count: currentRetryCount + 1,
-          last_retry_at: now,
-          processing_completed_at: now,
+          state: "failed",
+          attempts: newAttempts,
+          last_error: errorMessage,
+          last_error_at: failedAt,
+          last_updated_at: failedAt,
+          metadata: {
+            memory_type: "story",
+            error: errorMessage,
+            attempts: newAttempts,
+          },
         })
         .eq("memory_id", requestBody.memoryId);
 
@@ -609,10 +603,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           userId: user.id,
           memoryId: requestBody.memoryId,
           error: errorMessage,
-          retryCount: currentRetryCount + 1,
-          durationMs: duration,
+          attempts: newAttempts,
           requestId: requestId,
-          timestamp: now,
+          timestamp: failedAt,
         }),
       );
 

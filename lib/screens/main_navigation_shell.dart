@@ -4,6 +4,7 @@ import 'package:memories/screens/capture/capture_screen.dart';
 import 'package:memories/screens/timeline/unified_timeline_screen.dart';
 import 'package:memories/screens/settings/settings_screen.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
+import 'package:memories/widgets/global_processing_overlay.dart';
 
 /// Main navigation shell that provides bottom navigation between main app screens
 /// 
@@ -54,11 +55,12 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
     final selectedTab = ref.watch(mainNavigationTabNotifierProvider);
     final currentIndex = _getTabIndex(selectedTab);
 
-    return Scaffold(
-      body: IndexedStack(
-        index: currentIndex,
-        children: _screens,
-      ),
+    return GlobalProcessingOverlay(
+      child: Scaffold(
+        body: IndexedStack(
+          index: currentIndex,
+          children: _screens,
+        ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -133,6 +135,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
           ),
         ],
         ),
+      ),
       ),
     );
   }

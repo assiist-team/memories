@@ -21,6 +21,7 @@ import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/queue_status_chips.dart';
 import 'package:memories/widgets/inspirational_quote.dart';
+import 'package:memories/widgets/save_button_success_checkmark.dart';
 
 /// Unified capture screen for creating Moments, Stories, and Mementos
 ///
@@ -41,8 +42,7 @@ class CaptureScreen extends ConsumerStatefulWidget {
 class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   final _descriptionController = TextEditingController();
   bool _isSaving = false;
-  String? _saveProgressMessage;
-  double? _saveProgress;
+  bool _showSuccessCheckmark = false;
   bool _hasInitializedDescription = false;
   String? _previousInputText; // Track previous state to detect external changes
 
@@ -250,16 +250,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     setState(() {
       _isSaving = true;
-      _saveProgress = 0.0;
-      _saveProgressMessage = 'Preparing...';
+      _showSuccessCheckmark = false;
     });
 
     try {
       // Step 1: Capture location metadata
-      _saveProgressMessage = 'Capturing location...';
-      _saveProgress = 0.05;
-      setState(() {});
-
       await notifier.captureLocation();
 
       // Step 2: Set captured timestamp
@@ -271,9 +266,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       if (finalState.memoryType == MemoryType.story) {
         // For Stories, queue for offline sync
         // MemorySyncService will automatically sync when connectivity is restored
-        // Check connectivity to determine if we should queue
-        final connectivityService = ref.read(connectivityServiceProvider);
-        final isOnline = await connectivityService.isOnline();
 
         try {
           // Queue story for sync (MemorySyncService handles automatic syncing)
@@ -297,28 +289,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           ref.invalidate(queueStatusProvider);
 
           if (mounted) {
-            // Reset saving state before navigation
+            // Show success checkmark briefly before navigation
             setState(() {
               _isSaving = false;
-              _saveProgressMessage = null;
-              _saveProgress = null;
+              _showSuccessCheckmark = true;
             });
 
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  isOnline
-                      ? 'Story queued for sync'
-                      : 'Story queued for sync when connection is restored',
-                ),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-            await notifier.clear(keepAudioIfQueued: true);
-            // Only pop if there's a route to pop (i.e., if this screen was pushed)
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+            // Wait for checkmark animation
+            await Future.delayed(const Duration(milliseconds: 600));
+
+            if (mounted) {
+              await notifier.clear(keepAudioIfQueued: true);
+              // Only pop if there's a route to pop (i.e., if this screen was pushed)
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
             }
             return;
           }
@@ -387,27 +372,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           result = await saveService.updateMemory(
             memoryId: editingMemoryId,
             state: finalState,
-            onProgress: ({message, progress}) {
-              if (mounted) {
-                setState(() {
-                  _saveProgressMessage = message;
-                  _saveProgress = progress;
-                });
-              }
-            },
           );
         } else {
           // Create new memory
           result = await saveService.saveMoment(
             state: finalState,
-            onProgress: ({message, progress}) {
-              if (mounted) {
-                setState(() {
-                  _saveProgressMessage = message;
-                  _saveProgress = progress;
-                });
-              }
-            },
           );
         }
       } on OfflineException {
@@ -425,18 +394,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           ref.invalidate(queueStatusProvider);
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                    'Memory queued for sync when connection is restored'),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-            await notifier.clear(keepAudioIfQueued: true);
-            // Only pop if there's a route to pop (i.e., if this screen was pushed)
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+            // Show success checkmark briefly before navigation
+            setState(() {
+              _isSaving = false;
+              _showSuccessCheckmark = true;
+            });
+
+            // Wait for checkmark animation
+            await Future.delayed(const Duration(milliseconds: 600));
+
+            if (mounted) {
+              await notifier.clear(keepAudioIfQueued: true);
+              // Only pop if there's a route to pop (i.e., if this screen was pushed)
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
             }
             return;
           }
@@ -457,50 +429,47 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
       if (result == null) return; // Should not happen, but safety check
 
-      // Step 4: Show success message and navigate appropriately
+      // Step 4: Show success checkmark and navigate appropriately
       if (mounted) {
-        final mediaCount = result.photoUrls.length + result.videoUrls.length;
-        final locationText = result.hasLocation ? ' with location' : '';
-        final mediaText = mediaCount > 0
-            ? ' ($mediaCount ${mediaCount == 1 ? 'item' : 'items'})'
-            : '';
+        // Show success checkmark briefly before navigation
+        setState(() {
+          _isSaving = false;
+          _showSuccessCheckmark = true;
+          _saveProgressMessage = null;
+          _saveProgress = null;
+        });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isEditing ? 'Memory updated$locationText$mediaText' : 'Memory saved$locationText$mediaText',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // Wait for checkmark animation
+        await Future.delayed(const Duration(milliseconds: 600));
 
-        // Clear state completely (including editingMemoryId)
-        await notifier.clear();
+        if (mounted) {
+          // Clear state completely (including editingMemoryId)
+          await notifier.clear();
 
-        if (isEditing) {
-          // When editing, navigate back to detail screen
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          }
-          // Refresh detail screen to show updated content
-          if (editingMemoryId != null) {
-            ref.read(memoryDetailNotifierProvider(editingMemoryId).notifier).refresh();
-          }
-        } else {
-          // When creating, navigate to detail view
-          // Only pop if there's a route to pop (i.e., if this screen was pushed)
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          }
-          // Navigate to memory detail view
-          final savedMemoryId = result.memoryId;
-          if (savedMemoryId.isNotEmpty) {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => MemoryDetailScreen(memoryId: savedMemoryId),
-              ),
-            );
+          if (isEditing) {
+            // When editing, navigate back to detail screen
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+            // Refresh detail screen to show updated content
+            if (editingMemoryId != null) {
+              ref.read(memoryDetailNotifierProvider(editingMemoryId).notifier).refresh();
+            }
+          } else {
+            // When creating, navigate to detail view
+            // Only pop if there's a route to pop (i.e., if this screen was pushed)
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+            // Navigate to memory detail view
+            final savedMemoryId = result.memoryId;
+            if (savedMemoryId.isNotEmpty) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => MemoryDetailScreen(memoryId: savedMemoryId),
+                ),
+              );
+            }
           }
         }
       }
@@ -564,11 +533,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       }
       notifier.setError(e.toString());
     } finally {
-      if (mounted) {
+      if (mounted && !_showSuccessCheckmark) {
         setState(() {
           _isSaving = false;
-          _saveProgressMessage = null;
-          _saveProgress = null;
+          _showSuccessCheckmark = false;
         });
       }
     }
@@ -971,65 +939,32 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      // Save button with progress indicator
+                      // Save button with compact spinner and success checkmark
                       Expanded(
                         child: Semantics(
                           label: 'Save memory',
                           button: true,
                           child: ElevatedButton(
-                            onPressed:
-                                (state.canSave && !_isSaving) ? _handleSave : null,
+                            onPressed: (state.canSave && !_isSaving && !_showSuccessCheckmark)
+                                ? _handleSave
+                                : null,
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               minimumSize: const Size(0, 48),
                             ),
-                            child: _isSaving
-                                ? Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Semantics(
-                                        label:
-                                            _saveProgressMessage ?? 'Saving memory',
-                                        value: _saveProgress != null
-                                            ? '${(_saveProgress! * 100).toInt()}% complete'
-                                            : null,
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<Color>(
-                                                        Colors.white),
-                                              ),
-                                            ),
-                                            if (_saveProgressMessage != null) ...[
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                _saveProgressMessage!,
-                                                style: const TextStyle(fontSize: 12),
-                                              ),
-                                            ],
-                                            if (_saveProgress != null) ...[
-                                              const SizedBox(height: 4),
-                                              LinearProgressIndicator(
-                                                value: _saveProgress,
-                                                backgroundColor:
-                                                    Colors.white.withOpacity(0.3),
-                                                valueColor:
-                                                    const AlwaysStoppedAnimation<
-                                                        Color>(Colors.white),
-                                              ),
-                                            ],
-                                          ],
+                            child: _showSuccessCheckmark
+                                ? const SaveButtonSuccessCheckmark()
+                                : _isSaving
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
-                                      ),
-                                    ],
-                                  )
-                                : const Text('Save'),
+                                      )
+                                    : const Text('Save'),
                           ),
                         ),
                       ),
