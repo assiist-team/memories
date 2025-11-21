@@ -270,8 +270,8 @@ Text: ${processedText.substring(0, 1000)}`;
  * 
  * This function:
  * - Fetches memento data from database using memoryId
+ * - Generates title from input_text
  * - Processes input_text → processed_text (cleaned, readable text with emphasis on significance)
- * - Generates title from processed_text
  * - Updates database with processed_text and title
  * - Returns processing status
  */
@@ -445,14 +445,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let title: string | null = null;
     let status: "success" | "fallback" | "partial" = "fallback";
 
-    // Step 1: Process text
+    // Step 1: Generate title from input text
+    const titleResult = await generateTitleWithLLM(inputText);
+    title = titleResult || FALLBACK_TITLE;
+
+    // Step 2: Process text
     const processedTextResult = await processTextWithLLM(inputText);
     processedText = processedTextResult || inputText; // Fallback to input_text if processing fails
-
-    // Step 2: Generate title from processed text
-    // processedText is guaranteed to be non-null here (falls back to inputText which is validated)
-    const titleResult = await generateTitleWithLLM(processedText!);
-    title = titleResult || FALLBACK_TITLE;
 
     // Determine status
     if (processedTextResult && titleResult) {

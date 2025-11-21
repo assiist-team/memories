@@ -5,6 +5,8 @@ import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/memory_processing_service.dart';
+import 'package:memories/services/offline_queue_service.dart';
+import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -41,10 +43,14 @@ MemorySaveService memorySaveService(MemorySaveServiceRef ref) {
   final supabase = ref.watch(supabaseClientProvider);
   final processingService = ref.watch(memoryProcessingServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
+  final offlineQueueService = ref.watch(offlineQueueServiceProvider);
+  final offlineStoryQueueService = ref.watch(offlineStoryQueueServiceProvider);
   return MemorySaveService(
     supabase,
     processingService,
     connectivityService,
+    offlineQueueService,
+    offlineStoryQueueService,
   );
 }
 
@@ -52,6 +58,8 @@ class MemorySaveService {
   final SupabaseClient _supabase;
   final MemoryProcessingService _processingService;
   final ConnectivityService _connectivityService;
+  final OfflineQueueService _offlineQueueService;
+  final OfflineStoryQueueService _offlineStoryQueueService;
   static const String _photosBucket = 'moments-photos';
   static const String _videosBucket = 'moments-videos';
   static const int _maxRetries = 3;
@@ -61,6 +69,8 @@ class MemorySaveService {
     this._supabase,
     this._processingService,
     this._connectivityService,
+    this._offlineQueueService,
+    this._offlineStoryQueueService,
   );
 
   /// Save a memory with all its metadata
@@ -741,6 +751,69 @@ class MemorySaveService {
       case MemoryType.memento:
         return 'Untitled Memento';
     }
+  }
+
+  /// Update a queued offline memory with new data from capture state
+  ///
+  /// This method:
+  /// - Updates the queue entry with new content (text, tags, media, location)
+  /// - Preserves sync metadata (status, retry count, server IDs)
+  /// - Does NOT perform connectivity checks
+  /// - Does NOT call any Supabase RPC or write to online tables
+  ///
+  /// Used when editing a queued offline memory while offline.
+  Future<void> updateQueuedMemory({
+    required String localId,
+    required CaptureState state,
+  }) async {
+    if (state.memoryType == MemoryType.story) {
+      await _updateQueuedStory(localId: localId, state: state);
+    } else {
+      await _updateQueuedMoment(localId: localId, state: state);
+    }
+  }
+
+  /// Update a queued moment
+  Future<void> _updateQueuedMoment({
+    required String localId,
+    required CaptureState state,
+  }) async {
+    final existing = await _offlineQueueService.getByLocalId(localId);
+    if (existing == null) {
+      throw Exception('Queued memory not found: $localId');
+    }
+
+    final updated = existing.copyWithFromCaptureState(
+      state: state,
+      // Preserve sync metadata and timestamps
+      createdAt: existing.createdAt,
+      retryCount: existing.retryCount,
+      status: existing.status,
+      serverMomentId: existing.serverMomentId,
+    );
+
+    await _offlineQueueService.update(updated);
+  }
+
+  /// Update a queued story
+  Future<void> _updateQueuedStory({
+    required String localId,
+    required CaptureState state,
+  }) async {
+    final existing = await _offlineStoryQueueService.getByLocalId(localId);
+    if (existing == null) {
+      throw Exception('Queued story not found: $localId');
+    }
+
+    final updated = existing.copyWithFromCaptureState(
+      state: state,
+      createdAt: existing.createdAt,
+      retryCount: existing.retryCount,
+      status: existing.status,
+      serverStoryId: existing.serverStoryId,
+    );
+
+    await _offlineStoryQueueService.update(updated);
   }
 }
 

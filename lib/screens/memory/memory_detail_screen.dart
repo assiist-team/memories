@@ -4,13 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:memories/models/memory_detail.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/memory_detail_provider.dart';
+import 'package:memories/providers/offline_memory_detail_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/unified_feed_provider.dart';
 import 'package:memories/providers/unified_feed_tab_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/services/offline_queue_service.dart';
+import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:memories/widgets/media_strip.dart';
 import 'package:memories/widgets/media_preview.dart';
 import 'package:memories/widgets/memory_metadata_section.dart';
@@ -24,11 +28,13 @@ import 'package:memories/widgets/sticky_audio_player.dart';
 class MemoryDetailScreen extends ConsumerStatefulWidget {
   final String memoryId;
   final String? heroTag; // Optional hero tag for transition animation
+  final bool isOfflineQueued; // Whether this memory is a queued offline item
 
   const MemoryDetailScreen({
     super.key,
     required this.memoryId,
     this.heroTag,
+    this.isOfflineQueued = false,
   });
 
   @override
@@ -40,9 +46,226 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final detailState = ref.watch(memoryDetailNotifierProvider(widget.memoryId));
+    // Route to offline provider for queued items, online provider for synced items
     final connectivityService = ref.read(connectivityServiceProvider);
+    
+    // For offline queued items, use offline provider
+    if (widget.isOfflineQueued) {
+      return _buildOfflineDetailScreen(context, connectivityService);
+    }
+    
+    // For online/synced items, use existing online provider
+    final detailState = ref.watch(memoryDetailNotifierProvider(widget.memoryId));
+    return _buildOnlineDetailScreen(context, detailState, connectivityService);
+  }
 
+  /// Build detail screen for offline queued memories
+  Widget _buildOfflineDetailScreen(
+    BuildContext context,
+    ConnectivityService connectivityService,
+  ) {
+    final detailAsync = ref.watch(offlineMemoryDetailNotifierProvider(widget.memoryId));
+    
+    return Scaffold(
+      appBar: AppBar(
+        actions: [
+          // Edit icon - enabled for offline queued items (Phase 4)
+          if (detailAsync.hasValue)
+            Builder(
+              builder: (context) {
+                final memory = detailAsync.value!;
+                final memoryType = memory.memoryType;
+                final editLabel = memoryType == 'story' 
+                    ? 'Edit story' 
+                    : memoryType == 'memento'
+                        ? 'Edit memento'
+                        : 'Edit moment';
+                return Semantics(
+                  label: editLabel,
+                  button: true,
+                  child: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () => _handleEditOffline(context, ref, memory),
+                    tooltip: 'Edit',
+                  ),
+                );
+              },
+            ),
+          // Share icon - disabled for offline queued items
+          Builder(
+            builder: (context) {
+              final memoryType = detailAsync.value?.memoryType ?? 'moment';
+              final shareLabel = memoryType == 'story' 
+                  ? 'Share story' 
+                  : memoryType == 'memento'
+                      ? 'Share memento'
+                      : 'Share moment';
+              return Semantics(
+                label: shareLabel,
+                button: true,
+                child: IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: null,
+                  tooltip: 'Share available after this memory syncs',
+                  color: Colors.grey,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          detailAsync.when(
+            data: (memory) {
+              return Column(
+                children: [
+                  // Offline queued status banner
+                  FutureBuilder<OfflineSyncStatus>(
+                    future: _getOfflineSyncStatus(ref, widget.memoryId),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return _buildOfflineQueuedBanner(context, snapshot.data!);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                  Expanded(
+                    child: _buildLoadedState(
+                      context,
+                      memory,
+                      isFromCache: true, // Mark as cached to disable share
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => _buildLoadingState(context),
+            error: (error, stackTrace) => _buildErrorState(
+              context,
+              error.toString(),
+              ref,
+            ),
+          ),
+          // Floating action button for delete - disabled for offline queued items
+          if (detailAsync.hasValue)
+            _buildFloatingActions(context, ref, detailAsync.value!),
+        ],
+      ),
+    );
+  }
+
+  /// Get offline sync status for a queued memory
+  Future<OfflineSyncStatus> _getOfflineSyncStatus(
+    WidgetRef ref,
+    String localId,
+  ) async {
+    final queueService = ref.read(offlineQueueServiceProvider);
+    final storyQueueService = ref.read(offlineStoryQueueServiceProvider);
+
+    // Try to find in main queue (moments/mementos)
+    final queuedMoment = await queueService.getByLocalId(localId);
+    if (queuedMoment != null) {
+      return _mapQueueStatusToOfflineSyncStatus(queuedMoment.status);
+    }
+
+    // Try to find in story queue
+    final queuedStory = await storyQueueService.getByLocalId(localId);
+    if (queuedStory != null) {
+      return _mapQueueStatusToOfflineSyncStatus(queuedStory.status);
+    }
+
+    // Default to queued if not found
+    return OfflineSyncStatus.queued;
+  }
+
+  /// Map queue status string to OfflineSyncStatus enum
+  OfflineSyncStatus _mapQueueStatusToOfflineSyncStatus(String status) {
+    switch (status) {
+      case 'queued':
+        return OfflineSyncStatus.queued;
+      case 'syncing':
+        return OfflineSyncStatus.syncing;
+      case 'failed':
+        return OfflineSyncStatus.failed;
+      case 'completed':
+        return OfflineSyncStatus.synced;
+      default:
+        return OfflineSyncStatus.queued;
+    }
+  }
+
+  /// Build offline queued status banner
+  Widget _buildOfflineQueuedBanner(
+    BuildContext context,
+    OfflineSyncStatus status,
+  ) {
+    late final String title;
+    late final String subtitle;
+    late final Color background;
+    late final Color textColor;
+
+    switch (status) {
+      case OfflineSyncStatus.queued:
+        title = 'Pending sync';
+        subtitle = 'This memory will upload automatically when you\'re online.';
+        background = Colors.orange.shade50;
+        textColor = Colors.orange.shade900;
+        break;
+      case OfflineSyncStatus.syncing:
+        title = 'Syncing…';
+        subtitle = 'We\'re uploading this memory in the background.';
+        background = Colors.blue.shade50;
+        textColor = Colors.blue.shade900;
+        break;
+      case OfflineSyncStatus.failed:
+        title = 'Sync failed';
+        subtitle = 'We\'ll retry automatically. You can also try again later.';
+        background = Colors.red.shade50;
+        textColor = Colors.red.shade900;
+        break;
+      case OfflineSyncStatus.synced:
+        return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: background,
+        border: Border(
+          bottom: BorderSide(color: textColor.withOpacity(0.25)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600, color: textColor),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: textColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build detail screen for online/synced memories
+  Widget _buildOnlineDetailScreen(
+    BuildContext context,
+    MemoryDetailViewState detailState,
+    ConnectivityService connectivityService,
+  ) {
     return Scaffold(
       appBar: AppBar(
         actions: [
@@ -565,6 +788,43 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         );
       }
     }
+  }
+
+  /// Handle edit action for offline queued memories
+  void _handleEditOffline(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail detail,
+  ) {
+    final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
+
+    // Extract local file paths from file:// URLs
+    final photoPaths = detail.photos
+        .map((p) => p.url.replaceFirst('file://', ''))
+        .toList();
+    final videoPaths = detail.videos
+        .map((v) => v.url.replaceFirst('file://', ''))
+        .toList();
+
+    // Determine memory type
+    final memoryType = MemoryTypeExtension.fromApiValue(detail.memoryType);
+
+    captureNotifier.loadOfflineMemoryForEdit(
+      localId: detail.id,
+      memoryType: memoryType,
+      inputText: detail.inputText,
+      tags: detail.tags,
+      existingPhotoPaths: photoPaths,
+      existingVideoPaths: videoPaths,
+      latitude: detail.locationData?.latitude,
+      longitude: detail.locationData?.longitude,
+      locationStatus: detail.locationData?.status,
+      capturedAt: detail.capturedAt,
+    );
+
+    // Navigate to capture screen as usual
+    Navigator.of(context).pop();
+    ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
   }
 
   /// Handle edit action

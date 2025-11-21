@@ -90,6 +90,15 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Text that existed before dictation started (preserved for appending)
   String? _textBeforeDictation;
 
+  /// Local ID of queued memory being edited offline (null when not editing offline)
+  String? _editingOfflineLocalId;
+
+  /// Whether currently editing an offline queued memory
+  bool get isEditingOffline => _editingOfflineLocalId != null;
+
+  /// Local ID of the queued memory being edited (null when not editing offline)
+  String? get editingOfflineLocalId => _editingOfflineLocalId;
+
   /// Cancel all stream subscriptions
   void _cancelSubscriptions() {
     _transcriptSubscription?.cancel();
@@ -451,6 +460,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       );
     }
 
+    // Clear offline editing state
+    _editingOfflineLocalId = null;
+    
     state = const CaptureState().copyWith(clearAudio: true, clearEditingMemoryId: true);
   }
 
@@ -535,6 +547,49 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       deletedVideoUrls: const [],
       hasUnsavedChanges: false, // Reset since we're loading existing data
     );
+  }
+
+  /// Load offline queued memory data into capture state for editing
+  ///
+  /// Preloads data from a queued offline memory (not yet synced to server).
+  /// Sets _editingOfflineLocalId to track offline edit mode.
+  /// Does NOT set editingMemoryId (that's for online edits only).
+  void loadOfflineMemoryForEdit({
+    required String localId,
+    required MemoryType memoryType,
+    required String? inputText,
+    required List<String> tags,
+    required List<String> existingPhotoPaths,
+    required List<String> existingVideoPaths,
+    double? latitude,
+    double? longitude,
+    String? locationStatus,
+    DateTime? capturedAt,
+  }) {
+    _editingOfflineLocalId = localId;
+
+    state = state.copyWith(
+      memoryType: memoryType,
+      inputText: inputText,
+      tags: tags,
+      latitude: latitude,
+      longitude: longitude,
+      locationStatus: locationStatus,
+      existingPhotoUrls: existingPhotoPaths.map((p) => 'file://$p').toList(),
+      existingVideoUrls: existingVideoPaths.map((p) => 'file://$p').toList(),
+      captureStartTime: capturedAt,
+      editingMemoryId: null, // Do NOT treat this as an online edit
+      photoPaths: [], // Start with empty new photos
+      videoPaths: [], // Start with empty new videos
+      deletedPhotoUrls: const [],
+      deletedVideoUrls: const [],
+      hasUnsavedChanges: false, // Reset since we're loading existing data
+    );
+  }
+
+  /// Clear offline editing state
+  void clearOfflineEditing() {
+    _editingOfflineLocalId = null;
   }
 
   /// Remove an existing photo URL (mark for deletion on save)

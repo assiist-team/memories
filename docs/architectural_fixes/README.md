@@ -115,6 +115,15 @@ Story Sync Service TODO (Future work)
   - Stories are currently queued but not synced automatically
   - Requires `StorySyncService` implementation similar to `MemorySyncService`
 
+- **[Offline Memory Viewing & Editing](./offline-memory-viewing-editing/)** - Enable viewing and editing of offline memories
+  - **Priority**: High
+  - **Risk**: Medium
+  - **Status**: 📋 TODO
+  - Currently offline memories are queued but invisible in timeline
+  - Users cannot edit offline memories until sync completes
+  - Requires timeline integration, detail view support, and editing capabilities
+  - **Implementation**: 6 phases (see directory for details)
+
 ## Getting Started
 
 1. Read [`../memory-implementation-issues.md`](../memory-implementation-issues.md) to understand the problems

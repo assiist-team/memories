@@ -5,8 +5,12 @@ import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/services/memory_sync_service.dart';
 import 'package:memories/services/unified_feed_repository.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
+import 'package:memories/services/offline_queue_service.dart';
+import 'package:memories/services/offline_story_queue_service.dart';
+import 'package:memories/services/shared_preferences_local_memory_preview_store.dart';
 
 part 'unified_feed_provider.g.dart';
 
@@ -79,7 +83,16 @@ class UnifiedFeedViewState {
 @riverpod
 UnifiedFeedRepository unifiedFeedRepository(UnifiedFeedRepositoryRef ref) {
   final supabase = ref.read(supabaseClientProvider);
-  return UnifiedFeedRepository(supabase);
+  final offlineQueueService = ref.read(offlineQueueServiceProvider);
+  final offlineStoryQueueService = ref.read(offlineStoryQueueServiceProvider);
+  final localPreviewStore = ref.read(localMemoryPreviewStoreProvider);
+
+  return UnifiedFeedRepository(
+    supabase,
+    offlineQueueService,
+    offlineStoryQueueService,
+    localPreviewStore,
+  );
 }
 
 /// Provider for unified feed state
@@ -90,6 +103,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   static const int _batchSize = 20;
   int _currentPageNumber = 1;
   Set<MemoryType> _memoryTypeFilters = {};
+  StreamSubscription<SyncCompleteEvent>? _syncSub;
 
   @override
   UnifiedFeedViewState build([Set<MemoryType>? memoryTypeFilters]) {
@@ -98,7 +112,30 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       MemoryType.moment,
       MemoryType.memento,
     };
+    _setupSyncListener();
+    ref.onDispose(() {
+      _syncSub?.cancel();
+    });
     return const UnifiedFeedViewState(state: UnifiedFeedState.initial);
+  }
+
+  void _setupSyncListener() {
+    final syncService = ref.read(memorySyncServiceProvider);
+
+    _syncSub?.cancel();
+    _syncSub = syncService.syncCompleteStream.listen((event) {
+      _removeQueuedEntry(event.localId);
+      // We do NOT immediately re-fetch the feed here; the server-backed
+      // version will naturally appear on next pagination/refresh.
+    });
+  }
+
+  void _removeQueuedEntry(String localId) {
+    final updated = state.memories
+        .where((m) => !(m.isOfflineQueued && m.localId == localId))
+        .toList();
+
+    state = state.copyWith(memories: updated);
   }
 
   /// Load initial feed
@@ -231,14 +268,12 @@ class UnifiedFeedController extends _$UnifiedFeedController {
 
     // Check connectivity
     final isOnline = await connectivityService.isOnline();
-    if (!isOnline) {
-      throw Exception('Device is offline');
-    }
 
-    final result = await repository.fetchPage(
+    final result = await repository.fetchMergedFeed(
       cursor: cursor,
       filters: _memoryTypeFilters,
       batchSize: _batchSize,
+      isOnline: isOnline,
     );
 
     final resolvedAvailableYears = append
@@ -265,7 +300,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,
       errorMessage: null,
-      isOffline: false,
+      isOffline: !isOnline,
       availableYears: resolvedAvailableYears,
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
@@ -6,6 +7,19 @@ import 'package:memories/services/offline_story_queue_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'memory_sync_service.g.dart';
+
+/// Event emitted when a queued memory successfully syncs to the server
+class SyncCompleteEvent {
+  final String localId;
+  final String serverId;
+  final MemoryType memoryType;
+
+  SyncCompleteEvent({
+    required this.localId,
+    required this.serverId,
+    required this.memoryType,
+  });
+}
 
 /// Service for syncing queued memories (moments, mementos, and stories) to the server
 /// 
@@ -35,6 +49,7 @@ class MemorySyncService {
   Timer? _syncTimer;
   StreamSubscription<bool>? _connectivitySubscription;
   bool _isSyncing = false;
+  final _syncCompleteController = StreamController<SyncCompleteEvent>.broadcast();
 
   MemorySyncService(
     this._queueService,
@@ -42,6 +57,10 @@ class MemorySyncService {
     this._connectivityService,
     this._saveService,
   );
+
+  /// Stream of sync completion events
+  Stream<SyncCompleteEvent> get syncCompleteStream =>
+      _syncCompleteController.stream;
 
   /// Start automatic sync when connectivity is restored
   void startAutoSync() {
@@ -72,6 +91,12 @@ class MemorySyncService {
     _syncTimer = null;
     _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
+  }
+
+  /// Dispose resources
+  void dispose() {
+    stopAutoSync();
+    _syncCompleteController.close();
   }
 
   /// Manually trigger sync of all queued memories (moments, mementos, and stories)
@@ -122,6 +147,16 @@ class MemorySyncService {
           queuedMemory.copyWith(
             status: 'completed',
             serverMomentId: result.memoryId,
+          ),
+        );
+
+        // Emit sync completion event
+        final memoryType = MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
+        _syncCompleteController.add(
+          SyncCompleteEvent(
+            localId: queuedMemory.localId,
+            serverId: result.memoryId,
+            memoryType: memoryType,
           ),
         );
 
@@ -187,6 +222,16 @@ class MemorySyncService {
           ),
         );
 
+        // Emit sync completion event
+        final memoryType = MemoryTypeExtension.fromApiValue(queuedStory.memoryType);
+        _syncCompleteController.add(
+          SyncCompleteEvent(
+            localId: queuedStory.localId,
+            serverId: result.memoryId,
+            memoryType: memoryType,
+          ),
+        );
+
         // Remove from queue after successful sync
         await _storyQueueService.remove(queuedStory.localId);
       } catch (e) {
@@ -248,6 +293,16 @@ class MemorySyncService {
           ),
         );
 
+        // Emit sync completion event
+        final memoryType = MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
+        _syncCompleteController.add(
+          SyncCompleteEvent(
+            localId: queuedMemory.localId,
+            serverId: result.memoryId,
+            memoryType: memoryType,
+          ),
+        );
+
         await _queueService.remove(queuedMemory.localId);
         return;
       } catch (e) {
@@ -282,6 +337,16 @@ class MemorySyncService {
           queuedStory.copyWith(
             status: 'completed',
             serverStoryId: result.memoryId,
+          ),
+        );
+
+        // Emit sync completion event
+        final memoryType = MemoryTypeExtension.fromApiValue(queuedStory.memoryType);
+        _syncCompleteController.add(
+          SyncCompleteEvent(
+            localId: queuedStory.localId,
+            serverId: result.memoryId,
+            memoryType: memoryType,
           ),
         );
 

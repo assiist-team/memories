@@ -128,6 +128,54 @@ class QueuedMoment {
     }
   }
 
+  /// Create copy with updated fields from CaptureState
+  ///
+  /// Updates content fields from capture state while preserving sync metadata.
+  /// Used when editing a queued memory offline.
+  QueuedMoment copyWithFromCaptureState({
+    required CaptureState state,
+    String? status,
+    int? retryCount,
+    DateTime? createdAt,
+    DateTime? lastRetryAt,
+    String? serverMomentId,
+    String? errorMessage,
+  }) {
+    // Combine existing photo/video paths with new ones from capture state
+    // Extract local paths from file:// URLs in existingPhotoUrls/existingVideoUrls
+    final existingPhotoPaths = state.existingPhotoUrls
+        .map((url) => url.replaceFirst('file://', ''))
+        .where((path) => !state.deletedPhotoUrls.contains('file://$path'))
+        .toList();
+    final existingVideoPaths = state.existingVideoUrls
+        .map((url) => url.replaceFirst('file://', ''))
+        .where((path) => !state.deletedVideoUrls.contains('file://$path'))
+        .toList();
+
+    // Combine existing (non-deleted) with new paths
+    final allPhotoPaths = [...existingPhotoPaths, ...state.photoPaths];
+    final allVideoPaths = [...existingVideoPaths, ...state.videoPaths];
+
+    return QueuedMoment(
+      localId: localId,
+      memoryType: state.memoryType.apiValue,
+      inputText: state.inputText,
+      photoPaths: allPhotoPaths,
+      videoPaths: allVideoPaths,
+      tags: List.from(state.tags),
+      latitude: state.latitude,
+      longitude: state.longitude,
+      locationStatus: state.locationStatus,
+      capturedAt: state.capturedAt ?? capturedAt,
+      status: status ?? this.status,
+      retryCount: retryCount ?? this.retryCount,
+      createdAt: createdAt ?? this.createdAt,
+      lastRetryAt: lastRetryAt ?? this.lastRetryAt,
+      serverMomentId: serverMomentId ?? this.serverMomentId,
+      errorMessage: errorMessage ?? this.errorMessage,
+    );
+  }
+
   /// Create copy with updated fields
   QueuedMoment copyWith({
     String? localId,

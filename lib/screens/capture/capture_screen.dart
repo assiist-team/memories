@@ -343,6 +343,37 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         }
       }
 
+      // Step 3: Check if editing offline queued memory
+      final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
+      if (captureNotifier.isEditingOffline) {
+        // Update queued offline memory
+        final localId = captureNotifier.editingOfflineLocalId!;
+        final saveService = ref.read(memorySaveServiceProvider);
+
+        await saveService.updateQueuedMemory(
+          localId: localId,
+          state: finalState,
+        );
+
+        captureNotifier.clearOfflineEditing();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Changes saved. This memory will sync when you are online.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          await notifier.clear(keepAudioIfQueued: true);
+          // Navigate back to timeline / detail
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+        }
+        return;
+      }
+
       // Step 3: Save or update memory with progress updates (or queue if offline)
       final saveService = ref.read(memorySaveServiceProvider);
       final queueService = ref.read(offlineQueueServiceProvider);

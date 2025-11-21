@@ -219,13 +219,46 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
           memory.primaryMedia != null,
         );
 
+    // Check if we can open detail offline
+    final tabState = ref.read(unifiedFeedTabNotifierProvider);
+    final selectedTypes = tabState.valueOrNull ?? {
+      MemoryType.story,
+      MemoryType.moment,
+      MemoryType.memento,
+    };
+    final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
+    final isOffline = feedState.isOffline;
+    
+    final canOpenDetailOffline = memory.isOfflineQueued || memory.isDetailCachedLocally;
+    final isPreviewOnlyOffline = isOffline && memory.isPreviewOnly && !canOpenDetailOffline;
+    
+    // If preview-only and offline, show message instead of navigating
+    if (isPreviewOnlyOffline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This memory is not available offline yet.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Determine if this is an offline queued memory
+    final isOfflineQueued = memory.isOfflineQueued;
+    
+    // Use localId for queued items, serverId for synced items
+    final memoryId = isOfflineQueued 
+        ? (memory.localId ?? memory.effectiveId)
+        : (memory.serverId ?? memory.effectiveId);
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MemoryDetailScreen(
-          memoryId: memory.id,
+          memoryId: memoryId,
           heroTag: memory.primaryMedia != null
               ? 'memory_thumbnail_${memory.id}'
               : null,
+          isOfflineQueued: isOfflineQueued,
         ),
       ),
     );
@@ -369,17 +402,31 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
   }
 
   Widget _buildEmptyState(Set<MemoryType> currentFilters) {
+    // Check if offline
+    final tabState = ref.read(unifiedFeedTabNotifierProvider);
+    final isOffline = tabState.whenData((selectedTypes) {
+      final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
+      return feedState.isOffline;
+    }).valueOrNull ?? false;
+
     return RefreshIndicator(
       onRefresh: _onRefresh,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        child: UnifiedFeedEmptyState(
-          currentFilter: currentFilters.length == 1 ? currentFilters.first : null,
-          onCaptureTap: () {
-            // Switch to capture tab in main navigation
-            ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
-          },
-        ),
+        child: isOffline
+            ? _OfflineEmptyTimelineMessage(
+                onCaptureTap: () {
+                  // Switch to capture tab in main navigation
+                  ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
+                },
+              )
+            : UnifiedFeedEmptyState(
+                currentFilter: currentFilters.length == 1 ? currentFilters.first : null,
+                onCaptureTap: () {
+                  // Switch to capture tab in main navigation
+                  ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
+                },
+              ),
       ),
     );
   }
@@ -713,6 +760,61 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
               fontSize: 16,
               letterSpacing: 0.15,
             ),
+      ),
+    );
+  }
+}
+
+/// Offline empty timeline message widget
+class _OfflineEmptyTimelineMessage extends StatelessWidget {
+  final VoidCallback? onCaptureTap;
+
+  const _OfflineEmptyTimelineMessage({
+    this.onCaptureTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Semantics(
+              label: 'Offline icon',
+              child: const Icon(
+                Icons.cloud_off,
+                size: 56,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Semantics(
+              header: true,
+              child: Text(
+                'You\'re offline',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Semantics(
+              child: Text(
+                'New memories you capture will appear here and sync when you\'re back online.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            if (onCaptureTap != null) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: onCaptureTap,
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Capture a Memory'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

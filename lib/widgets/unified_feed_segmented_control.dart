@@ -38,14 +38,14 @@ class UnifiedFeedSegmentedControl extends ConsumerWidget {
           multiSelectionEnabled: true,
           segments: [
             ButtonSegment<MemoryType>(
-              value: MemoryType.story,
-              label: Text(MemoryType.story.displayName),
-              icon: Icon(MemoryType.story.icon),
-            ),
-            ButtonSegment<MemoryType>(
               value: MemoryType.moment,
               label: Text(MemoryType.moment.displayName),
               icon: Icon(MemoryType.moment.icon),
+            ),
+            ButtonSegment<MemoryType>(
+              value: MemoryType.story,
+              label: Text(MemoryType.story.displayName),
+              icon: Icon(MemoryType.story.icon),
             ),
             ButtonSegment<MemoryType>(
               value: MemoryType.memento,

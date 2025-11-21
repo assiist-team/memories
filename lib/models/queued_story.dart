@@ -159,6 +159,58 @@ class QueuedStory {
     }
   }
 
+  /// Create copy with updated fields from CaptureState
+  ///
+  /// Updates content fields from capture state while preserving sync metadata.
+  /// Used when editing a queued story offline.
+  /// Preserves audioPath and audioDuration (stories don't allow re-recording during edit).
+  QueuedStory copyWithFromCaptureState({
+    required CaptureState state,
+    String? status,
+    int? retryCount,
+    DateTime? createdAt,
+    DateTime? lastRetryAt,
+    String? serverStoryId,
+    String? errorMessage,
+  }) {
+    // Combine existing photo/video paths with new ones from capture state
+    // Extract local paths from file:// URLs in existingPhotoUrls/existingVideoUrls
+    final existingPhotoPaths = state.existingPhotoUrls
+        .map((url) => url.replaceFirst('file://', ''))
+        .where((path) => !state.deletedPhotoUrls.contains('file://$path'))
+        .toList();
+    final existingVideoPaths = state.existingVideoUrls
+        .map((url) => url.replaceFirst('file://', ''))
+        .where((path) => !state.deletedVideoUrls.contains('file://$path'))
+        .toList();
+
+    // Combine existing (non-deleted) with new paths
+    final allPhotoPaths = [...existingPhotoPaths, ...state.photoPaths];
+    final allVideoPaths = [...existingVideoPaths, ...state.videoPaths];
+
+    return QueuedStory(
+      localId: localId,
+      memoryType: state.memoryType.apiValue,
+      inputText: state.inputText,
+      audioPath: audioPath, // Preserve existing audio (stories don't allow re-recording)
+      audioDuration: audioDuration, // Preserve existing audio duration
+      photoPaths: allPhotoPaths,
+      videoPaths: allVideoPaths,
+      tags: List.from(state.tags),
+      latitude: state.latitude,
+      longitude: state.longitude,
+      locationStatus: state.locationStatus,
+      capturedAt: state.capturedAt ?? capturedAt,
+      status: status ?? this.status,
+      retryCount: retryCount ?? this.retryCount,
+      createdAt: createdAt ?? this.createdAt,
+      lastRetryAt: lastRetryAt ?? this.lastRetryAt,
+      serverStoryId: serverStoryId ?? this.serverStoryId,
+      errorMessage: errorMessage ?? this.errorMessage,
+      version: version,
+    );
+  }
+
   /// Create copy with updated fields
   QueuedStory copyWith({
     String? localId,

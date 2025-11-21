@@ -10,6 +10,10 @@ import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/unified_feed_repository.dart';
 import 'package:memories/models/timeline_moment.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/services/offline_queue_service.dart';
+import 'package:memories/services/offline_story_queue_service.dart';
+import 'package:memories/services/shared_preferences_local_memory_preview_store.dart';
+import 'package:memories/services/memory_sync_service.dart';
 
 // Mock classes
 class MockSupabaseClient extends Mock implements SupabaseClient {}
@@ -18,28 +22,50 @@ class MockConnectivityService extends Mock implements ConnectivityService {}
 
 class MockUnifiedFeedRepository extends Mock implements UnifiedFeedRepository {}
 
+class MockOfflineQueueService extends Mock implements OfflineQueueService {}
+
+class MockOfflineStoryQueueService extends Mock implements OfflineStoryQueueService {}
+
+class MockLocalMemoryPreviewStore extends Mock implements SharedPreferencesLocalMemoryPreviewStore {}
+
+class MockMemorySyncService extends Mock implements MemorySyncService {}
+
 void main() {
   group('UnifiedFeedController', () {
     late MockSupabaseClient mockSupabase;
     late MockConnectivityService mockConnectivity;
     late MockUnifiedFeedRepository mockRepository;
+    late MockOfflineQueueService mockOfflineQueueService;
+    late MockOfflineStoryQueueService mockOfflineStoryQueueService;
+    late MockLocalMemoryPreviewStore mockLocalMemoryPreviewStore;
     late ProviderContainer container;
 
     setUp(() {
       mockSupabase = MockSupabaseClient();
       mockConnectivity = MockConnectivityService();
       mockRepository = MockUnifiedFeedRepository();
+      mockOfflineQueueService = MockOfflineQueueService();
+      mockOfflineStoryQueueService = MockOfflineStoryQueueService();
+      mockLocalMemoryPreviewStore = MockLocalMemoryPreviewStore();
 
       container = ProviderContainer(
         overrides: [
           supabaseClientProvider.overrideWithValue(mockSupabase),
           connectivityServiceProvider.overrideWithValue(mockConnectivity),
-          unifiedFeedRepositoryProvider.overrideWith((ref) => mockRepository),
+          offlineQueueServiceProvider.overrideWithValue(mockOfflineQueueService),
+          offlineStoryQueueServiceProvider.overrideWithValue(mockOfflineStoryQueueService),
+          localMemoryPreviewStoreProvider.overrideWithValue(mockLocalMemoryPreviewStore),
+          unifiedFeedRepositoryProvider.overrideWithValue(mockRepository),
         ],
       );
 
       // Default connectivity to online
       when(() => mockConnectivity.isOnline()).thenAnswer((_) async => true);
+      
+      // Default mock for fetchAvailableYears
+      when(() => mockRepository.fetchAvailableYears(
+            filters: any(named: 'filters'),
+          )).thenAnswer((_) async => [2025]);
     });
 
     tearDown(() {
@@ -58,10 +84,11 @@ void main() {
 
     group('State Transitions', () {
       test('transitions from initial to empty on loadInitial', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((_) async => UnifiedFeedPageResult(
               memories: [],
               hasMore: false,
@@ -87,13 +114,19 @@ void main() {
           month: 1,
           day: 17,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((_) async => UnifiedFeedPageResult(
               memories: [testMemory],
               hasMore: true,
@@ -124,7 +157,12 @@ void main() {
           month: 1,
           day: 17,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
         final testMemory2 = TimelineMoment(
@@ -138,18 +176,22 @@ void main() {
           month: 1,
           day: 16,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-2',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        var callCount = 0;
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((invocation) async {
           final cursor =
               invocation.namedArguments[#cursor] as UnifiedFeedCursor?;
-          callCount++;
 
           if (cursor == null) {
             // Initial load
@@ -190,10 +232,11 @@ void main() {
 
     group('Error Handling - Initial Load', () {
       test('shows full-page error on initial load failure', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenThrow(Exception('Network error'));
 
         final notifier = container.read(unifiedFeedProvider.notifier);
@@ -207,10 +250,11 @@ void main() {
       });
 
       test('provides user-friendly error message for network errors', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenThrow(SocketException('Connection failed'));
 
         final notifier = container.read(unifiedFeedProvider.notifier);
@@ -223,10 +267,11 @@ void main() {
       });
 
       test('provides user-friendly error message for timeout errors', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenThrow(TimeoutException('Request timed out'));
 
         final notifier = container.read(unifiedFeedProvider.notifier);
@@ -253,13 +298,19 @@ void main() {
           month: 1,
           day: 17,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((invocation) async {
           final cursor =
               invocation.namedArguments[#cursor] as UnifiedFeedCursor?;
@@ -311,7 +362,12 @@ void main() {
           month: 1,
           day: 17,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
         final testMemory2 = TimelineMoment(
@@ -325,14 +381,20 @@ void main() {
           month: 1,
           day: 16,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-2',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
         var callCount = 0;
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((invocation) async {
           final cursor =
               invocation.namedArguments[#cursor] as UnifiedFeedCursor?;
@@ -380,14 +442,23 @@ void main() {
     group('Offline Handling', () {
       test('detects offline state and sets isOffline flag', () async {
         when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
+        
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: false,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [],
+              hasMore: false,
+            ));
 
         final notifier = container.read(unifiedFeedProvider.notifier);
         await notifier.loadInitial();
 
         final state = container.read(unifiedFeedProvider);
         expect(state.isOffline, true);
-        expect(state.state, UnifiedFeedState.error);
-        expect(state.errorMessage, contains('offline'));
+        expect(state.state, UnifiedFeedState.empty);
       });
 
       test('disables refresh while offline', () async {
@@ -399,10 +470,11 @@ void main() {
         await notifier.refresh();
 
         // Verify no repository calls were made
-        verifyNever(() => mockRepository.fetchPage(
+        verifyNever(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             ));
       });
 
@@ -418,10 +490,11 @@ void main() {
 
     group('Filter Management', () {
       test('setFilter updates filter and reloads', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((_) async => UnifiedFeedPageResult(
               memories: [],
               hasMore: false,
@@ -430,13 +503,14 @@ void main() {
         final notifier = container.read(unifiedFeedProvider.notifier);
 
         // Set filter to Story
-        await notifier.setFilter(MemoryType.story);
+        await notifier.setFilter({MemoryType.story});
 
         // Verify repository was called with Story filter
-        verify(() => mockRepository.fetchPage(
+        verify(() => mockRepository.fetchMergedFeed(
               cursor: null,
-              filter: MemoryType.story,
+              filters: {MemoryType.story},
               batchSize: 20,
+              isOnline: true,
             )).called(1);
       });
 
@@ -452,13 +526,19 @@ void main() {
           month: 1,
           day: 17,
           tags: [],
-          captureType: 'moment',
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'memory-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((_) async => UnifiedFeedPageResult(
               memories: [testMemory],
               hasMore: true,
@@ -472,23 +552,25 @@ void main() {
         await notifier.loadInitial();
 
         // Change filter
-        await notifier.setFilter(MemoryType.story);
+        await notifier.setFilter({MemoryType.story});
 
         // Verify cursor was reset (new initial load)
-        verify(() => mockRepository.fetchPage(
+        verify(() => mockRepository.fetchMergedFeed(
               cursor: null,
-              filter: MemoryType.story,
+              filters: {MemoryType.story},
               batchSize: 20,
+              isOnline: true,
             )).called(1);
       });
     });
 
     group('Empty State', () {
       test('transitions to empty state when no memories found', () async {
-        when(() => mockRepository.fetchPage(
+        when(() => mockRepository.fetchMergedFeed(
               cursor: any(named: 'cursor'),
-              filter: any(named: 'filter'),
+              filters: any(named: 'filters'),
               batchSize: any(named: 'batchSize'),
+              isOnline: any(named: 'isOnline'),
             )).thenAnswer((_) async => UnifiedFeedPageResult(
               memories: [],
               hasMore: false,
@@ -501,6 +583,413 @@ void main() {
         expect(state.state, UnifiedFeedState.empty);
         expect(state.memories, isEmpty);
         expect(state.hasMore, false);
+      });
+    });
+
+    group('Phase 2: Offline Timeline Integration', () {
+      test('offline timeline includes preview index + queue', () async {
+        when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
+
+        final previewMemory = TimelineMoment(
+          id: 'preview-1',
+          userId: 'user-1',
+          title: 'Preview Memory',
+          capturedAt: DateTime(2025, 1, 17),
+          createdAt: DateTime(2025, 1, 17),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 17,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: true,
+          isDetailCachedLocally: false,
+          offlineSyncStatus: OfflineSyncStatus.synced,
+        );
+
+        final queuedMemory = TimelineMoment(
+          id: 'queued-1',
+          userId: 'user-1',
+          title: 'Queued Memory',
+          capturedAt: DateTime(2025, 1, 16),
+          createdAt: DateTime(2025, 1, 16),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 16,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: true,
+          isPreviewOnly: false,
+          isDetailCachedLocally: true,
+          localId: 'local-1',
+          offlineSyncStatus: OfflineSyncStatus.queued,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: false,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [queuedMemory, previewMemory],
+              hasMore: false,
+            ));
+
+        final notifier = container.read(unifiedFeedProvider.notifier);
+        await notifier.loadInitial();
+
+        final state = container.read(unifiedFeedProvider);
+        expect(state.isOffline, true);
+        expect(state.state, UnifiedFeedState.ready);
+        expect(state.memories.length, 2);
+        expect(state.memories.any((m) => m.isPreviewOnly), true);
+        expect(state.memories.any((m) => m.isOfflineQueued), true);
+      });
+
+      test('online timeline merges online + queue, keeps preview index updated', () async {
+        when(() => mockConnectivity.isOnline()).thenAnswer((_) async => true);
+
+        final onlineMemory = TimelineMoment(
+          id: 'online-1',
+          userId: 'user-1',
+          title: 'Online Memory',
+          capturedAt: DateTime(2025, 1, 17),
+          createdAt: DateTime(2025, 1, 17),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 17,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'online-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
+        );
+
+        final queuedMemory = TimelineMoment(
+          id: 'queued-1',
+          userId: 'user-1',
+          title: 'Queued Memory',
+          capturedAt: DateTime(2025, 1, 16),
+          createdAt: DateTime(2025, 1, 16),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 16,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: true,
+          isPreviewOnly: false,
+          isDetailCachedLocally: true,
+          localId: 'local-1',
+          offlineSyncStatus: OfflineSyncStatus.queued,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: true,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [onlineMemory, queuedMemory],
+              hasMore: false,
+            ));
+
+        final notifier = container.read(unifiedFeedProvider.notifier);
+        await notifier.loadInitial();
+
+        final state = container.read(unifiedFeedProvider);
+        expect(state.isOffline, false);
+        expect(state.state, UnifiedFeedState.ready);
+        expect(state.memories.length, 2);
+        expect(state.memories.any((m) => m.isOfflineQueued), true);
+        expect(state.memories.any((m) => m.serverId != null), true);
+      });
+
+      test('filters still work with preview index and queue', () async {
+        when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
+
+        final storyMemory = TimelineMoment(
+          id: 'story-1',
+          userId: 'user-1',
+          title: 'Story Memory',
+          capturedAt: DateTime(2025, 1, 17),
+          createdAt: DateTime(2025, 1, 17),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 17,
+          tags: [],
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: true,
+          isDetailCachedLocally: false,
+          offlineSyncStatus: OfflineSyncStatus.synced,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: {MemoryType.story},
+              batchSize: any(named: 'batchSize'),
+              isOnline: false,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [storyMemory],
+              hasMore: false,
+            ));
+
+        final notifier = container.read(unifiedFeedProvider.notifier);
+        await notifier.setFilter({MemoryType.story});
+
+        final state = container.read(unifiedFeedProvider);
+        expect(state.memories.length, 1);
+        expect(state.memories.first.memoryType, 'story');
+      });
+    });
+
+    group('Sync Integration', () {
+      late MockMemorySyncService mockSyncService;
+      late StreamController<SyncCompleteEvent> syncEventController;
+
+      setUp(() {
+        mockSyncService = MockMemorySyncService();
+        syncEventController = StreamController<SyncCompleteEvent>.broadcast();
+        when(() => mockSyncService.syncCompleteStream)
+            .thenAnswer((_) => syncEventController.stream);
+      });
+
+      tearDown(() {
+        syncEventController.close();
+      });
+
+      test('removes queued entry when sync completes', () async {
+        final queuedMemory = TimelineMoment(
+          id: 'queued-1',
+          userId: 'user-1',
+          title: 'Queued Memory',
+          capturedAt: DateTime(2025, 1, 16),
+          createdAt: DateTime(2025, 1, 16),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 16,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: true,
+          isPreviewOnly: false,
+          isDetailCachedLocally: true,
+          localId: 'local-1',
+          offlineSyncStatus: OfflineSyncStatus.queued,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: true,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [queuedMemory],
+              hasMore: false,
+            ));
+
+        final containerWithSync = ProviderContainer(
+          overrides: [
+            supabaseClientProvider.overrideWithValue(mockSupabase),
+            connectivityServiceProvider.overrideWithValue(mockConnectivity),
+            offlineQueueServiceProvider.overrideWithValue(mockOfflineQueueService),
+            offlineStoryQueueServiceProvider.overrideWithValue(mockOfflineStoryQueueService),
+            localMemoryPreviewStoreProvider.overrideWithValue(mockLocalMemoryPreviewStore),
+            unifiedFeedRepositoryProvider.overrideWithValue(mockRepository),
+            memorySyncServiceProvider.overrideWithValue(mockSyncService),
+          ],
+        );
+
+        final notifier = containerWithSync.read(unifiedFeedProvider.notifier);
+        await notifier.loadInitial();
+
+        // Verify queued memory is present
+        var state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 1);
+        expect(state.memories.first.localId, 'local-1');
+        expect(state.memories.first.isOfflineQueued, true);
+
+        // Emit sync completion event
+        syncEventController.add(
+          SyncCompleteEvent(
+            localId: 'local-1',
+            serverId: 'server-1',
+            memoryType: MemoryType.moment,
+          ),
+        );
+
+        // Wait for event to be processed
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Verify queued memory is removed
+        state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 0);
+
+        containerWithSync.dispose();
+      });
+
+      test('does not remove non-matching queued entry', () async {
+        final queuedMemory1 = TimelineMoment(
+          id: 'queued-1',
+          userId: 'user-1',
+          title: 'Queued Memory 1',
+          capturedAt: DateTime(2025, 1, 16),
+          createdAt: DateTime(2025, 1, 16),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 16,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: true,
+          isPreviewOnly: false,
+          isDetailCachedLocally: true,
+          localId: 'local-1',
+          offlineSyncStatus: OfflineSyncStatus.queued,
+        );
+
+        final queuedMemory2 = TimelineMoment(
+          id: 'queued-2',
+          userId: 'user-1',
+          title: 'Queued Memory 2',
+          capturedAt: DateTime(2025, 1, 15),
+          createdAt: DateTime(2025, 1, 15),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 15,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: true,
+          isPreviewOnly: false,
+          isDetailCachedLocally: true,
+          localId: 'local-2',
+          offlineSyncStatus: OfflineSyncStatus.queued,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: true,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [queuedMemory1, queuedMemory2],
+              hasMore: false,
+            ));
+
+        final containerWithSync = ProviderContainer(
+          overrides: [
+            supabaseClientProvider.overrideWithValue(mockSupabase),
+            connectivityServiceProvider.overrideWithValue(mockConnectivity),
+            offlineQueueServiceProvider.overrideWithValue(mockOfflineQueueService),
+            offlineStoryQueueServiceProvider.overrideWithValue(mockOfflineStoryQueueService),
+            localMemoryPreviewStoreProvider.overrideWithValue(mockLocalMemoryPreviewStore),
+            unifiedFeedRepositoryProvider.overrideWithValue(mockRepository),
+            memorySyncServiceProvider.overrideWithValue(mockSyncService),
+          ],
+        );
+
+        final notifier = containerWithSync.read(unifiedFeedProvider.notifier);
+        await notifier.loadInitial();
+
+        // Verify both queued memories are present
+        var state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 2);
+
+        // Emit sync completion event for local-1 only
+        syncEventController.add(
+          SyncCompleteEvent(
+            localId: 'local-1',
+            serverId: 'server-1',
+            memoryType: MemoryType.moment,
+          ),
+        );
+
+        // Wait for event to be processed
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Verify only local-1 is removed, local-2 remains
+        state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 1);
+        expect(state.memories.first.localId, 'local-2');
+
+        containerWithSync.dispose();
+      });
+
+      test('does not remove non-queued entries', () async {
+        final serverMemory = TimelineMoment(
+          id: 'server-1',
+          userId: 'user-1',
+          title: 'Server Memory',
+          capturedAt: DateTime(2025, 1, 17),
+          createdAt: DateTime(2025, 1, 17),
+          year: 2025,
+          season: 'Winter',
+          month: 1,
+          day: 17,
+          tags: [],
+          memoryType: 'moment',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'server-1',
+          offlineSyncStatus: OfflineSyncStatus.synced,
+        );
+
+        when(() => mockRepository.fetchMergedFeed(
+              cursor: any(named: 'cursor'),
+              filters: any(named: 'filters'),
+              batchSize: any(named: 'batchSize'),
+              isOnline: true,
+            )).thenAnswer((_) async => UnifiedFeedPageResult(
+              memories: [serverMemory],
+              hasMore: false,
+            ));
+
+        final containerWithSync = ProviderContainer(
+          overrides: [
+            supabaseClientProvider.overrideWithValue(mockSupabase),
+            connectivityServiceProvider.overrideWithValue(mockConnectivity),
+            offlineQueueServiceProvider.overrideWithValue(mockOfflineQueueService),
+            offlineStoryQueueServiceProvider.overrideWithValue(mockOfflineStoryQueueService),
+            localMemoryPreviewStoreProvider.overrideWithValue(mockLocalMemoryPreviewStore),
+            unifiedFeedRepositoryProvider.overrideWithValue(mockRepository),
+            memorySyncServiceProvider.overrideWithValue(mockSyncService),
+          ],
+        );
+
+        final notifier = containerWithSync.read(unifiedFeedProvider.notifier);
+        await notifier.loadInitial();
+
+        // Verify server memory is present
+        var state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 1);
+
+        // Emit sync completion event (should not affect server memory)
+        syncEventController.add(
+          SyncCompleteEvent(
+            localId: 'local-1',
+            serverId: 'server-1',
+            memoryType: MemoryType.moment,
+          ),
+        );
+
+        // Wait for event to be processed
+        await Future.delayed(const Duration(milliseconds: 100));
+
+        // Verify server memory is still present (not removed because it's not queued)
+        state = containerWithSync.read(unifiedFeedProvider);
+        expect(state.memories.length, 1);
+        expect(state.memories.first.id, 'server-1');
+
+        containerWithSync.dispose();
       });
     });
   });

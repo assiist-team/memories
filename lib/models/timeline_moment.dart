@@ -1,3 +1,11 @@
+/// Status of offline sync for a memory
+enum OfflineSyncStatus {
+  queued,
+  syncing,
+  failed,
+  synced,
+}
+
 /// Model representing a Moment in the timeline feed
 class TimelineMoment {
   final String id;
@@ -19,6 +27,28 @@ class TimelineMoment {
   final DateTime? nextCursorCapturedAt;
   final String? nextCursorId;
 
+  /// True when this memory was captured offline and is stored in a local queue.
+  final bool isOfflineQueued;
+
+  /// True when this memory is only represented as a lightweight preview entry.
+  /// In Phase 1 this means:
+  /// - The card can be shown in the timeline.
+  /// - Full detail is NOT available offline.
+  final bool isPreviewOnly;
+
+  /// True when full detail for this memory is cached locally.
+  /// Phase 1: queued offline memories only.
+  /// Phase 2: may also include fully cached synced memories.
+  final bool isDetailCachedLocally;
+
+  /// Local ID for queued offline memories (null for preview-only/server entries).
+  final String? localId;
+
+  /// Server ID for synced memories (null while queued offline).
+  final String? serverId;
+
+  final OfflineSyncStatus offlineSyncStatus;
+
   TimelineMoment({
     required this.id,
     required this.userId,
@@ -38,6 +68,12 @@ class TimelineMoment {
     this.snippetText,
     this.nextCursorCapturedAt,
     this.nextCursorId,
+    required this.isOfflineQueued,
+    required this.isPreviewOnly,
+    required this.isDetailCachedLocally,
+    this.localId,
+    this.serverId,
+    required this.offlineSyncStatus,
   });
 
   /// Display title - prefers generated title, falls back to title, then appropriate "Untitled" text
@@ -71,10 +107,79 @@ class TimelineMoment {
     return null;
   }
 
-  /// Create from Supabase RPC response
-  factory TimelineMoment.fromJson(Map<String, dynamic> json) {
+  /// Effective ID for this memory - prefers serverId, falls back to localId, then id
+  String get effectiveId => serverId ?? localId ?? id;
+
+  /// Whether the user can open a full detail view while offline.
+  bool get isAvailableOffline => isOfflineQueued || isDetailCachedLocally;
+
+  /// Create a copy with updated fields
+  TimelineMoment copyWith({
+    String? id,
+    String? userId,
+    String? title,
+    String? inputText,
+    String? processedText,
+    String? generatedTitle,
+    List<String>? tags,
+    String? memoryType,
+    DateTime? capturedAt,
+    DateTime? createdAt,
+    int? year,
+    String? season,
+    int? month,
+    int? day,
+    PrimaryMedia? primaryMedia,
+    String? snippetText,
+    DateTime? nextCursorCapturedAt,
+    String? nextCursorId,
+    bool? isOfflineQueued,
+    bool? isPreviewOnly,
+    bool? isDetailCachedLocally,
+    String? localId,
+    String? serverId,
+    OfflineSyncStatus? offlineSyncStatus,
+  }) {
     return TimelineMoment(
-      id: json['id'] as String,
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      title: title ?? this.title,
+      inputText: inputText ?? this.inputText,
+      processedText: processedText ?? this.processedText,
+      generatedTitle: generatedTitle ?? this.generatedTitle,
+      tags: tags ?? this.tags,
+      memoryType: memoryType ?? this.memoryType,
+      capturedAt: capturedAt ?? this.capturedAt,
+      createdAt: createdAt ?? this.createdAt,
+      year: year ?? this.year,
+      season: season ?? this.season,
+      month: month ?? this.month,
+      day: day ?? this.day,
+      primaryMedia: primaryMedia ?? this.primaryMedia,
+      snippetText: snippetText ?? this.snippetText,
+      nextCursorCapturedAt: nextCursorCapturedAt ?? this.nextCursorCapturedAt,
+      nextCursorId: nextCursorId ?? this.nextCursorId,
+      isOfflineQueued: isOfflineQueued ?? this.isOfflineQueued,
+      isPreviewOnly: isPreviewOnly ?? this.isPreviewOnly,
+      isDetailCachedLocally: isDetailCachedLocally ?? this.isDetailCachedLocally,
+      localId: localId ?? this.localId,
+      serverId: serverId ?? this.serverId,
+      offlineSyncStatus: offlineSyncStatus ?? this.offlineSyncStatus,
+    );
+  }
+
+  /// Create from Supabase RPC response
+  /// 
+  /// For server-synced entries, offline fields are explicitly set to:
+  /// - isOfflineQueued: false (server-synced entries are not queued)
+  /// - isPreviewOnly: false (full detail available from server)
+  /// - isDetailCachedLocally: false (Phase 1: not cached)
+  /// - serverId: id from JSON
+  /// - offlineSyncStatus: synced
+  factory TimelineMoment.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    return TimelineMoment(
+      id: id,
       userId: json['user_id'] as String,
       title: json['title'] as String? ?? '',
       inputText: json['input_text'] as String?,
@@ -99,7 +204,57 @@ class TimelineMoment {
           ? DateTime.parse(json['next_cursor_captured_at'] as String)
           : null,
       nextCursorId: json['next_cursor_id'] as String?,
+      isOfflineQueued: false, // Server-synced entries are never queued
+      isPreviewOnly: false, // Server-synced entries have full detail available
+      isDetailCachedLocally: false, // Phase 1: server entries not cached locally
+      localId: null, // Server-synced entries don't have local IDs
+      serverId: id, // Server ID is the id from JSON
+      offlineSyncStatus: OfflineSyncStatus.synced, // Server entries are synced
     );
+  }
+
+  /// Convert to JSON for serialization
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'title': title,
+      'input_text': inputText,
+      'processed_text': processedText,
+      'generated_title': generatedTitle,
+      'tags': tags,
+      'memory_type': memoryType,
+      'captured_at': capturedAt.toIso8601String(),
+      'created_at': createdAt.toIso8601String(),
+      'year': year,
+      'season': season,
+      'month': month,
+      'day': day,
+      'primary_media': primaryMedia?.toJson(),
+      'snippet_text': snippetText,
+      'next_cursor_captured_at': nextCursorCapturedAt?.toIso8601String(),
+      'next_cursor_id': nextCursorId,
+      'is_offline_queued': isOfflineQueued,
+      'is_preview_only': isPreviewOnly,
+      'is_detail_cached_locally': isDetailCachedLocally,
+      'local_id': localId,
+      'server_id': serverId,
+      'offline_sync_status': _offlineSyncStatusToJson(offlineSyncStatus),
+    };
+  }
+
+  /// Convert OfflineSyncStatus to JSON
+  static String _offlineSyncStatusToJson(OfflineSyncStatus status) {
+    switch (status) {
+      case OfflineSyncStatus.queued:
+        return 'queued';
+      case OfflineSyncStatus.syncing:
+        return 'syncing';
+      case OfflineSyncStatus.failed:
+        return 'failed';
+      case OfflineSyncStatus.synced:
+        return 'synced';
+    }
   }
 }
 
@@ -121,6 +276,14 @@ class PrimaryMedia {
       url: json['url'] as String,
       index: json['index'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'type': type,
+      'url': url,
+      'index': index,
+    };
   }
 
   bool get isPhoto => type == 'photo';

@@ -12,11 +12,13 @@ import 'package:memories/models/memory_type.dart';
 class StoryCard extends ConsumerWidget {
   final TimelineMoment story;
   final VoidCallback onTap;
+  final bool isOffline;
 
   const StoryCard({
     super.key,
     required this.story,
     required this.onTap,
+    this.isOffline = false,
   });
 
   @override
@@ -24,54 +26,188 @@ class StoryCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context);
 
+    // Determine offline states
+    final isPreviewOnlyOffline =
+        isOffline && story.isPreviewOnly && !story.isDetailCachedLocally;
+    final isQueuedOffline = story.isOfflineQueued;
+
     // Build semantic label with all relevant information
-    // Format: "Story titled [title] recorded [absolute date], [relative time]"
+    // Format: "Story titled [title] recorded [absolute date]"
     final absoluteTime = _formatAbsoluteTimestamp(story.capturedAt, locale);
-    final relativeTime = _formatRelativeTimestamp(story.capturedAt);
     final semanticLabel = StringBuffer('Story');
     if (story.displayTitle.isNotEmpty && story.displayTitle != 'Untitled Story') {
       semanticLabel.write(' titled ${story.displayTitle}');
     }
     semanticLabel.write(' recorded $absoluteTime');
-    if (relativeTime.isNotEmpty) {
-      semanticLabel.write(', $relativeTime');
+    if (isQueuedOffline) {
+      semanticLabel.write(', pending sync');
+    }
+    if (isPreviewOnlyOffline) {
+      semanticLabel.write(', not available offline');
     }
 
     return Semantics(
       label: semanticLabel.toString(),
       button: true,
       hint: 'Double tap to view story details',
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          // Ensure minimum 44px hit area for accessibility
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: 44,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Thumbnail section - placeholder icon for stories
-                  _buildThumbnail(context, theme),
-                  const SizedBox(width: 16),
-                  // Content section
-                  Expanded(
-                    child: _buildContent(context, theme, locale),
-                  ),
-                ],
+      child: Opacity(
+        opacity: isPreviewOnlyOffline ? 0.5 : 1.0,
+        child: Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          elevation: 2,
+          shape: _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
+          child: InkWell(
+            onTap: isPreviewOnlyOffline
+                ? () => _showNotAvailableOfflineMessage(context)
+                : onTap,
+            borderRadius: BorderRadius.circular(12),
+            // Ensure minimum 44px hit area for accessibility
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: 44,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Thumbnail section - placeholder icon for stories
+                        _buildThumbnail(context, theme),
+                        const SizedBox(width: 16),
+                        // Content section
+                        Expanded(
+                          child: _buildContent(context, theme, locale),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Footer badges
+                    _buildFooterBadges(context, isQueuedOffline, isPreviewOnlyOffline),
+                  ],
+                ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  ShapeBorder _buildCardShape(
+    BuildContext context,
+    bool isQueuedOffline,
+    bool isPreviewOnlyOffline,
+  ) {
+    if (isQueuedOffline) {
+      return RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.shade300, width: 1),
+      );
+    }
+    if (isPreviewOnlyOffline) {
+      return RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade400, width: 0.5),
+      );
+    }
+    return RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+  }
+
+  Widget _buildFooterBadges(
+    BuildContext context,
+    bool isQueuedOffline,
+    bool isPreviewOnlyOffline,
+  ) {
+    final badges = <Widget>[];
+
+    if (isQueuedOffline) {
+      badges.add(_buildSyncStatusChip(context));
+    }
+
+    if (isPreviewOnlyOffline) {
+      badges.add(_buildPreviewOnlyChip(context));
+    }
+
+    if (badges.isEmpty) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        ...badges.map((b) => Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: b,
+            )),
+      ],
+    );
+  }
+
+  Widget _buildSyncStatusChip(BuildContext context) {
+    final status = story.offlineSyncStatus;
+    Color bg;
+    Color fg;
+    String label;
+
+    switch (status) {
+      case OfflineSyncStatus.queued:
+        bg = Colors.orange.shade50;
+        fg = Colors.orange.shade800;
+        label = 'Pending sync';
+        break;
+      case OfflineSyncStatus.syncing:
+        bg = Colors.blue.shade50;
+        fg = Colors.blue.shade800;
+        label = 'Syncing…';
+        break;
+      case OfflineSyncStatus.failed:
+        bg = Colors.red.shade50;
+        fg = Colors.red.shade800;
+        label = 'Sync failed';
+        break;
+      case OfflineSyncStatus.synced:
+        bg = Colors.green.shade50;
+        fg = Colors.green.shade800;
+        label = 'Synced';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: fg),
+      ),
+    );
+  }
+
+  Widget _buildPreviewOnlyChip(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'Not available offline',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.grey.shade800,
+            ),
+      ),
+    );
+  }
+
+  void _showNotAvailableOfflineMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('This memory is not available offline yet.'),
+        duration: Duration(seconds: 2),
       ),
     );
   }
@@ -115,9 +251,9 @@ class StoryCard extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 8),
-        // Date - shows relative time with absolute date fallback
+        // Date - shows actual date
         Semantics(
-          label: 'Recorded ${_formatRelativeTimestamp(story.capturedAt).isNotEmpty ? _formatRelativeTimestamp(story.capturedAt) : _formatAbsoluteTimestamp(story.capturedAt, locale)}',
+          label: 'Recorded ${_formatAbsoluteTimestamp(story.capturedAt, locale)}',
           excludeSemantics: true,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -133,9 +269,7 @@ class StoryCard extends ConsumerWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                _formatRelativeTimestamp(story.capturedAt).isNotEmpty
-                    ? _formatRelativeTimestamp(story.capturedAt)
-                    : _formatAbsoluteTimestamp(story.capturedAt, locale),
+                _formatAbsoluteTimestamp(story.capturedAt, locale),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -183,37 +317,6 @@ class StoryCard extends ConsumerWidget {
     final dateFormat = DateFormat('MMM d, y', locale.toString());
     final timeFormat = DateFormat('h:mm a', locale.toString());
     return '${dateFormat.format(date)} at ${timeFormat.format(date)}';
-  }
-
-  /// Format relative timestamp: "3 weeks ago" or empty if very recent
-  /// Matches the pattern used in MomentMetadataSection for consistency
-  String _formatRelativeTimestamp(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      // Same day - show relative time within day
-      if (difference.inHours == 0) {
-        if (difference.inMinutes == 0) {
-          return 'Just now';
-        }
-        return '${difference.inMinutes}m ago';
-      }
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inDays < 30) {
-      final weeks = (difference.inDays / 7).floor();
-      return '${weeks}w ago';
-    } else if (difference.inDays < 365) {
-      final months = (difference.inDays / 30).floor();
-      return '${months}mo ago';
-    } else {
-      final years = (difference.inDays / 365).floor();
-      return '${years}y ago';
-    }
   }
 }
 

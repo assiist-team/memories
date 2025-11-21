@@ -271,8 +271,8 @@ Text: ${processedText.substring(0, 1000)}`;
  * 
  * This function:
  * - Fetches moment data from database using memoryId
+ * - Generates title from input_text
  * - Processes input_text → processed_text (cleaned, readable text)
- * - Generates title from processed_text
  * - Updates database with processed_text and title
  * - Returns processing status
  */
@@ -446,13 +446,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let title: string;
     let status: "success" | "fallback" | "partial" = "fallback";
 
-    // Step 1: Process text
+    // Step 1: Generate title from input text
+    const titleResult = await generateTitleWithLLM(inputText);
+    title = titleResult || FALLBACK_TITLE;
+
+    // Step 2: Process text
     const processedTextResult = await processTextWithLLM(inputText);
     processedText = processedTextResult || inputText; // Fallback to input_text if processing fails (inputText is guaranteed non-empty)
-
-    // Step 2: Generate title from processed text
-    const titleResult = await generateTitleWithLLM(processedText);
-    title = titleResult || FALLBACK_TITLE;
 
     // Determine status
     if (processedTextResult && titleResult) {

@@ -268,8 +268,8 @@ Narrative: ${text.substring(0, 1000)}`;
  * This function:
  * - Fetches story data from database using memoryId
  * - Validates input_text exists and is not empty
+ * - Generates title from input_text
  * - Generates narrative text from input_text → processed_text
- * - Generates title from narrative
  * - Updates memories table with processed_text and title
  * - Updates story_fields table with status and timestamps
  * - Handles failures with retry logic
@@ -497,22 +497,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let errorMessage: string | null = null;
 
     try {
-      // Step 1: Generate narrative
+      // Step 1: Generate title from input text
+      title = await generateTitleWithLLM(inputText);
+      
+      if (!title) {
+        title = FALLBACK_TITLE;
+        status = "fallback";
+      }
+
+      // Step 2: Generate narrative
       narrative = await generateNarrativeWithLLM(inputText);
       
       if (!narrative) {
         throw new Error("Failed to generate narrative");
       }
 
-      // Step 2: Generate title from narrative (fallback to input_text if narrative generation failed)
-      const titleText = narrative || inputText;
-      title = await generateTitleWithLLM(titleText);
-      
-      if (!title) {
-        title = FALLBACK_TITLE;
+      // Update status based on both operations
+      if (title !== FALLBACK_TITLE && narrative) {
+        status = "success";
+      } else if (narrative) {
         status = "fallback";
       } else {
-        status = "success";
+        status = "failed";
       }
 
       const duration = Date.now() - startTime;

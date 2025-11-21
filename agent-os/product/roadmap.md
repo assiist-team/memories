@@ -20,40 +20,43 @@
 
 9. [ ] **Search Functionality** — Implement full-text search across all Stories, Moments, and Mementos using PostgreSQL text search; persistent search bar in app header with instant results. `S`
 
-## Phase 2 - Associations & Enhanced Organization
+10. [ ] **Offline Timeline Preview & Offline Editing** — Introduce a local preview index so the unified timeline still shows previously-synced memories when offline (greyed / “Not available offline” when detail is not cached), and enable viewing and editing of queued offline memories prior to sync. This is **Phase 1 of offline support**, and does **not** attempt full local mirroring of all memory details and media. `M`
 
-10. [ ] **Link Related Memories** — Enable many-to-many relationships between Stories/Moments/Mementos via junction tables; UI to add/remove links when viewing or editing any memory; display "Related Memories" section on detail screens. `M`
+## Phase 2 - Associations, Enhanced Organization & Offline Caching
 
-11. [ ] **Fast Capture Floating Action Button** — Implement FAB with quick-action menu: Record Story (immediate dictation), Capture Moment, Save Memento; optimize for speed and minimal friction. `S`
+11. [ ] **Full Offline Caching** — Allow users to opt in to broader offline availability by caching full memory details (and selected media) on-device, building on the same local store used for the preview index so more memories are fully openable when offline, with sensible storage and eviction policies. `L`
 
-12. [ ] **Enhanced Timeline Filtering & Sorting** — Add date range filters, sort options (newest/oldest), and ability to filter by media type (has photos, has videos, text-only). `S`
+12. [ ] **Link Related Memories** — Enable many-to-many relationships between Stories/Moments/Mementos via junction tables; UI to add/remove links when viewing or editing any memory; display "Related Memories" section on detail screens. `M`
 
-13. [ ] **Batch Media Upload** — Allow multiple photos/videos to be selected and uploaded at once for a single Moment; gallery-style organization of media within Moments. `S`
+13. [ ] **Fast Capture Floating Action Button** — Implement FAB with quick-action menu: Record Story (immediate dictation), Capture Moment, Save Memento; optimize for speed and minimal friction. `S`
+
+14. [ ] **Enhanced Timeline Filtering & Sorting** — Add date range filters, sort options (newest/oldest), and ability to filter by media type (has photos, has videos, text-only). `S`
+
+15. [ ] **Batch Media Upload** — Allow multiple photos/videos to be selected and uploaded at once for a single Moment; gallery-style organization of media within Moments. `S`
 
 ## Phase 3 - Sharing & Collaboration
 
-14. [ ] **Share Individual Memory** — Generate shareable link or export for any Story/Moment/Memento; recipients can view beautifully rendered memory without requiring account (public view). `M`
+16. [ ] **Share Individual Memory** — Generate shareable link or export for any Story/Moment/Memento; recipients can view beautifully rendered memory without requiring account (public view). `M`
 
-15. [ ] **Invite Collaborators** — Allow users to invite others (via email) to contribute to specific Stories or Moments; collaborators can add comments, link related memories, or add their own perspective. `M`
+17. [ ] **Invite Collaborators** — Allow users to invite others (via email) to contribute to specific Stories or Moments; collaborators can add comments, link related memories, or add their own perspective. `M`
 
-16. [ ] **Shared Memory Collections** — Create collaborative albums where multiple users can contribute Stories, Moments, and Mementos (e.g., family album, friend group trip memories). `L`
+18. [ ] **Shared Memory Collections** — Create collaborative albums where multiple users can contribute Stories, Moments, and Mementos (e.g., family album, friend group trip memories). `L`
 
-17. [ ] **Privacy Controls** — Set privacy levels per memory (Private, Shared with specific people, Public link); manage collaborator permissions (view-only vs. can-edit). `M`
+19. [ ] **Privacy Controls** — Set privacy levels per memory (Private, Shared with specific people, Public link); manage collaborator permissions (view-only vs. can-edit). `M`
 
 ## Phase 4 - Memory Digests & Social Features
 
-18. [ ] **Periodic Memory Digests** — Auto-generate monthly, seasonal, and yearly summaries of memories; beautiful presentation with selected highlights; ability to manually curate and share digests. `L`
+20. [ ] **Periodic Memory Digests** — Auto-generate monthly, seasonal, and yearly summaries of memories; beautiful presentation with selected highlights; ability to manually curate and share digests. `L`
 
-19. [ ] **Social Media Integration** — Enable one-tap sharing of Moments to Instagram with formatted image/caption; explore APIs for other platforms (Facebook, Twitter). `M`
+21. [ ] **Social Media Integration** — Enable one-tap sharing of Moments to Instagram with formatted image/caption; explore APIs for other platforms (Facebook, Twitter). `M`
 
-20. [ ] **Memory Notifications & Reminders** — "On this day" style reminders of past memories; gentle prompts to capture new memories during quiet periods; customizable notification preferences. `S`
+22. [ ] **Memory Notifications & Reminders** — "On this day" style reminders of past memories; gentle prompts to capture new memories during quiet periods; customizable notification preferences. `S`
 
 > Notes
 > - Order prioritizes getting core capture and viewing functionality working first (Moments, Stories, Mementos)
-> - Phase 2 adds organizational power and speed optimizations
+> - Phase 2 adds organizational power, a richer offline story, and speed optimizations
 > - Phase 3 enables the social/sharing aspects that make memories more valuable
 > - Phase 4 brings advanced features that increase engagement over time
 > - Each item represents an end-to-end functional and testable feature
-
 
 

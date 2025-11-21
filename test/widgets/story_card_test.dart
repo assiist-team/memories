@@ -32,7 +32,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -52,7 +57,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -73,7 +83,12 @@ void main() {
         month: today.month,
         day: today.day,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -95,7 +110,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -117,7 +137,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(
@@ -153,7 +178,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -178,7 +208,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));
@@ -200,7 +235,12 @@ void main() {
         month: 1,
         day: 17,
         tags: [],
-        captureType: 'story',
+          memoryType: 'story',
+          isOfflineQueued: false,
+          isPreviewOnly: false,
+          isDetailCachedLocally: false,
+          serverId: 'test-id',
+          offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(story));

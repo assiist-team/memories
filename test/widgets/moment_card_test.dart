@@ -49,13 +49,21 @@ void main() {
     testWidgets('displays moment title', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: [],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -66,13 +74,21 @@ void main() {
     testWidgets('displays "Untitled Moment" when title is empty', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: '',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: [],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -83,14 +99,22 @@ void main() {
     testWidgets('displays snippet text when available', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: [],
+        memoryType: 'moment',
         snippetText: 'This is a test snippet',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -101,13 +125,21 @@ void main() {
     testWidgets('displays tags when available', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: ['tag1', 'tag2', 'tag3'],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -120,13 +152,21 @@ void main() {
     testWidgets('shows text-only badge when no media', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: [],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -138,13 +178,21 @@ void main() {
       var tapped = false;
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: [],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(
@@ -175,13 +223,21 @@ void main() {
       final today = DateTime.now();
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: today,
+        createdAt: today,
         year: today.year,
         season: 'Winter',
         month: today.month,
         day: today.day,
         tags: [],
+        memoryType: 'moment',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
@@ -192,14 +248,22 @@ void main() {
     testWidgets('has proper accessibility semantics', (WidgetTester tester) async {
       final moment = TimelineMoment(
         id: 'test-id',
+        userId: 'user-1',
         title: 'Test Moment',
         capturedAt: DateTime(2025, 1, 17),
+        createdAt: DateTime(2025, 1, 17),
         year: 2025,
         season: 'Winter',
         month: 1,
         day: 17,
         tags: ['tag1'],
+        memoryType: 'moment',
         snippetText: 'Test snippet',
+        isOfflineQueued: false,
+        isPreviewOnly: false,
+        isDetailCachedLocally: false,
+        serverId: 'test-id',
+        offlineSyncStatus: OfflineSyncStatus.synced,
       );
 
       await tester.pumpWidget(createWidget(moment));
