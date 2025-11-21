@@ -14,7 +14,6 @@ import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
-import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/media_picker_service.dart';
 import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
@@ -232,7 +231,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     if (!state.canSave) {
       final message = state.memoryType == MemoryType.story
-          ? 'Please record audio to save'
+          ? 'Please add text or record audio to save'
           : state.memoryType == MemoryType.memento
               ? 'Please add description text or at least one photo/video'
               : 'Please add description text or at least one photo/video';
@@ -435,8 +434,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         setState(() {
           _isSaving = false;
           _showSuccessCheckmark = true;
-          _saveProgressMessage = null;
-          _saveProgress = null;
         });
 
         // Wait for checkmark animation

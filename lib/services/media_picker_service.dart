@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gal/gal.dart';
 
 /// Exception thrown when media picking fails
 class MediaPickerException implements Exception {
@@ -14,6 +15,30 @@ class MediaPickerException implements Exception {
 class MediaPickerService {
   final ImagePicker _imagePicker = ImagePicker();
 
+  /// Saves a photo to the device photo library
+  Future<void> _savePhotoToLibrary(String photoPath) async {
+    try {
+      await Gal.putImage(photoPath);
+      debugPrint('[MediaPickerService] Photo saved to photo library: $photoPath');
+    } catch (e) {
+      // Log error but don't throw - saving to library is a convenience feature
+      // and shouldn't prevent the app from using the captured photo
+      debugPrint('[MediaPickerService] Failed to save photo to library: $e');
+    }
+  }
+
+  /// Saves a video to the device photo library
+  Future<void> _saveVideoToLibrary(String videoPath) async {
+    try {
+      await Gal.putVideo(videoPath);
+      debugPrint('[MediaPickerService] Video saved to photo library: $videoPath');
+    } catch (e) {
+      // Log error but don't throw - saving to library is a convenience feature
+      // and shouldn't prevent the app from using the captured video
+      debugPrint('[MediaPickerService] Failed to save video to library: $e');
+    }
+  }
+
   /// Pick a photo from camera
   Future<String?> pickPhotoFromCamera() async {
     try {
@@ -21,6 +46,12 @@ class MediaPickerService {
         source: ImageSource.camera,
         imageQuality: 85,
       );
+      
+      // Save to photo library if capture was successful
+      if (photo != null) {
+        await _savePhotoToLibrary(photo.path);
+      }
+      
       return photo?.path;
     } catch (e) {
       final errorMessage = e.toString().toLowerCase();
@@ -85,6 +116,12 @@ class MediaPickerService {
       final XFile? video = await _imagePicker.pickVideo(
         source: ImageSource.camera,
       );
+      
+      // Save to photo library if capture was successful
+      if (video != null) {
+        await _saveVideoToLibrary(video.path);
+      }
+      
       return video?.path;
     } catch (e) {
       final errorMessage = e.toString().toLowerCase();
