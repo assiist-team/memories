@@ -24,10 +24,10 @@ class MemoryDetailService {
   MemoryDetailService(this._supabase);
 
   /// Fetch detailed memory data by ID
-  /// 
+  ///
   /// [memoryId] is the UUID of the memory to fetch
   /// [preferCache] if true, will try cache first before network
-  /// 
+  ///
   /// Returns a [MemoryDetailResult] with memory data and cache status
   /// Throws an exception if the memory is not found or user doesn't have access
   Future<MemoryDetailResult> getMemoryDetail(
@@ -43,18 +43,21 @@ class MemoryDetailService {
     }
 
     try {
-      debugPrint('[MemoryDetailService] Fetching memory detail for ID: $memoryId');
+      debugPrint(
+          '[MemoryDetailService] Fetching memory detail for ID: $memoryId');
       final response = await _supabase.rpc(
         'get_moment_detail',
         params: {'p_moment_id': memoryId},
       ).single();
 
       debugPrint('[MemoryDetailService] Received response from RPC');
-      debugPrint('[MemoryDetailService] Response keys: ${response.keys.toList()}');
-      
+      debugPrint(
+          '[MemoryDetailService] Response keys: ${response.keys.toList()}');
+
       // Log photos array before parsing
       final photosJson = response['photos'] as List<dynamic>?;
-      debugPrint('[MemoryDetailService] Photos array: ${photosJson?.length ?? 0} items');
+      debugPrint(
+          '[MemoryDetailService] Photos array: ${photosJson?.length ?? 0} items');
       if (photosJson != null && photosJson.isNotEmpty) {
         for (int i = 0; i < photosJson.length; i++) {
           final photo = photosJson[i] as Map<String, dynamic>?;
@@ -63,14 +66,16 @@ class MemoryDetailService {
       }
 
       final memory = MemoryDetail.fromJson(Map<String, dynamic>.from(response));
-      
+
       debugPrint('[MemoryDetailService] Parsed memory: ${memory.id}');
-      debugPrint('[MemoryDetailService]   Photos count: ${memory.photos.length}');
-      debugPrint('[MemoryDetailService]   Videos count: ${memory.videos.length}');
-      
+      debugPrint(
+          '[MemoryDetailService]   Photos count: ${memory.photos.length}');
+      debugPrint(
+          '[MemoryDetailService]   Videos count: ${memory.videos.length}');
+
       // Cache the result for offline access
       await _cacheMemoryDetail(memoryId, memory);
-      
+
       return MemoryDetailResult(memory: memory, isFromCache: false);
     } catch (e) {
       // If network fails, try cache as fallback
@@ -89,20 +94,20 @@ class MemoryDetailService {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = '$_cachePrefix$memoryId';
       final cacheData = prefs.getString(cacheKey);
-      
+
       if (cacheData == null) return null;
-      
+
       final json = jsonDecode(cacheData) as Map<String, dynamic>;
       final cachedAt = DateTime.parse(json['cached_at'] as String);
       final now = DateTime.now();
-      
+
       // Check if cache is expired
       if (now.difference(cachedAt) > _cacheExpiry) {
         // Remove expired cache
         await prefs.remove(cacheKey);
         return null;
       }
-      
+
       // Return cached memory
       return MemoryDetail.fromJson(json['memory'] as Map<String, dynamic>);
     } catch (e) {
@@ -116,7 +121,7 @@ class MemoryDetailService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = '$_cachePrefix$memoryId';
-      
+
       final cacheData = {
         'memory': {
           'id': memory.id,
@@ -140,26 +145,30 @@ class MemoryDetailService {
                   'status': memory.locationData!.status,
                 }
               : null,
-          'photos': memory.photos.map((p) => {
-                'url': p.url,
-                'index': p.index,
-                'width': p.width,
-                'height': p.height,
-                'caption': p.caption,
-              }).toList(),
-          'videos': memory.videos.map((v) => {
-                'url': v.url,
-                'index': v.index,
-                'duration': v.duration,
-                'poster_url': v.posterUrl,
-                'caption': v.caption,
-              }).toList(),
+          'photos': memory.photos
+              .map((p) => {
+                    'url': p.url,
+                    'index': p.index,
+                    'width': p.width,
+                    'height': p.height,
+                    'caption': p.caption,
+                  })
+              .toList(),
+          'videos': memory.videos
+              .map((v) => {
+                    'url': v.url,
+                    'index': v.index,
+                    'duration': v.duration,
+                    'poster_url': v.posterUrl,
+                    'caption': v.caption,
+                  })
+              .toList(),
           'related_stories': memory.relatedStories,
           'related_mementos': memory.relatedMementos,
         },
         'cached_at': DateTime.now().toIso8601String(),
       };
-      
+
       await prefs.setString(cacheKey, jsonEncode(cacheData));
     } catch (e) {
       // Silently fail cache write - not critical
@@ -173,33 +182,33 @@ class MemoryDetailService {
   }
 
   /// Delete a memory by ID
-  /// 
+  ///
   /// [memoryId] is the UUID of the memory to delete
-  /// 
+  ///
   /// Throws an exception if the memory is not found or user doesn't have permission
   Future<void> deleteMemory(String memoryId) async {
     try {
       debugPrint('[MemoryDetailService] Deleting memory: $memoryId');
-      
+
       // Attempt delete - Supabase will throw an exception if there's a permission issue
       // or if the memory doesn't exist (depending on RLS policies)
-      final response = await _supabase
-          .from('memories')
-          .delete()
-          .eq('id', memoryId)
-          .select();
+      final response =
+          await _supabase.from('memories').delete().eq('id', memoryId).select();
 
-      debugPrint('[MemoryDetailService] Delete response: ${response.length} row(s) deleted');
-      
+      debugPrint(
+          '[MemoryDetailService] Delete response: ${response.length} row(s) deleted');
+
       // If delete succeeded (no exception thrown), clear cache even if response is empty
       // (Some edge cases might return empty response but deletion still succeeds)
       // Clear cache after successful deletion
       await _clearCache(memoryId);
-      debugPrint('[MemoryDetailService] Successfully deleted memory and cleared cache: $memoryId');
-      
+      debugPrint(
+          '[MemoryDetailService] Successfully deleted memory and cleared cache: $memoryId');
+
       // If response is empty, log a warning but don't fail (deletion likely succeeded)
       if (response.isEmpty) {
-        debugPrint('[MemoryDetailService] Warning: Delete returned empty response, but no exception was thrown. Assuming success.');
+        debugPrint(
+            '[MemoryDetailService] Warning: Delete returned empty response, but no exception was thrown. Assuming success.');
       }
     } catch (e, stackTrace) {
       debugPrint('[MemoryDetailService] Error deleting memory: $e');
@@ -226,9 +235,9 @@ class MemoryDetailService {
   }
 
   /// Create or get a share link for a memory
-  /// 
+  ///
   /// [memoryId] is the UUID of the memory to share
-  /// 
+  ///
   /// Returns a shareable URL if successful, or null if share link creation fails
   /// This will request/create a public_share_token via a future edge function
   /// For now, returns null if token doesn't exist (backend not ready)
@@ -242,7 +251,7 @@ class MemoryDetailService {
           .single();
 
       final existingToken = memory['public_share_token'] as String?;
-      
+
       if (existingToken != null && existingToken.isNotEmpty) {
         // Return shareable URL (format: https://app.example.com/share/<token>)
         // For now, return a placeholder URL structure
@@ -260,4 +269,3 @@ class MemoryDetailService {
     }
   }
 }
-

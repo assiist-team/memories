@@ -68,16 +68,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
   /// Sync input text controller with state when state changes (e.g., from dictation)
   /// Only syncs when state changes from an external source, not from TextField edits
-  void _syncInputTextController(String? inputText) {
+  void _syncInputTextController(String? inputText, {bool forceSync = false}) {
     final currentText = _descriptionController.text;
     final newText = inputText ?? '';
 
-    // Only sync if:
-    // 1. The state actually changed from previous value (indicates external change)
-    // 2. AND the controller text doesn't match the new state (needs syncing)
+    // Sync if:
+    // 1. Force sync is requested (e.g., when loading memory for edit)
+    // 2. OR the state actually changed from previous value (indicates external change)
+    //    AND the controller text doesn't match the new state (needs syncing)
     // This prevents interference when user is typing/deleting, as the controller
     // will already match the state after the onChanged callback updates it
-    if (_previousInputText != inputText && currentText != newText) {
+    if (forceSync || (_previousInputText != inputText && currentText != newText)) {
       _descriptionController.text = newText;
     }
 
@@ -554,8 +555,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
     // Sync input text controller when state.inputText changes (e.g., from dictation)
     // Only syncs when state changes from external source, not from TextField edits
+    // Force sync when editing a memory to ensure controller is populated
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncInputTextController(state.inputText);
+      final isEditing = state.editingMemoryId != null;
+      final shouldForceSync = isEditing && 
+          (_descriptionController.text != (state.inputText ?? ''));
+      _syncInputTextController(state.inputText, forceSync: shouldForceSync);
     });
 
     return PopScope(

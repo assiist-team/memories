@@ -78,7 +78,7 @@ BEGIN
   END IF;
   
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'memories' AND column_name = 'generated_title') THEN
-    COMMENT ON COLUMN public.memories.generated_title IS 'Auto-generated title from raw_transcript via generate-title edge function';
+    COMMENT ON COLUMN public.memories.generated_title IS 'Auto-generated title from input_text via type-specific processing edge functions (process-moment, process-memento, process-story)';
   END IF;
   
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'memories' AND column_name = 'title_generated_at') THEN

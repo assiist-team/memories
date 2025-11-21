@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_media_cleanup_queue_created_at
 
 -- Add column comments for documentation
 COMMENT ON COLUMN public.moments.raw_transcript IS 'Raw transcript text from voice dictation or text input, before any processing';
-COMMENT ON COLUMN public.moments.generated_title IS 'Auto-generated title from raw_transcript via generate-title edge function';
+COMMENT ON COLUMN public.moments.generated_title IS 'Auto-generated title from input_text via type-specific processing edge functions (process-moment, process-memento, process-story)';
 COMMENT ON COLUMN public.moments.title_generated_at IS 'Timestamp when generated_title was created';
 COMMENT ON COLUMN public.moments.tags IS 'Array of user-defined tags for categorization and search';
 COMMENT ON COLUMN public.moments.captured_location IS 'PostGIS geography point (WGS84/SRID 4326) representing the location where the moment was captured';

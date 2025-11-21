@@ -24,7 +24,7 @@ class _MediaItem {
 }
 
 /// Media carousel widget displaying photos and videos in a swipeable PageView
-/// 
+///
 /// Supports:
 /// - Swipeable carousel with mixed photo/video slides
 /// - Pinch-to-zoom and double-tap zoom for photos
@@ -64,14 +64,17 @@ class _MediaCarouselState extends ConsumerState<MediaCarousel> {
     int index = 0;
 
     // Combine photos and videos, sorted by their index
-    final allMedia = <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
+    final allMedia =
+        <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
 
     for (final photo in widget.photos) {
-      allMedia.add((isPhoto: true, index: photo.index, photo: photo, video: null));
+      allMedia
+          .add((isPhoto: true, index: photo.index, photo: photo, video: null));
     }
 
     for (final video in widget.videos) {
-      allMedia.add((isPhoto: false, index: video.index, photo: null, video: video));
+      allMedia
+          .add((isPhoto: false, index: video.index, photo: null, video: video));
     }
 
     // Sort by index to maintain capture order
@@ -112,7 +115,8 @@ class _MediaCarouselState extends ConsumerState<MediaCarousel> {
     }
 
     return Semantics(
-      label: 'Media carousel, ${mediaItems.length} ${mediaItems.length == 1 ? 'item' : 'items'}',
+      label:
+          'Media carousel, ${mediaItems.length} ${mediaItems.length == 1 ? 'item' : 'items'}',
       hint: 'Swipe left or right to navigate, tap to open full screen',
       child: Stack(
         children: [
@@ -137,40 +141,40 @@ class _MediaCarouselState extends ConsumerState<MediaCarousel> {
               },
             ),
           ),
-        // Page indicators
-        if (mediaItems.length > 1)
-          Positioned(
-            bottom: 8,
-            left: 0,
-            right: 0,
-            child: Semantics(
-              label: 'Page ${_currentPage + 1} of ${mediaItems.length}',
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  mediaItems.length,
-                  (index) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _currentPage == index
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.4),
+          // Page indicators
+          if (mediaItems.length > 1)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Semantics(
+                label: 'Page ${_currentPage + 1} of ${mediaItems.length}',
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    mediaItems.length,
+                    (index) => Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _currentPage == index
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.4),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        // Lightbox overlay
-        if (_showLightbox)
-          _LightboxOverlay(
-            mediaItems: mediaItems,
-            initialIndex: _lightboxIndex,
-            onClose: _closeLightbox,
-          ),
+          // Lightbox overlay
+          if (_showLightbox)
+            _LightboxOverlay(
+              mediaItems: mediaItems,
+              initialIndex: _lightboxIndex,
+              onClose: _closeLightbox,
+            ),
         ],
       ),
     );
@@ -284,8 +288,7 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
         _isZoomed = false;
       });
     } else {
-      _transformationController.value = Matrix4.identity()
-        ..scale(2.0);
+      _transformationController.value = Matrix4.identity()..scale(2.0);
       setState(() {
         _isZoomed = true;
       });
@@ -315,20 +318,22 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
               ),
               builder: (context, snapshot) {
                 if (snapshot.hasError || widget.hasError) {
-                  final errorDetails = snapshot.hasError 
+                  final errorDetails = snapshot.hasError
                       ? 'Error: ${snapshot.error}, Photo URL: ${widget.photo.url}'
                       : widget.errorMessage ?? 'Failed to load image';
-                  
-                  debugPrint('[MediaCarousel] ✗ Photo slide error: $errorDetails');
+
+                  debugPrint(
+                      '[MediaCarousel] ✗ Photo slide error: $errorDetails');
                   if (snapshot.hasError) {
-                    debugPrint('[MediaCarousel]   Error object: ${snapshot.error}');
+                    debugPrint(
+                        '[MediaCarousel]   Error object: ${snapshot.error}');
                   }
                   developer.log(
                     'Photo slide error: $errorDetails',
                     name: 'MediaCarousel',
                     error: snapshot.error,
                   );
-                  
+
                   return _ErrorPlaceholder(
                     message: widget.errorMessage ?? 'Failed to load image',
                     onRetry: widget.onRetry,
@@ -347,7 +352,8 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
                 final signedUrl = snapshot.data!;
                 debugPrint('[MediaCarousel] Loading image from signed URL');
                 debugPrint('[MediaCarousel]   Photo URL: ${widget.photo.url}');
-                debugPrint('[MediaCarousel]   Signed URL: ${signedUrl.substring(0, 80)}...');
+                debugPrint(
+                    '[MediaCarousel]   Signed URL: ${signedUrl.substring(0, 80)}...');
                 developer.log(
                   'Loading image from signed URL for photo: ${widget.photo.url}',
                   name: 'MediaCarousel',
@@ -358,7 +364,8 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
                     debugPrint('[MediaCarousel] ✗ Image.network error');
-                    debugPrint('[MediaCarousel]   Photo URL: ${widget.photo.url}');
+                    debugPrint(
+                        '[MediaCarousel]   Photo URL: ${widget.photo.url}');
                     debugPrint('[MediaCarousel]   Signed URL: $signedUrl');
                     debugPrint('[MediaCarousel]   Error: $error');
                     developer.log(
@@ -367,7 +374,7 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
                       error: error,
                       stackTrace: stackTrace,
                     );
-                    
+
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       widget.onError('Failed to load image: $error');
                     });
@@ -465,7 +472,8 @@ class _VideoSlideState extends ConsumerState<_VideoSlide> {
             setState(() {
               _hasError = true;
             });
-            widget.onError('Video playback error: ${_controller!.value.errorDescription}');
+            widget.onError(
+                'Video playback error: ${_controller!.value.errorDescription}');
           }
         });
       }
@@ -700,7 +708,8 @@ class _LightboxOverlayState extends State<_LightboxOverlay> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Full-screen media viewer, ${_currentIndex + 1} of ${widget.mediaItems.length}',
+      label:
+          'Full-screen media viewer, ${_currentIndex + 1} of ${widget.mediaItems.length}',
       hint: 'Swipe to navigate, double-tap to zoom, tap close button to exit',
       child: Material(
         color: Colors.black.withOpacity(0.95),
@@ -737,7 +746,8 @@ class _LightboxOverlayState extends State<_LightboxOverlay> {
                     // Page indicator
                     if (widget.mediaItems.length > 1)
                       Semantics(
-                        label: 'Page ${_currentIndex + 1} of ${widget.mediaItems.length}',
+                        label:
+                            'Page ${_currentIndex + 1} of ${widget.mediaItems.length}',
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -771,30 +781,30 @@ class _LightboxOverlayState extends State<_LightboxOverlay> {
                 ),
               ),
             ),
-          // Bottom indicator dots
-          if (widget.mediaItems.length > 1)
-            Positioned(
-              bottom: 32,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  widget.mediaItems.length,
-                  (index) => Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _currentIndex == index
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.4),
+            // Bottom indicator dots
+            if (widget.mediaItems.length > 1)
+              Positioned(
+                bottom: 32,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    widget.mediaItems.length,
+                    (index) => Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _currentIndex == index
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.4),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -809,7 +819,8 @@ class _LightboxMediaSlide extends ConsumerStatefulWidget {
   const _LightboxMediaSlide({required this.item});
 
   @override
-  ConsumerState<_LightboxMediaSlide> createState() => _LightboxMediaSlideState();
+  ConsumerState<_LightboxMediaSlide> createState() =>
+      _LightboxMediaSlideState();
 }
 
 class _LightboxMediaSlideState extends ConsumerState<_LightboxMediaSlide> {
@@ -899,7 +910,8 @@ class _LightboxPhotoSlide extends ConsumerStatefulWidget {
   const _LightboxPhotoSlide({required this.photo});
 
   @override
-  ConsumerState<_LightboxPhotoSlide> createState() => _LightboxPhotoSlideState();
+  ConsumerState<_LightboxPhotoSlide> createState() =>
+      _LightboxPhotoSlideState();
 }
 
 class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
@@ -1057,4 +1069,3 @@ class _LightboxVideoSlide extends ConsumerWidget {
     );
   }
 }
-

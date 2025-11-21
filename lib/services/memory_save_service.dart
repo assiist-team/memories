@@ -4,7 +4,7 @@ import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
-import 'package:memories/services/title_generation_service.dart';
+import 'package:memories/services/memory_processing_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -39,18 +39,18 @@ typedef SaveProgressCallback = void Function({
 @riverpod
 MemorySaveService memorySaveService(MemorySaveServiceRef ref) {
   final supabase = ref.watch(supabaseClientProvider);
-  final titleService = ref.watch(titleGenerationServiceProvider);
+  final processingService = ref.watch(memoryProcessingServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
   return MemorySaveService(
     supabase,
-    titleService,
+    processingService,
     connectivityService,
   );
 }
 
 class MemorySaveService {
   final SupabaseClient _supabase;
-  final TitleGenerationService _titleService;
+  final MemoryProcessingService _processingService;
   final ConnectivityService _connectivityService;
   static const String _photosBucket = 'moments-photos';
   static const String _videosBucket = 'moments-videos';
@@ -59,18 +59,18 @@ class MemorySaveService {
 
   MemorySaveService(
     this._supabase,
-    this._titleService,
+    this._processingService,
     this._connectivityService,
   );
 
   /// Save a memory with all its metadata
-  /// 
+  ///
   /// This method:
   /// 1. Checks connectivity - queues if offline
   /// 2. Uploads photos and videos to Supabase Storage (with retry logic)
   /// 3. Creates the moment record in the database
   /// 4. Optionally generates a title if transcript is available
-  /// 
+  ///
   /// Returns the saved moment ID and generated title (if any)
   /// Throws OfflineException if offline (caller should handle queueing)
   Future<MemorySaveResult> saveMoment({
@@ -80,7 +80,8 @@ class MemorySaveService {
     // Check connectivity first
     final isOnline = await _connectivityService.isOnline();
     if (!isOnline) {
-      throw OfflineException('Device is offline. Moment will be queued for sync.');
+      throw OfflineException(
+          'Device is offline. Moment will be queued for sync.');
     }
 
     try {
@@ -103,19 +104,23 @@ class MemorySaveService {
         // Retry upload with exponential backoff
         String? publicUrl;
         Exception? lastError;
-        
+
         for (int attempt = 0; attempt < _maxRetries; attempt++) {
           try {
-            await _supabase.storage.from(_photosBucket).upload(
-              storagePath,
-              file,
-              fileOptions: const FileOptions(
-                upsert: false,
-                contentType: 'image/jpeg',
-              ),
-            ).timeout(_uploadTimeout);
+            await _supabase.storage
+                .from(_photosBucket)
+                .upload(
+                  storagePath,
+                  file,
+                  fileOptions: const FileOptions(
+                    upsert: false,
+                    contentType: 'image/jpeg',
+                  ),
+                )
+                .timeout(_uploadTimeout);
 
-            publicUrl = _supabase.storage.from(_photosBucket).getPublicUrl(storagePath);
+            publicUrl =
+                _supabase.storage.from(_photosBucket).getPublicUrl(storagePath);
             break; // Success, exit retry loop
           } catch (e) {
             lastError = e is Exception ? e : Exception(e.toString());
@@ -124,7 +129,8 @@ class MemorySaveService {
               final delay = Duration(seconds: 1 << attempt);
               await Future.delayed(delay);
               onProgress?.call(
-                message: 'Retrying photo upload... (${i + 1}/${state.photoPaths.length})',
+                message:
+                    'Retrying photo upload... (${i + 1}/${state.photoPaths.length})',
                 progress: 0.1 + (0.3 * (i + 1) / state.photoPaths.length),
               );
             }
@@ -132,7 +138,8 @@ class MemorySaveService {
         }
 
         if (publicUrl == null) {
-          throw Exception('Failed to upload photo after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+          throw Exception(
+              'Failed to upload photo after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
         }
 
         photoUrls.add(publicUrl);
@@ -157,19 +164,23 @@ class MemorySaveService {
         // Retry upload with exponential backoff
         String? publicUrl;
         Exception? lastError;
-        
+
         for (int attempt = 0; attempt < _maxRetries; attempt++) {
           try {
-            await _supabase.storage.from(_videosBucket).upload(
-              storagePath,
-              file,
-              fileOptions: const FileOptions(
-                upsert: false,
-                contentType: 'video/mp4',
-              ),
-            ).timeout(_uploadTimeout);
+            await _supabase.storage
+                .from(_videosBucket)
+                .upload(
+                  storagePath,
+                  file,
+                  fileOptions: const FileOptions(
+                    upsert: false,
+                    contentType: 'video/mp4',
+                  ),
+                )
+                .timeout(_uploadTimeout);
 
-            publicUrl = _supabase.storage.from(_videosBucket).getPublicUrl(storagePath);
+            publicUrl =
+                _supabase.storage.from(_videosBucket).getPublicUrl(storagePath);
             break; // Success, exit retry loop
           } catch (e) {
             lastError = e is Exception ? e : Exception(e.toString());
@@ -178,7 +189,8 @@ class MemorySaveService {
               final delay = Duration(seconds: 1 << attempt);
               await Future.delayed(delay);
               onProgress?.call(
-                message: 'Retrying video upload... (${i + 1}/${state.videoPaths.length})',
+                message:
+                    'Retrying video upload... (${i + 1}/${state.videoPaths.length})',
                 progress: 0.4 + (0.2 * (i + 1) / state.videoPaths.length),
               );
             }
@@ -186,7 +198,8 @@ class MemorySaveService {
         }
 
         if (publicUrl == null) {
-          throw Exception('Failed to upload video after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+          throw Exception(
+              'Failed to upload video after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
         }
 
         videoUrls.add(publicUrl);
@@ -207,12 +220,13 @@ class MemorySaveService {
       // Step 3: Create moment record
       onProgress?.call(message: 'Saving moment...', progress: 0.7);
       final now = DateTime.now().toUtc();
-      
+
       final momentData = {
         'user_id': _supabase.auth.currentUser?.id,
         'title': null, // Will be updated after title generation (now nullable)
         'input_text': state.inputText, // Canonical raw user text
-        'processed_text': null, // LLM-processed text - stays NULL until processing completes
+        'processed_text':
+            null, // LLM-processed text - stays NULL until processing completes
         'photo_urls': photoUrls,
         'video_urls': videoUrls,
         'tags': state.tags,
@@ -225,7 +239,8 @@ class MemorySaveService {
 
       // Add device_timestamp if capture started (when first asset or transcript began)
       if (state.captureStartTime != null) {
-        momentData['device_timestamp'] = state.captureStartTime!.toUtc().toIso8601String();
+        momentData['device_timestamp'] =
+            state.captureStartTime!.toUtc().toIso8601String();
       }
 
       // Add location if available (PostGIS geography format)
@@ -249,18 +264,20 @@ class MemorySaveService {
           try {
             final audioFile = File(state.audioPath!);
             if (await audioFile.exists()) {
-              final audioFileName = '${DateTime.now().millisecondsSinceEpoch}.m4a';
-              final audioStoragePath = 'stories/audio/${_supabase.auth.currentUser?.id}/$memoryId/$audioFileName';
-              
+              final audioFileName =
+                  '${DateTime.now().millisecondsSinceEpoch}.m4a';
+              final audioStoragePath =
+                  'stories/audio/${_supabase.auth.currentUser?.id}/$memoryId/$audioFileName';
+
               await _supabase.storage.from('stories-audio').upload(
-                audioStoragePath,
-                audioFile,
-                fileOptions: const FileOptions(
-                  upsert: false,
-                  contentType: 'audio/m4a',
-                ),
-              );
-              
+                    audioStoragePath,
+                    audioFile,
+                    fileOptions: const FileOptions(
+                      upsert: false,
+                      contentType: 'audio/m4a',
+                    ),
+                  );
+
               audioPath = audioStoragePath;
             }
           } catch (e) {
@@ -278,63 +295,71 @@ class MemorySaveService {
         });
       }
 
-      // Step 4: Generate title
-      // For Mementos: use description text if available, otherwise transcript
-      // For Moments/Stories: use transcript if available
+      // Step 4: Process memory (text processing + title generation)
       String? generatedTitle;
       DateTime? titleGeneratedAt;
-      
-      // Determine text to use for title generation
-      String? textForTitleGeneration;
-      // Use inputText for all memory types
-      textForTitleGeneration = state.inputText?.trim().isNotEmpty == true
-          ? state.inputText!.trim()
-          : null;
-      
-      if (textForTitleGeneration != null && textForTitleGeneration.isNotEmpty) {
-        onProgress?.call(message: 'Generating title...', progress: 0.85);
-        
-        try {
-          final titleResponse = await _titleService.generateTitle(
-            transcript: textForTitleGeneration,
-            memoryType: state.memoryType,
-          );
-          
-          generatedTitle = titleResponse.title;
-          titleGeneratedAt = titleResponse.generatedAt;
 
-          // Update moment with generated title
-          await _supabase
-              .from('memories')
-              .update({
-                'title': generatedTitle,
-                'generated_title': generatedTitle,
-                'title_generated_at': titleGeneratedAt.toIso8601String(),
-              })
-              .eq('id', memoryId);
+      // Check if we have input_text to process
+      final hasInputText = state.inputText?.trim().isNotEmpty == true;
+
+      if (hasInputText) {
+        onProgress?.call(message: 'Processing text...', progress: 0.85);
+
+        try {
+          MemoryProcessingResponse? processingResponse;
+
+          // Call appropriate processing function based on memory type
+          switch (state.memoryType) {
+            case MemoryType.moment:
+              processingResponse = await _processingService.processMoment(
+                memoryId: memoryId,
+              );
+              break;
+            case MemoryType.memento:
+              processingResponse = await _processingService.processMemento(
+                memoryId: memoryId,
+              );
+              break;
+            case MemoryType.story:
+              // For stories, process asynchronously (fire and forget)
+              // The processing updates the database directly
+              _processingService.processStory(memoryId: memoryId).then(
+                (_) {
+                  // Success - processing completed, database already updated
+                },
+                onError: (e) {
+                  // Log error but don't block save operation
+                  print('Story processing failed: $e');
+                },
+              );
+              // Use fallback title for now - will be updated when processing completes
+              generatedTitle = _getFallbackTitle(state.memoryType);
+              // Don't await - story processing happens asynchronously
+              break;
+          }
+
+          if (processingResponse != null) {
+            generatedTitle = processingResponse.title;
+            titleGeneratedAt = processingResponse.generatedAt;
+            // Note: processed_text and title are already updated in the database by the edge function
+          }
         } catch (e) {
-          // Title generation failed, use fallback
+          // Processing failed, use fallback title
           final fallbackTitle = _getFallbackTitle(state.memoryType);
           generatedTitle = fallbackTitle;
-          
-          await _supabase
-              .from('memories')
-              .update({
-                'title': fallbackTitle,
-              })
-              .eq('id', memoryId);
+
+          await _supabase.from('memories').update({
+            'title': fallbackTitle,
+          }).eq('id', memoryId);
         }
       } else {
-        // No text available for title generation, use fallback title
+        // No text available for processing, use fallback title
         final fallbackTitle = _getFallbackTitle(state.memoryType);
         generatedTitle = fallbackTitle;
-        
-        await _supabase
-            .from('memories')
-            .update({
-              'title': fallbackTitle,
-            })
-            .eq('id', memoryId);
+
+        await _supabase.from('memories').update({
+          'title': fallbackTitle,
+        }).eq('id', memoryId);
       }
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
@@ -351,27 +376,29 @@ class MemorySaveService {
       rethrow;
     } catch (e) {
       final errorString = e.toString();
-      
+
       // Handle storage quota errors
-      if (errorString.contains('413') || 
-          errorString.contains('quota') || 
+      if (errorString.contains('413') ||
+          errorString.contains('quota') ||
           errorString.contains('limit')) {
-        throw StorageQuotaException('Storage limit reached. Please delete some memories.');
+        throw StorageQuotaException(
+            'Storage limit reached. Please delete some memories.');
       }
-      
+
       // Handle permission errors
-      if (errorString.contains('403') || 
-          errorString.contains('permission')) {
-        throw PermissionException('Permission denied. Please check app settings.');
+      if (errorString.contains('403') || errorString.contains('permission')) {
+        throw PermissionException(
+            'Permission denied. Please check app settings.');
       }
-      
+
       // Handle network errors
-      if (errorString.contains('SocketException') || 
+      if (errorString.contains('SocketException') ||
           errorString.contains('TimeoutException') ||
           errorString.contains('network')) {
-        throw NetworkException('Network error. Check your connection and try again.');
+        throw NetworkException(
+            'Network error. Check your connection and try again.');
       }
-      
+
       // Generic error
       throw SaveException('Failed to save moment: ${e.toString()}');
     }
@@ -396,7 +423,8 @@ class MemorySaveService {
     // Check connectivity first
     final isOnline = await _connectivityService.isOnline();
     if (!isOnline) {
-      throw OfflineException('Device is offline. Please try again when connected.');
+      throw OfflineException(
+          'Device is offline. Please try again when connected.');
     }
 
     try {
@@ -419,19 +447,23 @@ class MemorySaveService {
         // Retry upload with exponential backoff
         String? publicUrl;
         Exception? lastError;
-        
+
         for (int attempt = 0; attempt < _maxRetries; attempt++) {
           try {
-            await _supabase.storage.from(_photosBucket).upload(
-              storagePath,
-              file,
-              fileOptions: const FileOptions(
-                upsert: false,
-                contentType: 'image/jpeg',
-              ),
-            ).timeout(_uploadTimeout);
+            await _supabase.storage
+                .from(_photosBucket)
+                .upload(
+                  storagePath,
+                  file,
+                  fileOptions: const FileOptions(
+                    upsert: false,
+                    contentType: 'image/jpeg',
+                  ),
+                )
+                .timeout(_uploadTimeout);
 
-            publicUrl = _supabase.storage.from(_photosBucket).getPublicUrl(storagePath);
+            publicUrl =
+                _supabase.storage.from(_photosBucket).getPublicUrl(storagePath);
             break; // Success, exit retry loop
           } catch (e) {
             lastError = e is Exception ? e : Exception(e.toString());
@@ -439,7 +471,8 @@ class MemorySaveService {
               final delay = Duration(seconds: 1 << attempt);
               await Future.delayed(delay);
               onProgress?.call(
-                message: 'Retrying photo upload... (${i + 1}/${state.photoPaths.length})',
+                message:
+                    'Retrying photo upload... (${i + 1}/${state.photoPaths.length})',
                 progress: 0.1 + (0.3 * (i + 1) / state.photoPaths.length),
               );
             }
@@ -447,7 +480,8 @@ class MemorySaveService {
         }
 
         if (publicUrl == null) {
-          throw Exception('Failed to upload photo after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+          throw Exception(
+              'Failed to upload photo after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
         }
 
         newPhotoUrls.add(publicUrl);
@@ -471,19 +505,23 @@ class MemorySaveService {
         // Retry upload with exponential backoff
         String? publicUrl;
         Exception? lastError;
-        
+
         for (int attempt = 0; attempt < _maxRetries; attempt++) {
           try {
-            await _supabase.storage.from(_videosBucket).upload(
-              storagePath,
-              file,
-              fileOptions: const FileOptions(
-                upsert: false,
-                contentType: 'video/mp4',
-              ),
-            ).timeout(_uploadTimeout);
+            await _supabase.storage
+                .from(_videosBucket)
+                .upload(
+                  storagePath,
+                  file,
+                  fileOptions: const FileOptions(
+                    upsert: false,
+                    contentType: 'video/mp4',
+                  ),
+                )
+                .timeout(_uploadTimeout);
 
-            publicUrl = _supabase.storage.from(_videosBucket).getPublicUrl(storagePath);
+            publicUrl =
+                _supabase.storage.from(_videosBucket).getPublicUrl(storagePath);
             break; // Success, exit retry loop
           } catch (e) {
             lastError = e is Exception ? e : Exception(e.toString());
@@ -491,7 +529,8 @@ class MemorySaveService {
               final delay = Duration(seconds: 1 << attempt);
               await Future.delayed(delay);
               onProgress?.call(
-                message: 'Retrying video upload... (${i + 1}/${state.videoPaths.length})',
+                message:
+                    'Retrying video upload... (${i + 1}/${state.videoPaths.length})',
                 progress: 0.4 + (0.2 * (i + 1) / state.videoPaths.length),
               );
             }
@@ -499,7 +538,8 @@ class MemorySaveService {
         }
 
         if (publicUrl == null) {
-          throw Exception('Failed to upload video after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
+          throw Exception(
+              'Failed to upload video after $_maxRetries attempts: ${lastError?.toString() ?? 'Unknown error'}');
         }
 
         newVideoUrls.add(publicUrl);
@@ -511,7 +551,7 @@ class MemorySaveService {
 
       // Step 2: Delete removed media files
       onProgress?.call(message: 'Removing deleted media...', progress: 0.6);
-      
+
       // Delete removed photos
       for (final photoUrl in state.deletedPhotoUrls) {
         try {
@@ -560,7 +600,7 @@ class MemorySaveService {
       // Step 5: Update memory record
       onProgress?.call(message: 'Updating memory...', progress: 0.7);
       final now = DateTime.now().toUtc();
-      
+
       final updateData = <String, dynamic>{
         'input_text': state.inputText,
         'processed_text': null, // Clear processed text - will be regenerated
@@ -579,64 +619,75 @@ class MemorySaveService {
         updateData['captured_location'] = null;
       }
 
-      await _supabase
-          .from('memories')
-          .update(updateData)
-          .eq('id', memoryId);
+      await _supabase.from('memories').update(updateData).eq('id', memoryId);
 
-      // Step 6: Generate title if text changed
+      // Step 6: Process memory if text changed (text processing + title generation)
       String? generatedTitle;
       DateTime? titleGeneratedAt;
-      
-      String? textForTitleGeneration;
-      textForTitleGeneration = state.inputText?.trim().isNotEmpty == true
-          ? state.inputText!.trim()
-          : null;
-      
-      if (textForTitleGeneration != null && textForTitleGeneration.isNotEmpty) {
-        onProgress?.call(message: 'Generating title...', progress: 0.85);
-        
-        try {
-          final titleResponse = await _titleService.generateTitle(
-            transcript: textForTitleGeneration,
-            memoryType: state.memoryType,
-          );
-          
-          generatedTitle = titleResponse.title;
-          titleGeneratedAt = titleResponse.generatedAt;
 
-          // Update memory with generated title
-          await _supabase
-              .from('memories')
-              .update({
-                'title': generatedTitle,
-                'generated_title': generatedTitle,
-                'title_generated_at': titleGeneratedAt.toIso8601String(),
-              })
-              .eq('id', memoryId);
-        } catch (e) {
-          // Title generation failed, use fallback
+      // Check if we have input_text to process
+      final hasInputText = state.inputText?.trim().isNotEmpty == true;
+
+      if (hasInputText) {
+        onProgress?.call(message: 'Processing text...', progress: 0.85);
+
+        try {
+          MemoryProcessingResponse? processingResponse;
+
+          // Call appropriate processing function based on memory type
+          switch (state.memoryType) {
+            case MemoryType.moment:
+              processingResponse = await _processingService.processMoment(
+                memoryId: memoryId,
+              );
+              break;
+            case MemoryType.memento:
+              processingResponse = await _processingService.processMemento(
+                memoryId: memoryId,
+              );
+              break;
+            case MemoryType.story:
+              // For stories, process asynchronously (fire and forget)
+              // The processing updates the database directly
+              _processingService.processStory(memoryId: memoryId).then(
+                (_) {
+                  // Success - processing completed, database already updated
+                },
+                onError: (e) {
+                  // Log error but don't block update operation
+                  print('Story processing failed: $e');
+                },
+              );
+              // Use fallback title for now - will be updated when processing completes
+              generatedTitle = _getFallbackTitle(state.memoryType);
+              break;
+          }
+
+          if (processingResponse != null) {
+            generatedTitle = processingResponse.title;
+            titleGeneratedAt = processingResponse.generatedAt;
+            // Note: processed_text and title are already updated in the database by the edge function
+          }
+        } catch (e, stackTrace) {
+          // Processing failed, use fallback title
+          print(
+              'ERROR: Memory processing failed for ${state.memoryType} (memoryId: $memoryId): $e');
+          print('ERROR: Stack trace: $stackTrace');
           final fallbackTitle = _getFallbackTitle(state.memoryType);
           generatedTitle = fallbackTitle;
-          
-          await _supabase
-              .from('memories')
-              .update({
-                'title': fallbackTitle,
-              })
-              .eq('id', memoryId);
+
+          await _supabase.from('memories').update({
+            'title': fallbackTitle,
+          }).eq('id', memoryId);
         }
       } else {
-        // No text available for title generation, use fallback title
+        // No text available for processing, use fallback title
         final fallbackTitle = _getFallbackTitle(state.memoryType);
         generatedTitle = fallbackTitle;
-        
-        await _supabase
-            .from('memories')
-            .update({
-              'title': fallbackTitle,
-            })
-            .eq('id', memoryId);
+
+        await _supabase.from('memories').update({
+          'title': fallbackTitle,
+        }).eq('id', memoryId);
       }
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
@@ -653,27 +704,29 @@ class MemorySaveService {
       rethrow;
     } catch (e) {
       final errorString = e.toString();
-      
+
       // Handle storage quota errors
-      if (errorString.contains('413') || 
-          errorString.contains('quota') || 
+      if (errorString.contains('413') ||
+          errorString.contains('quota') ||
           errorString.contains('limit')) {
-        throw StorageQuotaException('Storage limit reached. Please delete some memories.');
+        throw StorageQuotaException(
+            'Storage limit reached. Please delete some memories.');
       }
-      
+
       // Handle permission errors
-      if (errorString.contains('403') || 
-          errorString.contains('permission')) {
-        throw PermissionException('Permission denied. Please check app settings.');
+      if (errorString.contains('403') || errorString.contains('permission')) {
+        throw PermissionException(
+            'Permission denied. Please check app settings.');
       }
-      
+
       // Handle network errors
-      if (errorString.contains('SocketException') || 
+      if (errorString.contains('SocketException') ||
           errorString.contains('TimeoutException') ||
           errorString.contains('network')) {
-        throw NetworkException('Network error. Check your connection and try again.');
+        throw NetworkException(
+            'Network error. Check your connection and try again.');
       }
-      
+
       // Generic error
       throw SaveException('Failed to update memory: ${e.toString()}');
     }
@@ -695,7 +748,7 @@ class MemorySaveService {
 class OfflineException implements Exception {
   final String message;
   OfflineException(this.message);
-  
+
   @override
   String toString() => message;
 }
@@ -704,7 +757,7 @@ class OfflineException implements Exception {
 class StorageQuotaException implements Exception {
   final String message;
   StorageQuotaException(this.message);
-  
+
   @override
   String toString() => message;
 }
@@ -713,7 +766,7 @@ class StorageQuotaException implements Exception {
 class PermissionException implements Exception {
   final String message;
   PermissionException(this.message);
-  
+
   @override
   String toString() => message;
 }
@@ -722,7 +775,7 @@ class PermissionException implements Exception {
 class NetworkException implements Exception {
   final String message;
   NetworkException(this.message);
-  
+
   @override
   String toString() => message;
 }
@@ -731,8 +784,7 @@ class NetworkException implements Exception {
 class SaveException implements Exception {
   final String message;
   SaveException(this.message);
-  
+
   @override
   String toString() => message;
 }
-

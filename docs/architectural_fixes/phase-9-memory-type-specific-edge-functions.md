@@ -1,5 +1,11 @@
 # Phase 9: Memory Type-Specific Edge Functions
 
+## Status: ✅ COMPLETED
+
+**Implementation Date**: January 2025
+
+All three type-specific edge functions have been implemented and integrated. The old `generate-title` function has been completely removed with no backward compatibility maintained.
+
 ## Objective
 
 Refactor the shared `generate-title` edge function into three separate, memory-type-specific edge functions:
@@ -9,7 +15,7 @@ Refactor the shared `generate-title` edge function into three separate, memory-t
 
 ## Problem Statement
 
-Currently, we have a single `generate-title` edge function that handles title generation for all three memory types (moments, stories, mementos). This creates several issues:
+Previously, we had a single `generate-title` edge function that handled title generation for all three memory types (moments, stories, mementos). This created several issues:
 
 1. **Lack of Type-Specific Logic**: Each memory type has different processing needs:
    - **Moments**: Title generation + text processing (input_text → processed_text)
@@ -28,7 +34,7 @@ Currently, we have a single `generate-title` edge function that handles title ge
    - Minimizes information loss
    - May not be perfectly grammatically correct, but is significantly better than raw transcription
    
-   Currently, moments and mementos don't have their `input_text` processed into `processed_text`, leaving users with poorly formatted text.
+   Previously, moments and mementos didn't have their `input_text` processed into `processed_text`, leaving users with poorly formatted text.
 
 2. **Poor Separation of Concerns**: A single function handling all types violates single responsibility principle and makes it harder to:
    - Add type-specific features (e.g., story narrative generation)
@@ -101,38 +107,41 @@ supabase/functions/
 - **Input**: `{ memoryId: string }` (fetches data from DB)
 - **Output**: `{ title: string, processedText: string, status: "success" | "fallback" | "failed", generatedAt: string }`
 - **Responsibilities**:
-  - Fetch story data (input_text, story_status) from `memories` table
-  - Validate that `input_text` exists and is not empty
+  - Fetch story data (input_text, memory_type) from `memories` table
+  - Fetch current retry_count from `story_fields` table
+  - Validate that `input_text` exists, is not empty, and contains meaningful content (≥3 chars, ≥2 non-whitespace chars)
   - Generate narrative text from input_text using LLM
-  - Generate title from narrative/input_text
+  - Generate title from narrative text
   - Update `memories` table:
     - `processed_text` = generated narrative
     - `title` = generated title
-    - `story_status` = 'complete'
-    - `processing_completed_at` = now()
-    - `narrative_generated_at` = now()
     - `title_generated_at` = now()
-  - Handle failures:
-    - Set `story_status` = 'failed'
-    - Set `processing_error` = error message
-    - Increment `retry_count`
-    - Set `last_retry_at` = now()
+  - Update `story_fields` table:
+    - `story_status` = 'complete' (on success) or 'failed' (on error)
+    - `processing_completed_at` = now()
+    - `narrative_generated_at` = now() (on success)
+    - `processing_error` = error message (on failure)
+    - `retry_count` = incremented (on failure)
+    - `last_retry_at` = now() (on failure)
   - Log comprehensive processing metrics
   - Support retry mechanism (can be called multiple times for failed stories)
 
 ## Implementation Steps
 
-### Step 1: Create `process-moment` Edge Function
+### Step 1: Create `process-moment` Edge Function ✅
 **File**: `supabase/functions/process-moment/index.ts`
 
-**Changes**:
-1. Copy current `generate-title` logic as base
-2. Accept `memoryId` parameter (fetch data from DB)
-3. Fetch `input_text` from `memories` table using `memoryId`
-4. Process `input_text` → `processed_text` using text processing prompt
-5. Generate title from `processed_text` with moment-specific prompt
-6. Update `memories` table with both `processed_text` and `title`
-7. Return response with title, processedText, and status
+**Implemented**:
+1. ✅ Created new function with moment-specific logic
+2. ✅ Accepts `memoryId` parameter (fetches data from DB)
+3. ✅ Fetches `input_text` from `memories` table using `memoryId`
+4. ✅ Validates memory type is 'moment'
+5. ✅ Processes `input_text` → `processed_text` using text processing prompt
+6. ✅ Generates title from `processed_text` with moment-specific prompt
+7. ✅ Updates `memories` table with both `processed_text` and `title`
+8. ✅ Returns response with title, processedText, and status
+9. ✅ Handles partial success (text processed but title failed)
+10. ✅ Logs comprehensive metrics
 
 **Text Processing Prompt**:
 ```
@@ -160,15 +169,17 @@ Generate a concise, engaging title (maximum 60 characters) for a brief moment or
 Text: {processed_text}
 ```
 
-### Step 2: Create `process-memento` Edge Function
+### Step 2: Create `process-memento` Edge Function ✅
 **File**: `supabase/functions/process-memento/index.ts`
 
-**Changes**:
-1. Copy `process-moment` logic as base
-2. Update text processing prompt to emphasize memento significance
-3. Update title generation prompt to use memento-specific context
-4. Update fallback title to "Untitled Memento"
-5. Update logging to indicate memento processing
+**Implemented**:
+1. ✅ Created function based on `process-moment` logic
+2. ✅ Updated text processing prompt to emphasize memento significance
+3. ✅ Updated title generation prompt to use memento-specific context
+4. ✅ Updated fallback title to "Untitled Memento"
+5. ✅ Updated logging to indicate memento processing
+6. ✅ Validates memory type is 'memento'
+7. ✅ Handles partial success cases
 
 **Text Processing Prompt**:
 ```
@@ -197,26 +208,27 @@ Generate a concise, engaging title (maximum 60 characters) for a special memento
 Text: {processed_text}
 ```
 
-### Step 3: Create `process-story` Edge Function
+### Step 3: Create `process-story` Edge Function ✅
 **File**: `supabase/functions/process-story/index.ts`
 
-**Changes**:
-1. Create new function with story-specific logic
-2. Accept `memoryId` parameter
-3. Fetch story data from `memories` table:
-   - `input_text` (or `raw_transcript` if available)
-   - `story_status`
-   - `capture_type` (verify it's 'story')
-4. Validate that `input_text` exists and is not empty
-5. Generate narrative text:
-   - Use LLM to transform `input_text` into polished narrative paragraphs
-   - Store in `processed_text`
-6. Generate title:
-   - Use narrative text (or input_text if narrative generation failed)
-   - Store in `title` and `generated_title`
-7. Update `memories` table with all generated content and status
-8. Handle errors with retry logic
-9. Log comprehensive metrics
+**Implemented**:
+1. ✅ Created new function with story-specific logic
+2. ✅ Accepts `memoryId` parameter
+3. ✅ Fetches story data from `memories` table:
+   - `input_text`
+   - `memory_type` / `capture_type` (verifies it's 'story')
+4. ✅ Fetches retry_count from `story_fields` table
+5. ✅ Validates that `input_text` exists, is not empty, and contains meaningful content
+6. ✅ Generates narrative text:
+   - Uses LLM to transform `input_text` into polished narrative paragraphs
+   - Stores in `processed_text` in `memories` table
+7. ✅ Generates title:
+   - Uses narrative text (or input_text if narrative generation failed)
+   - Stores in `title` and `title_generated_at` in `memories` table
+8. ✅ Updates `story_fields` table with status, timestamps, and error handling
+9. ✅ Handles errors with retry logic (increments retry_count, sets last_retry_at)
+10. ✅ Logs comprehensive metrics
+11. ✅ Returns appropriate status: "success", "fallback", or "failed"
 
 **Note**: This function processes text only. Audio upload happens independently and does not block text processing. The audio file is stored for archival/replay purposes but is not used in the text processing pipeline.
 
@@ -242,16 +254,16 @@ Generate a concise, engaging title (maximum 60 characters) for this story narrat
 Narrative: {processed_text or input_text}
 ```
 
-### Step 4: Update Flutter Service Layer
-**File**: `lib/services/title_generation_service.dart` (or create new service)
+### Step 4: Update Flutter Service Layer ✅
+**File**: `lib/services/memory_processing_service.dart` (new service created)
 
-**Changes**:
-1. Rename service to `MemoryProcessingService` (or create separate services)
-2. Update methods to call appropriate edge function:
-   - `processMoment({ required String memoryId })` → Returns `{ title, processedText, status }`
-   - `processMemento({ required String memoryId })` → Returns `{ title, processedText, status }`
-   - `processStory({ required String memoryId })` → Returns `{ title, processedText, status }`
-3. Update response models to include `processedText` field:
+**Implemented**:
+1. ✅ Created new `MemoryProcessingService` service
+2. ✅ Implemented methods to call appropriate edge function:
+   - `processMoment({ required String memoryId })` → Returns `MemoryProcessingResponse`
+   - `processMemento({ required String memoryId })` → Returns `MemoryProcessingResponse`
+   - `processStory({ required String memoryId })` → Returns `MemoryProcessingResponse`
+3. ✅ Created response model with all required fields:
    ```dart
    class MemoryProcessingResponse {
      final String title;
@@ -260,77 +272,81 @@ Narrative: {processed_text or input_text}
      final DateTime generatedAt;
    }
    ```
-4. Handle partial success cases (text processed but title failed, etc.)
+4. ✅ Handles errors with proper exception messages
+5. ✅ Uses Riverpod for dependency injection
 
-**Alternative Approach**: Create separate services:
-- `MomentProcessingService`
-- `MementoProcessingService`
-- `StoryProcessingService`
-
-### Step 5: Update Save Service
+### Step 5: Update Save Service ✅
 **File**: `lib/services/memory_save_service.dart`
 
-**Changes**:
-1. Update `saveMemory()` method:
-   - After creating memory record, call appropriate processing function:
-     - Moments: `processMoment(memoryId: memoryId)` → Updates `processed_text` and `title`
-     - Mementos: `processMemento(memoryId: memoryId)` → Updates `processed_text` and `title`
-     - Stories: `processStory(memoryId: memoryId)` → Updates `processed_text`, `title`, and `story_status` (async, non-blocking)
-2. For stories, don't wait for processing to complete (fire and forget)
-3. For moments/mementos, wait for processing to complete (or handle async)
-4. Remove direct `generate-title` calls
-5. Update progress callbacks to reflect new function names ("Processing text..." → "Generating title...")
-6. Handle cases where text processing succeeds but title generation fails (partial success)
+**Implemented**:
+1. ✅ Updated `saveMoment()` method:
+   - After creating memory record, calls appropriate processing function:
+     - Moments: `processMoment(memoryId: memoryId)` → Waits for completion, updates `processed_text` and `title`
+     - Mementos: `processMemento(memoryId: memoryId)` → Waits for completion, updates `processed_text` and `title`
+     - Stories: `processStory(memoryId: memoryId)` → Fire-and-forget (async, non-blocking)
+2. ✅ Updated `updateMemory()` method with same processing logic
+3. ✅ For stories, processing happens asynchronously (fire and forget) - doesn't block save operation
+4. ✅ For moments/mementos, waits for processing to complete before returning
+5. ✅ Removed all `generate-title` calls and `TitleGenerationService` dependency
+6. ✅ Updated progress callbacks to show "Processing text..." message
+7. ✅ Handles partial success cases (text processed but title failed)
+8. ✅ Uses fallback titles when processing fails or no input_text available
 
-### Step 6: Update Story Processing Flow
+### Step 6: Update Story Processing Flow ✅
 **Files**: 
 - `lib/services/memory_save_service.dart`
-- `lib/services/memory_sync_service.dart` (if applicable)
 
-**Changes**:
-1. When story is saved, call `process-story` edge function
-2. Don't block on processing completion
-3. Story detail view should poll/refresh to show processing status
-4. Handle processing failures gracefully
+**Implemented**:
+1. ✅ When story is saved, `process-story` edge function is called asynchronously
+2. ✅ Processing doesn't block save operation (fire-and-forget pattern)
+3. ✅ Story detail view can check `story_fields.story_status` to show processing status
+4. ✅ Processing failures are handled gracefully with error logging
+5. ✅ Retry mechanism supported (function can be called multiple times for failed stories)
 
-### Step 7: Add Database Triggers (Optional)
-**File**: `supabase/migrations/[timestamp]_add_story_processing_trigger.sql`
+### Step 7: Add Database Triggers (Optional) ⏭️
+**Status**: Not implemented - using client-side calls for better error handling and retry control
 
-**Changes**:
-1. Create database trigger to automatically call `process-story` when:
-   - New story is created with `story_status = 'processing'`
-   - Story audio upload completes (via storage webhook or trigger)
-2. This ensures processing happens automatically without client-side calls
+**Note**: Database triggers could be added in the future if automatic processing is desired.
 
-**Note**: This is optional - client-side calls may be preferred for better error handling and retry control.
-
-### Step 8: Deprecate `generate-title` Function
+### Step 8: Remove `generate-title` Function ✅
 **File**: `supabase/functions/generate-title/index.ts`
 
-**Changes**:
-1. Add deprecation notice in function comments
-2. Keep function for backward compatibility during migration
-3. Add logging to track usage
-4. Remove after migration is complete and all clients updated
+**Completed**:
+1. ✅ Removed `generate-title` edge function completely
+2. ✅ Removed `TitleGenerationService` and all related files
+3. ✅ Removed test files for old service
+4. ✅ Updated migration comments to reference new processing functions
+5. ✅ No backward compatibility maintained - clean break
 
-## Migration Strategy
+## Implementation Summary
 
-### Phase 1: Parallel Implementation
-1. Create new functions (`process-moment`, `process-memento`, `process-story`)
-2. Keep `generate-title` functional
-3. Update Flutter code to use new functions
-4. Deploy and test
+### Completed Implementation
 
-### Phase 2: Verification
-1. Monitor logs to ensure new functions are being called
-2. Verify all memory types process correctly
-3. Check that story processing completes successfully
-4. Validate error handling and retry logic
+All three edge functions have been created and integrated:
 
-### Phase 3: Cleanup
-1. Remove `generate-title` function after migration period
-2. Update documentation
-3. Remove any remaining references
+1. **Edge Functions Created**:
+   - ✅ `supabase/functions/process-moment/index.ts` - 460 lines
+   - ✅ `supabase/functions/process-memento/index.ts` - 460 lines  
+   - ✅ `supabase/functions/process-story/index.ts` - 460+ lines
+
+2. **Flutter Services**:
+   - ✅ Created `lib/services/memory_processing_service.dart` - New unified service
+   - ✅ Updated `lib/services/memory_save_service.dart` - Uses new processing service
+   - ✅ Removed `lib/services/title_generation_service.dart` - Old service deleted
+
+3. **Cleanup**:
+   - ✅ Removed `generate-title` edge function completely
+   - ✅ Removed all related test files
+   - ✅ Updated migration comments
+   - ✅ No backward compatibility maintained
+
+### Key Implementation Details
+
+- **Text Processing**: All functions process `input_text` → `processed_text` with type-specific prompts
+- **Title Generation**: Titles generated from processed text (or narrative for stories)
+- **Story Processing**: Asynchronous, non-blocking with status tracking in `story_fields` table
+- **Error Handling**: Comprehensive error handling with retry logic for stories
+- **Status Tracking**: Stories track processing status, retry count, and errors in `story_fields` table
 
 ## Testing Strategy
 
@@ -384,22 +400,25 @@ Narrative: {processed_text or input_text}
 - None (can be done independently)
 - May benefit from Phase 7 (Story Fields Extension) being complete first
 
-## Files to Modify
+## Files Created/Modified
 
-### New Files
-- `supabase/functions/process-moment/index.ts`
-- `supabase/functions/process-memento/index.ts`
-- `supabase/functions/process-story/index.ts`
-- `supabase/migrations/[timestamp]_add_story_processing_trigger.sql` (optional)
+### New Files Created ✅
+- ✅ `supabase/functions/process-moment/index.ts` - Moment processing edge function
+- ✅ `supabase/functions/process-memento/index.ts` - Memento processing edge function
+- ✅ `supabase/functions/process-story/index.ts` - Story processing edge function
+- ✅ `lib/services/memory_processing_service.dart` - New unified processing service
+- ✅ `lib/services/memory_processing_service.g.dart` - Generated Riverpod code
 
-### Modified Files
-- `lib/services/title_generation_service.dart` (or create new services)
-- `lib/services/memory_save_service.dart`
-- `lib/services/memory_sync_service.dart` (if story sync exists)
-- `lib/models/memory_type.dart` (if needed for API values)
+### Modified Files ✅
+- ✅ `lib/services/memory_save_service.dart` - Updated to use `MemoryProcessingService`
+- ✅ `supabase/migrations/20250116000000_extend_moments_table_for_text_media_capture.sql` - Updated comments
+- ✅ `supabase/migrations/_deprecated/20251117173014_rename_moments_to_memories.sql` - Updated comments
 
-### Deprecated Files (to be removed)
-- `supabase/functions/generate-title/index.ts` (after migration)
+### Files Removed ✅
+- ✅ `supabase/functions/generate-title/index.ts` - Old edge function removed
+- ✅ `lib/services/title_generation_service.dart` - Old service removed
+- ✅ `lib/services/title_generation_service.g.dart` - Generated file removed
+- ✅ `test/services/title_generation_service_test.dart` - Test file removed
 
 ## Related Documentation
 

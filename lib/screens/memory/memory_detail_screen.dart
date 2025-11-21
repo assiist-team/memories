@@ -247,6 +247,22 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     String errorMessage,
     WidgetRef ref,
   ) {
+    // If memory was deleted (e.g., user navigated to a deleted memory), navigate away
+    if (errorMessage == 'Memory has been deleted') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          // Pop detail screen if we can
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+          // Navigate to timeline screen
+          ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+        }
+      });
+      // Return empty container while navigating
+      return const SizedBox.shrink();
+    }
+
     // Inline error block within scrollable content
     return CustomScrollView(
       slivers: [
@@ -681,6 +697,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     // Track delete action
     analytics.trackMemoryDetailDelete(memory.id);
 
+    // Capture navigator and scaffold messenger before async operation
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final canPop = navigator.canPop();
+
     try {
       // Optimistically remove from unified feed
       unifiedFeedController.removeMemory(memory.id);
@@ -688,9 +709,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       // Delete from backend
       final success = await notifier.deleteMemory();
 
-      if (!context.mounted) return;
+      debugPrint('[MemoryDetailScreen] Delete result: success=$success');
 
       if (success) {
+        debugPrint('[MemoryDetailScreen] Deletion succeeded, navigating to timeline');
         final deleteMessage = isStory 
             ? 'Story deleted' 
             : memory.memoryType == 'memento'
@@ -700,36 +722,44 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         // Refresh unified feed to ensure consistency (memory is gone from DB)
         unifiedFeedController.refresh();
         
-        // Show success message first (will be visible briefly before pop)
-        ScaffoldMessenger.of(context).showSnackBar(
+        // Switch to timeline tab (doesn't need context)
+        ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+        debugPrint('[MemoryDetailScreen] Switched to timeline tab');
+        
+        // Pop detail screen using captured navigator
+        if (canPop) {
+          navigator.pop();
+          debugPrint('[MemoryDetailScreen] Popped detail screen');
+        } else {
+          debugPrint('[MemoryDetailScreen] Cannot pop - no route to pop');
+        }
+        
+        // Show success message using captured scaffold messenger
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(deleteMessage),
             duration: const Duration(seconds: 2),
           ),
         );
-        
-        // Pop detail screen immediately after showing message
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        
-        // Navigate to timeline screen
-        ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
       } else {
+        debugPrint('[MemoryDetailScreen] Deletion failed, success=false');
         // Refresh unified feed to restore the memory if delete failed
         unifiedFeedController.refresh();
-        final errorMessage = isStory 
-            ? 'Failed to delete story. Please try again.'
-            : memory.memoryType == 'memento'
-                ? 'Failed to delete memento. Please try again.'
-                : 'Failed to delete memory. Please try again.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        
+        if (context.mounted) {
+          final errorMessage = isStory 
+              ? 'Failed to delete story. Please try again.'
+              : memory.memoryType == 'memento'
+                  ? 'Failed to delete memento. Please try again.'
+                  : 'Failed to delete memory. Please try again.';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e, stackTrace) {
       debugPrint('[MemoryDetailScreen] Error in _handleDelete: $e');

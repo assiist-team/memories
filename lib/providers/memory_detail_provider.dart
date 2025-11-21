@@ -53,7 +53,7 @@ MemoryDetailService memoryDetailService(MemoryDetailServiceRef ref) {
 }
 
 /// Provider for memory detail state
-/// 
+///
 /// [memoryId] is the UUID of the memory to fetch
 @riverpod
 class MemoryDetailNotifier extends _$MemoryDetailNotifier {
@@ -79,7 +79,7 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       debugPrint('[MemoryDetailNotifier] Skipping load - memory was deleted');
       return;
     }
-    
+
     debugPrint('[MemoryDetailNotifier] Loading memory detail for: $_memoryId');
     state = state.copyWith(
       state: MemoryDetailState.loading,
@@ -91,9 +91,9 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       final service = ref.read(memoryDetailServiceProvider);
       final connectivityService = ref.read(connectivityServiceProvider);
       final isOnline = await connectivityService.isOnline();
-      
+
       debugPrint('[MemoryDetailNotifier] Is online: $isOnline');
-      
+
       // When offline, prefer cache; when online, prefer network (with cache fallback)
       final result = await service.getMemoryDetail(
         _memoryId,
@@ -103,8 +103,10 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       debugPrint('[MemoryDetailNotifier] ✓ Loaded memory detail');
       debugPrint('[MemoryDetailNotifier]   From cache: ${result.isFromCache}');
       debugPrint('[MemoryDetailNotifier]   Memory ID: ${result.memory.id}');
-      debugPrint('[MemoryDetailNotifier]   Photos: ${result.memory.photos.length}');
-      debugPrint('[MemoryDetailNotifier]   Videos: ${result.memory.videos.length}');
+      debugPrint(
+          '[MemoryDetailNotifier]   Photos: ${result.memory.photos.length}');
+      debugPrint(
+          '[MemoryDetailNotifier]   Videos: ${result.memory.videos.length}');
 
       state = state.copyWith(
         state: MemoryDetailState.loaded,
@@ -115,17 +117,17 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
     } catch (e, stackTrace) {
       debugPrint('[MemoryDetailNotifier] ✗ Error loading memory detail: $e');
       debugPrint('[MemoryDetailNotifier]   Stack trace: $stackTrace');
-      
+
       // Check if error is because memory was deleted (404 or not found)
       final errorString = e.toString().toLowerCase();
-      final isDeletedError = errorString.contains('not found') || 
-                            errorString.contains('does not exist') ||
-                            errorString.contains('already deleted');
-      
+      final isDeletedError = errorString.contains('not found') ||
+          errorString.contains('does not exist') ||
+          errorString.contains('already deleted');
+
       if (isDeletedError) {
         _isDeleted = true;
       }
-      
+
       state = state.copyWith(
         state: MemoryDetailState.error,
         errorMessage: isDeletedError ? 'Memory has been deleted' : e.toString(),
@@ -138,32 +140,30 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
   Future<void> refresh() async {
     // Don't refresh if memory was deleted
     if (_isDeleted) {
-      debugPrint('[MemoryDetailNotifier] Skipping refresh - memory was deleted');
+      debugPrint(
+          '[MemoryDetailNotifier] Skipping refresh - memory was deleted');
       return;
     }
     await loadMemoryDetail();
   }
 
   /// Delete the memory
-  /// 
+  ///
   /// Returns true if deletion was successful, false otherwise
   Future<bool> deleteMemory() async {
     try {
       debugPrint('[MemoryDetailNotifier] Deleting memory: $_memoryId');
       final service = ref.read(memoryDetailServiceProvider);
       await service.deleteMemory(_memoryId);
-      debugPrint('[MemoryDetailNotifier] Successfully deleted memory: $_memoryId');
-      
+      debugPrint(
+          '[MemoryDetailNotifier] Successfully deleted memory: $_memoryId');
+
       // Mark as deleted to prevent any future reload attempts
       _isDeleted = true;
-      
-      // Set state to error with a deleted flag to prevent auto-reload attempts
-      state = state.copyWith(
-        state: MemoryDetailState.error,
-        errorMessage: 'Memory has been deleted',
-        memory: null,
-      );
-      
+
+      // Don't set error state on successful deletion - let the screen navigate away
+      // The navigation happens in _handleDelete immediately after this returns true
+
       return true;
     } catch (e, stackTrace) {
       debugPrint('[MemoryDetailNotifier] Error deleting memory: $e');
@@ -177,7 +177,7 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
   }
 
   /// Get share link for the memory
-  /// 
+  ///
   /// Returns the shareable URL if successful, null if unavailable
   Future<String?> getShareLink() async {
     try {
@@ -188,4 +188,3 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
     }
   }
 }
-
