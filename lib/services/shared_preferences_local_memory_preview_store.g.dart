@@ -12,7 +12,7 @@ String _$localMemoryPreviewStoreHash() =>
 /// SharedPreferences-based implementation of LocalMemoryPreviewStore
 ///
 /// Stores preview entries in SharedPreferences as JSON, following the same
-/// pattern as OfflineQueueService and OfflineStoryQueueService.
+/// pattern as OfflineMemoryQueueService.
 ///
 /// Copied from [localMemoryPreviewStore].
 @ProviderFor(localMemoryPreviewStore)

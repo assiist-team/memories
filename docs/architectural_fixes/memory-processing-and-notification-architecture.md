@@ -7,7 +7,7 @@
   - Tracking processing status in a way that is:
     - **Unified across all memory types** (moment, memento, story).
     - **Compatible with offline viewing & editing** (`offline-memory-viewing-editing` phases).
-  - Surfacing processing and sync status in the UI (buttons, overlays, timeline badges).
+  - Surfacing processing and sync status in the UI (buttons, per-memory banners/indicators, timeline badges).
 - **Non-goal**: Rebuild the entire offline system. We assume the offline phases (1–6) are the source of truth for:
   - Queue semantics (`OfflineQueueService`, `OfflineStoryQueueService`).
   - Timeline model (`TimelineMoment`, `OfflineSyncStatus`, `isOfflineQueued`, `isPreviewOnly`, etc.).
@@ -153,7 +153,7 @@ Workers append here on each transition. The UI never depends on this table.
    - `metadata` can include `{"memory_type": "story" | "moment" | "memento"}`.
 5. **Commit transaction**.
 
-**Asynchronous (background, tracked by overlay + timeline indicators):**
+**Asynchronous (background, tracked by per-memory indicators + timeline badges):**
 
 6. A **dispatcher** (Edge Function / worker) is triggered when a new `queued` row appears (e.g., via database notification or a Supabase function that is called after insert).
 7. Dispatcher:
@@ -231,7 +231,7 @@ The offline system remains the source of truth for capturing and editing while o
 
 ### 6. UI & Notification Model
 
-We keep the **high-level UX** from the earlier doc (compact save button + overlay), but bind it to the simplified state model and offline semantics.
+We keep the **high-level UX** from the earlier doc (compact save button + per-memory indicators), but bind it to the simplified state model and offline semantics.
 
 #### 6.1 Save Button States (Capture Screen)
 
@@ -252,18 +252,24 @@ We keep the **high-level UX** from the earlier doc (compact save button + overla
   - Brief checkmark + subtle copy (“Queued for sync”).
   - Navigate away; user sees a queued card with “Pending sync” chip.
 
-#### 6.2 Global Processing Overlay (Online Only)
+#### 6.2 Per-Memory Processing Indicators (Online Only)
 
-The overlay is driven by `memory_processing_status.state` and appears only for **server-backed** memories.
+Processing indicators are driven by `memory_processing_status.state` and appear only in the UI for **that specific server-backed memory** (detail view and, optionally, its timeline card). They are **not** implemented as a global overlay around the entire app.
 
 **Behaviour:**
 
-- Shown when:
-  - A save just completed online **and** a new processing row exists, or
-  - The app observes any `state IN ('queued', 'running', 'title_generation', 'text_processing')` for a memory the user recently interacted with.
+- Shown for a given memory when **all** of the following are true:
+  - Device is online.
+  - That memory has **offline changes** that have been synced to the server and scheduled for AI work.
+  - There is a `memory_processing_status` row for that memory where
+    - `state IN ('queued', 'running', 'title_generation', 'text_processing')`.
+  - The user is viewing that memory:
+    - On its **detail screen**, or
+    - As a **card in the unified timeline** (if we choose to surface the indicator there).
 - Hidden when:
   - `state = 'complete'` (after a brief success state), or
-  - User dismisses it (until next app session or a new processing job starts).
+  - `state = 'failed'` (after showing failure copy), or
+  - The user is not currently viewing that memory’s detail or card.
 
 **State → copy mapping (examples):**
 
@@ -281,9 +287,9 @@ The overlay is driven by `memory_processing_status.state` and appears only for *
 
 **Data source:**
 
-- The client uses Supabase real-time or polling to watch `memory_processing_status` rows for:
-  - Current user’s memories, or
-  - Just the last N recent saves.
+- Detail views and timeline cards observe `memory_processing_status` for **specific memory IDs**, typically via:
+  - A per-memory subscription (`memory_id = :id`), or
+  - A small, filtered set of recent statuses that are then joined to visible memories.
 
 #### 6.3 Timeline & Detail Indicators (Aligned with Offline Docs)
 
@@ -366,10 +372,10 @@ Overall, the offline system **does not replicate** the same architectural mistak
 - [ ] Save button:
   - [ ] Compact spinner-only state during synchronous work.
   - [ ] Checkmark-on-success behavior for both online and offline paths.
-- [ ] Global overlay:
-  - [ ] Driven by `memory_processing_status.state`.
-  - [ ] Shows clear, concise copy per state.
-  - [ ] Persistent until `state = 'complete'` or user dismisses.
+- [ ] Per-memory processing indicators:
+  - [ ] Driven by `memory_processing_status.state` for each memory.
+  - [ ] Shown only for memories with synced offline changes that are queued/processing.
+  - [ ] Surface clear, concise copy per state on memory detail screens (and optionally timeline cards), never as a global overlay across the app shell.
 - [ ] Timeline + detail:
   - [ ] Use `OfflineSyncStatus` for sync-related badges and banners (as per offline docs).
   - [ ] Optionally add a subtle processing indicator when `state` is not `complete` or `failed`.

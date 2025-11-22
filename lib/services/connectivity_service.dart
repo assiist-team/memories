@@ -12,9 +12,9 @@ ConnectivityService connectivityService(ConnectivityServiceRef ref) {
 }
 
 class ConnectivityService {
-  // Host used to probe connectivity. Using a stable public host keeps this simple.
-  // If you prefer, we can switch this to your Supabase project domain.
-  static const String _probeHost = 'example.com';
+  // Host used to probe connectivity. Using google.com for reliable connectivity checks.
+  // This is more reliable than example.com, especially in simulators.
+  static const String _probeHost = 'google.com';
 
   // How often to poll for connectivity changes in the stream.
   static const Duration _pollInterval = Duration(seconds: 5);
@@ -46,5 +46,12 @@ class ConnectivityService {
   Future<bool> isOnlineFromStream() async {
     return isOnline();
   }
+}
+
+/// Provider for connectivity status stream
+@riverpod
+Stream<bool> connectivityStatusStream(ConnectivityStatusStreamRef ref) {
+  final connectivityService = ref.watch(connectivityServiceProvider);
+  return connectivityService.connectivityStream;
 }
 

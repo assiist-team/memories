@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/memory_processing_status.dart';
-import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/memory_processing_status_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 
@@ -29,64 +28,71 @@ class _GlobalProcessingOverlayState
 
   @override
   Widget build(BuildContext context) {
-    final connectivityService = ref.watch(connectivityServiceProvider);
     final activeStatusesAsync = ref.watch(activeProcessingStatusesStreamProvider);
+    
+    // Use connectivity stream for reactive updates
+    final connectivityAsync = ref.watch(connectivityStatusStreamProvider);
 
-    return FutureBuilder<bool>(
-      future: connectivityService.isOnline(),
-      builder: (context, snapshot) {
-        final isOnline = snapshot.data ?? false;
+    return Stack(
+      children: [
+        widget.child,
+        // Only show overlay when online and there are active processing statuses
+        connectivityAsync.when(
+          data: (isOnline) {
+            if (!isOnline) {
+              return const SizedBox.shrink();
+            }
 
-        return Stack(
-          children: [
-            widget.child,
-            // Only show overlay when online and there are active processing statuses
-            if (isOnline)
-              activeStatusesAsync.when(
-                data: (statuses) {
-                  if (statuses.isEmpty || _isDismissed) {
-                    return const SizedBox.shrink();
-                  }
+            return activeStatusesAsync.when(
+              data: (statuses) {
+                if (statuses.isEmpty || _isDismissed) {
+                  return const SizedBox.shrink();
+                }
 
-                  // Show the most recent processing memory
-                  final mostRecent = statuses.first;
-                  
-                  // Don't show if this memory was dismissed
-                  if (_dismissedMemoryId == mostRecent.memoryId) {
-                    return const SizedBox.shrink();
-                  }
+                // Show the most recent processing memory
+                final mostRecent = statuses.first;
+                
+                // Don't show if this memory was dismissed
+                if (_dismissedMemoryId == mostRecent.memoryId) {
+                  return const SizedBox.shrink();
+                }
 
-                  // Don't show if processing is complete
-                  if (mostRecent.isComplete) {
-                    return const SizedBox.shrink();
-                  }
+                // Don't show if processing is complete
+                if (mostRecent.isComplete) {
+                  return const SizedBox.shrink();
+                }
 
-                  return Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: _ProcessingStatusBanner(
-                          status: mostRecent,
-                          onDismiss: () {
-                            setState(() {
-                              _isDismissed = true;
-                              _dismissedMemoryId = mostRecent.memoryId;
-                            });
-                          },
-                        ),
-                      ),
+                // Calculate bottom padding to account for bottom navigation bar
+                // NavigationBar height is typically around 80 pixels
+                const bottomNavBarHeight = 80.0;
+                final bottomPadding = MediaQuery.of(context).viewPadding.bottom + bottomNavBarHeight + 16;
+
+                return Positioned(
+                  bottom: bottomPadding,
+                  left: 16,
+                  right: 16,
+                  child: SafeArea(
+                    top: false,
+                    child: _ProcessingStatusBanner(
+                      status: mostRecent,
+                      onDismiss: () {
+                        setState(() {
+                          _isDismissed = true;
+                          _dismissedMemoryId = mostRecent.memoryId;
+                        });
+                      },
                     ),
-                  );
-                },
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
-          ],
-        );
-      },
+                  ),
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

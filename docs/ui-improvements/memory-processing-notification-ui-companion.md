@@ -51,28 +51,44 @@ This doc intentionally does **not** define database schemas. It describes how th
 
 ---
 
-### 3. Global Processing Overlay (Online Only)
+### 3. Per-Memory Processing Indicators (Online Only)
 
-The global overlay surfaces the background processing lifecycle driven by `memory_processing_status.state`. It should:
+Per-memory processing indicators surface the background processing lifecycle for a **single memory** and are embedded directly into that memory’s own UI (detail view and, optionally, its timeline card). They:
 
-- Be **non-modal**.
-- Avoid overlapping bottom navigation or critical controls.
-- Persist until processing is actually done or the user dismisses it.
+- Are **non-modal** and participate in normal layout (no overlays).
+- Never appear on the **capture screen**.
+- Never obscure primary actions or navigation.
 
-#### 3.1 When to Show
+#### 3.1 Where They Appear
 
-Show the overlay when **all** of the following are true:
+- **Memory detail screen**:
+  - A slim banner near the top of the content area.
+  - Sits above the main body content and below any app bar.
+  - Moves content down rather than covering it.
+- **Timeline card (optional)**:
+  - A small chip or inline status row on the specific card for that memory.
+  - Never shown as a global banner across the entire timeline.
+
+#### 3.2 When to Show
+
+Show processing indicators for a **specific memory** only when **all** of the following are true:
 
 - We’re online.
-- There is at least one memory for the current user where:
+- The memory has **offline changes** that have been synced to the server and now require AI processing.
+- There is a corresponding `memory_processing_status` row for that memory where:
   - `state IN ('queued', 'processing')`.
-- Either:
-  - The user has just saved that memory, or
-  - We have a global “currently processing” list we want to expose.
+- The user is **viewing that memory**:
+  - On its detail screen, or
+  - As a card in the timeline (if we choose to surface the indicator there).
 
-#### 3.2 Content Mapping
+Do **not** show processing indicators:
 
-Map `memory_processing_status.state` to copy:
+- On the capture screen (even if other memories are processing).
+- For memories that are only processing due to pure online edits unless explicitly desired.
+
+#### 3.3 Content Mapping
+
+Map `memory_processing_status.state` to copy for that **specific memory**:
 
 - `queued`:
   - “Queued for processing…”
@@ -84,17 +100,16 @@ Map `memory_processing_status.state` to copy:
 - `failed`:
   - “Processing failed. We’ll retry automatically.” (optional “Retry now” CTA).
 - `complete`:
-  - Overlay should shortly after disappear (or show a brief success state then dismiss).
+  - The banner/chip should shortly after disappear (or show a brief success state then dismiss).
 
-#### 3.3 Behaviour
+#### 3.4 Behaviour
 
-- The overlay:
-  - Appears near the bottom of the content, above the button row and bottom nav.
-  - Can shrink into a **compact, sticky** form when the user navigates away from capture/detail.
-  - Can be dismissed by the user, but will reappear on next app launch if processing is still not `complete`.
-- Multiple memories:
-  - Start simple: show the **most recent** processing memory.
-  - If we add multi-memory processing later, consider a small list view in the overlay.
+- Indicators are **scoped to a single memory**:
+  - The detail screen shows only that memory’s processing state.
+  - The timeline card (if used) shows only that card’s processing state.
+- Multiple processing memories:
+  - Each memory can show its own indicator in its own UI context.
+  - There is **no global, app-wide processing banner or overlay**.
 
 ---
 
@@ -190,7 +205,7 @@ The presence of the **preview index** means that in normal situations, going off
 ### 7. Implementation Checklist (UI Layer)
 
 - [ ] Implement compact save button states for online/offline, with checkmark-on-success.
-- [ ] Implement global processing overlay driven by `memory_processing_status.state`.
+- [ ] Implement per-memory processing indicators (detail banner + optional timeline badge) driven by `memory_processing_status.state`, visible only for memories with synced offline changes that are queued/processing.
 - [ ] Ensure timeline cards:
   - [ ] Correctly show sync badges and offline visual treatments based on offline flags.
   - [ ] Optionally show a subtle processing indicator for server-backed memories still processing.
