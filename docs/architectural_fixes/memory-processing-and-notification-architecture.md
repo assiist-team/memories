@@ -47,7 +47,7 @@ This doc fixes that by:
     - Offline queues (`QueuedMoment`, `QueuedStory`).
     - `OfflineSyncStatus` in `TimelineMoment` (`queued`, `syncing`, `failed`, `synced`).
   - **AI processing** is represented by:
-    - `memory_processing_status.state` (`queued`, `running`, `title_generation`, `text_processing`, `complete`, `failed`).
+    - `memory_processing_status.state` (`scheduled`, `running`, `title_generation`, `text_processing`, `complete`, `failed`).
 - **Event-driven, low-latency processing**:
   - No cron as a primary driver; processing should normally start within ~1s of a memory reaching the server.
 - **Asynchronous processing for all memory types**:
@@ -68,7 +68,7 @@ We keep the existing table name, but simplify and clarify its responsibilities.
 
 ```sql
 CREATE TYPE memory_processing_state AS ENUM (
-  'queued',       -- row exists; work not yet started
+  'scheduled',    -- row exists; work not yet started
   'processing',   -- one or more LLM steps are in progress
   'complete',     -- all required processing finished successfully
   'failed'        -- processing failed after retries
@@ -78,7 +78,7 @@ CREATE TABLE memory_processing_status (
   memory_id UUID PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
 
   -- Single lifecycle state for AI processing.
-  state memory_processing_state NOT NULL DEFAULT 'queued',
+  state memory_processing_state NOT NULL DEFAULT 'scheduled',
 
   -- Retry + error metadata.
   attempts INTEGER NOT NULL DEFAULT 0,
@@ -108,7 +108,7 @@ CREATE INDEX idx_memory_processing_status_created_at
   - Workers claim and update work directly via `memory_processing_status`.
   - If we ever need a full job system, we can introduce a separate, generic `jobs` module—but today we don’t.
 - **`state` encodes the high-level lifecycle only**:
-  - `queued`: used for worker discovery, capacity planning, and “about to process” UI.
+  - `scheduled`: used for worker discovery, capacity planning, and “about to process” UI.
   - `processing`: covers any internal structure (sequential or parallel LLM calls).
   - `complete` / `failed`: terminal outcomes for the whole pipeline.
 - **Fine-grained stages live in `metadata`**:
@@ -148,16 +148,16 @@ Workers append here on each transition. The UI never depends on this table.
 3. **Insert `memories` row** (and any type-specific tables, e.g. `story_fields`).
 4. **Insert `memory_processing_status` row**:
    - `memory_id = memories.id`.
-   - `state = 'queued'`.
+   - `state = 'scheduled'`.
    - `attempts = 0`.
    - `metadata` can include `{"memory_type": "story" | "moment" | "memento"}`.
 5. **Commit transaction**.
 
 **Asynchronous (background, tracked by per-memory indicators + timeline badges):**
 
-6. A **dispatcher** (Edge Function / worker) is triggered when a new `queued` row appears (e.g., via database notification or a Supabase function that is called after insert).
+6. A **dispatcher** (Edge Function / worker) is triggered when a new `scheduled` row appears (e.g., via database notification or a Supabase function that is called after insert).
 7. Dispatcher:
-   - Picks a `queued` row using `SELECT ... FOR UPDATE SKIP LOCKED`.
+   - Picks a `scheduled` row using `SELECT ... FOR UPDATE SKIP LOCKED`.
    - Sets:
      - `state = 'running'`,
      - `started_at = NOW()`,

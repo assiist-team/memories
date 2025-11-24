@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memories/models/local_memory_preview.dart';
 import 'package:memories/models/memory_type.dart';
-import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/timeline_memory.dart';
 import 'package:memories/services/preview_index_to_timeline_adapter.dart';
 
 void main() {

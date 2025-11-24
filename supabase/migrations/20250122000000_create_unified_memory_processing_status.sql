@@ -8,7 +8,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'memory_processing_state') THEN
     CREATE TYPE memory_processing_state AS ENUM (
-      'queued',       -- row exists; work not yet started
+      'scheduled',    -- row exists; work not yet started
       'processing',   -- one or more LLM steps are in progress
       'complete',     -- all required processing finished successfully
       'failed'        -- processing failed after retries
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.memory_processing_status (
   memory_id UUID PRIMARY KEY REFERENCES public.memories(id) ON DELETE CASCADE,
 
   -- Single lifecycle state for AI processing.
-  state memory_processing_state NOT NULL DEFAULT 'queued',
+  state memory_processing_state NOT NULL DEFAULT 'scheduled',
 
   -- Retry + error metadata.
   attempts INTEGER NOT NULL DEFAULT 0,
@@ -61,9 +61,9 @@ CREATE TRIGGER trigger_update_memory_processing_status_updated_at
   EXECUTE FUNCTION update_memory_processing_status_updated_at();
 
 -- Step 5: Add comments for documentation
-COMMENT ON TABLE public.memory_processing_status IS 'Unified processing status tracking for all memory types (moments, mementos, stories). Tracks AI processing lifecycle from queued to complete/failed.';
+COMMENT ON TABLE public.memory_processing_status IS 'Unified processing status tracking for all memory types (moments, mementos, stories). Tracks AI processing lifecycle from scheduled to complete/failed.';
 COMMENT ON COLUMN public.memory_processing_status.memory_id IS 'Foreign key to memories table. One row per memory that needs processing.';
-COMMENT ON COLUMN public.memory_processing_status.state IS 'Current processing state: queued (not started), processing (LLM work in progress), complete (success), failed (error after retries).';
+COMMENT ON COLUMN public.memory_processing_status.state IS 'Current processing state: scheduled (not started), processing (LLM work in progress), complete (success), failed (error after retries).';
 COMMENT ON COLUMN public.memory_processing_status.attempts IS 'Number of processing attempts made. Incremented on each retry.';
 COMMENT ON COLUMN public.memory_processing_status.last_error IS 'Error message from the most recent processing failure.';
 COMMENT ON COLUMN public.memory_processing_status.last_error_at IS 'Timestamp of the most recent processing failure.';

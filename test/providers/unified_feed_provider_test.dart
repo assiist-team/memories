@@ -8,7 +8,7 @@ import 'package:memories/providers/unified_feed_provider.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/unified_feed_repository.dart';
-import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/timeline_memory.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/offline_queue_service.dart';
 import 'package:memories/services/offline_story_queue_service.dart';
@@ -103,7 +103,7 @@ void main() {
       });
 
       test('transitions to ready state when data is loaded', () async {
-        final testMemory = TimelineMoment(
+        final testMemory = TimelineMemory(
           id: 'memory-1',
           userId: 'user-1',
           title: 'Test Memory',
@@ -146,7 +146,7 @@ void main() {
       });
 
       test('transitions to appending state during pagination', () async {
-        final testMemory1 = TimelineMoment(
+        final testMemory1 = TimelineMemory(
           id: 'memory-1',
           userId: 'user-1',
           title: 'Test Memory 1',
@@ -165,7 +165,7 @@ void main() {
           offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        final testMemory2 = TimelineMoment(
+        final testMemory2 = TimelineMemory(
           id: 'memory-2',
           userId: 'user-1',
           title: 'Test Memory 2',
@@ -287,7 +287,7 @@ void main() {
       test(
           'shows inline error on pagination failure while keeping existing data',
           () async {
-        final testMemory = TimelineMoment(
+        final testMemory = TimelineMemory(
           id: 'memory-1',
           userId: 'user-1',
           title: 'Test Memory',
@@ -351,7 +351,7 @@ void main() {
       });
 
       test('can retry pagination after error', () async {
-        final testMemory1 = TimelineMoment(
+        final testMemory1 = TimelineMemory(
           id: 'memory-1',
           userId: 'user-1',
           title: 'Test Memory 1',
@@ -370,7 +370,7 @@ void main() {
           offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        final testMemory2 = TimelineMoment(
+        final testMemory2 = TimelineMemory(
           id: 'memory-2',
           userId: 'user-1',
           title: 'Test Memory 2',
@@ -515,7 +515,7 @@ void main() {
       });
 
       test('setFilter resets pagination', () async {
-        final testMemory = TimelineMoment(
+        final testMemory = TimelineMemory(
           id: 'memory-1',
           userId: 'user-1',
           title: 'Test Memory',
@@ -590,7 +590,7 @@ void main() {
       test('offline timeline includes preview index + queue', () async {
         when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
 
-        final previewMemory = TimelineMoment(
+        final previewMemory = TimelineMemory(
           id: 'preview-1',
           userId: 'user-1',
           title: 'Preview Memory',
@@ -608,7 +608,7 @@ void main() {
           offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        final queuedMemory = TimelineMoment(
+        final queuedMemory = TimelineMemory(
           id: 'queued-1',
           userId: 'user-1',
           title: 'Queued Memory',
@@ -651,7 +651,7 @@ void main() {
       test('online timeline merges online + queue, keeps preview index updated', () async {
         when(() => mockConnectivity.isOnline()).thenAnswer((_) async => true);
 
-        final onlineMemory = TimelineMoment(
+        final onlineMemory = TimelineMemory(
           id: 'online-1',
           userId: 'user-1',
           title: 'Online Memory',
@@ -670,7 +670,7 @@ void main() {
           offlineSyncStatus: OfflineSyncStatus.synced,
         );
 
-        final queuedMemory = TimelineMoment(
+        final queuedMemory = TimelineMemory(
           id: 'queued-1',
           userId: 'user-1',
           title: 'Queued Memory',
@@ -713,7 +713,7 @@ void main() {
       test('filters still work with preview index and queue', () async {
         when(() => mockConnectivity.isOnline()).thenAnswer((_) async => false);
 
-        final storyMemory = TimelineMoment(
+        final storyMemory = TimelineMemory(
           id: 'story-1',
           userId: 'user-1',
           title: 'Story Memory',
@@ -766,7 +766,7 @@ void main() {
       });
 
       test('removes queued entry when sync completes', () async {
-        final queuedMemory = TimelineMoment(
+        final queuedMemory = TimelineMemory(
           id: 'queued-1',
           userId: 'user-1',
           title: 'Queued Memory',
@@ -836,7 +836,7 @@ void main() {
       });
 
       test('does not remove non-matching queued entry', () async {
-        final queuedMemory1 = TimelineMoment(
+        final queuedMemory1 = TimelineMemory(
           id: 'queued-1',
           userId: 'user-1',
           title: 'Queued Memory 1',
@@ -855,7 +855,7 @@ void main() {
           offlineSyncStatus: OfflineSyncStatus.queued,
         );
 
-        final queuedMemory2 = TimelineMoment(
+        final queuedMemory2 = TimelineMemory(
           id: 'queued-2',
           userId: 'user-1',
           title: 'Queued Memory 2',
@@ -924,7 +924,7 @@ void main() {
       });
 
       test('does not remove non-queued entries', () async {
-        final serverMemory = TimelineMoment(
+        final serverMemory = TimelineMemory(
           id: 'server-1',
           userId: 'user-1',
           title: 'Server Memory',

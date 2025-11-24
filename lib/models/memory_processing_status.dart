@@ -1,14 +1,14 @@
 /// Processing state for a memory
 enum MemoryProcessingState {
-  queued,
+  scheduled,
   processing,
   complete,
   failed;
 
   static MemoryProcessingState fromString(String value) {
     switch (value.toLowerCase()) {
-      case 'queued':
-        return MemoryProcessingState.queued;
+      case 'scheduled':
+        return MemoryProcessingState.scheduled;
       case 'processing':
         return MemoryProcessingState.processing;
       case 'complete':
@@ -16,14 +16,14 @@ enum MemoryProcessingState {
       case 'failed':
         return MemoryProcessingState.failed;
       default:
-        return MemoryProcessingState.queued;
+        return MemoryProcessingState.scheduled;
     }
   }
 
   String toApiValue() {
     switch (this) {
-      case MemoryProcessingState.queued:
-        return 'queued';
+      case MemoryProcessingState.scheduled:
+        return 'scheduled';
       case MemoryProcessingState.processing:
         return 'processing';
       case MemoryProcessingState.complete:
@@ -64,7 +64,7 @@ class MemoryProcessingStatus {
     return MemoryProcessingStatus(
       memoryId: json['memory_id'] as String,
       state: MemoryProcessingState.fromString(
-        json['state'] as String? ?? 'queued',
+        json['state'] as String? ?? 'scheduled',
       ),
       attempts: json['attempts'] as int? ?? 0,
       lastError: json['last_error'] as String?,
@@ -106,7 +106,7 @@ class MemoryProcessingStatus {
 
   /// Check if processing is in progress
   bool get isInProgress {
-    return state == MemoryProcessingState.queued ||
+    return state == MemoryProcessingState.scheduled ||
         state == MemoryProcessingState.processing;
   }
 
@@ -116,4 +116,3 @@ class MemoryProcessingStatus {
   /// Check if processing has failed
   bool get hasFailed => state == MemoryProcessingState.failed;
 }
-

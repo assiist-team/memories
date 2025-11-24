@@ -52,10 +52,10 @@ class UnifiedFeedPageResult {
 }
 
 /// Repository for fetching unified feed data
-/// 
+///
 /// Handles API calls to the unified feed endpoint, cursor tracking,
 /// and exposes typed DTOs (TimelineMemory).
-/// 
+///
 /// Phase 2: Integrates preview index and offline queues for offline support.
 class UnifiedFeedRepository {
   final SupabaseClient _supabase;
@@ -75,11 +75,11 @@ class UnifiedFeedRepository {
   );
 
   /// Fetch a page of unified feed memories
-  /// 
+  ///
   /// [cursor] is the pagination cursor (null for first page)
   /// [filters] is the set of memory types to include (empty set or all three means 'all')
   /// [batchSize] is the number of items to fetch (default: 20)
-  /// 
+  ///
   /// Returns a [UnifiedFeedPageResult] with memories, next cursor, and hasMore flag
   Future<UnifiedFeedPageResult> fetchPage({
     UnifiedFeedCursor? cursor,
@@ -87,11 +87,11 @@ class UnifiedFeedRepository {
     int batchSize = _defaultBatchSize,
   }) async {
     final effectiveFilters = filters ?? _allMemoryTypes;
-    
+
     // Determine if we need to fetch all and filter client-side
-    final shouldFetchAll = effectiveFilters.length == _allMemoryTypes.length || 
-                          effectiveFilters.length == 2;
-    
+    final shouldFetchAll = effectiveFilters.length == _allMemoryTypes.length ||
+        effectiveFilters.length == 2;
+
     MemoryType? singleFilter;
     if (!shouldFetchAll && effectiveFilters.length == 1) {
       singleFilter = effectiveFilters.first;
@@ -109,7 +109,8 @@ class UnifiedFeedRepository {
       params['p_memory_type'] = 'all';
     }
 
-    final response = await _supabase.rpc('get_unified_timeline_feed', params: params);
+    final response =
+        await _supabase.rpc('get_unified_timeline_feed', params: params);
 
     if (response is! List) {
       throw Exception('Invalid response format from get_unified_timeline_feed');
@@ -121,7 +122,8 @@ class UnifiedFeedRepository {
 
     // Filter client-side if needed (when 2 types selected or when filtering from 'all')
     if (shouldFetchAll && effectiveFilters.length < _allMemoryTypes.length) {
-      final filterSet = effectiveFilters.map((t) => t.apiValue.toLowerCase()).toSet();
+      final filterSet =
+          effectiveFilters.map((t) => t.apiValue.toLowerCase()).toSet();
       memories = memories.where((memory) {
         return filterSet.contains(memory.memoryType.toLowerCase());
       }).toList();
@@ -142,7 +144,7 @@ class UnifiedFeedRepository {
       } else {
         hasMore = memories.length >= batchSize;
       }
-      
+
       if (hasMore) {
         nextCursor = UnifiedFeedCursor.fromTimelineMemory(lastMemory);
       }
@@ -173,7 +175,8 @@ class UnifiedFeedRepository {
         await _supabase.rpc('get_unified_timeline_years', params: params);
 
     if (response is! List) {
-      throw Exception('Invalid response format from get_unified_timeline_years');
+      throw Exception(
+          'Invalid response format from get_unified_timeline_years');
     }
 
     final years = response.map((entry) {
@@ -191,7 +194,7 @@ class UnifiedFeedRepository {
   }
 
   /// Fetch queued memories as timeline items
-  /// 
+  ///
   /// Converts queued offline memories (moments, mementos, stories) into
   /// TimelineMemory instances for the unified feed.
   Future<List<TimelineMemory>> fetchQueuedMemories({
@@ -215,7 +218,7 @@ class UnifiedFeedRepository {
   }
 
   /// Fetch preview-index memories as timeline items
-  /// 
+  ///
   /// Reads stored previews from the local preview index and converts them
   /// into TimelineMemory instances for offline timeline rendering.
   Future<List<TimelineMemory>> fetchPreviewIndexMemories({
@@ -227,13 +230,11 @@ class UnifiedFeedRepository {
       limit: limit,
     );
 
-    return previews
-        .map(PreviewIndexToTimelineAdapter.fromPreview)
-        .toList();
+    return previews.map(PreviewIndexToTimelineAdapter.fromPreview).toList();
   }
 
   /// Fetch online page and upsert preview index
-  /// 
+  ///
   /// Internal method that fetches from Supabase and updates the preview index
   /// with the results for offline viewing.
   Future<UnifiedFeedPageResult> _fetchOnlinePage({
@@ -269,10 +270,10 @@ class UnifiedFeedRepository {
   }
 
   /// Fetch merged feed (online + offline branches)
-  /// 
+  ///
   /// Single entry point that merges online RPC + queue + preview index when online,
   /// and merges queue + preview index when offline.
-  /// 
+  ///
   /// [isOnline] - Whether the device is currently online
   Future<UnifiedFeedPageResult> fetchMergedFeed({
     UnifiedFeedCursor? cursor,
@@ -316,7 +317,8 @@ class UnifiedFeedRepository {
       ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
 
     // Re-derive pagination over merged list.
-    final startIndex = 0; // keep simple; cursor-based merging can be refined later.
+    final startIndex =
+        0; // keep simple; cursor-based merging can be refined later.
     final page = merged.skip(startIndex).take(batchSize).toList();
 
     return UnifiedFeedPageResult(
@@ -326,4 +328,3 @@ class UnifiedFeedRepository {
     );
   }
 }
-

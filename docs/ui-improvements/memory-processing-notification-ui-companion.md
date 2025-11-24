@@ -76,7 +76,7 @@ Show processing indicators for a **specific memory** only when **all** of the fo
 - We’re online.
 - The memory has **offline changes** that have been synced to the server and now require AI processing.
 - There is a corresponding `memory_processing_status` row for that memory where:
-  - `state IN ('queued', 'processing')`.
+  - `state IN ('scheduled', 'processing')`.
 - The user is **viewing that memory**:
   - On its detail screen, or
   - As a card in the timeline (if we choose to surface the indicator there).
@@ -90,8 +90,8 @@ Do **not** show processing indicators:
 
 Map `memory_processing_status.state` to copy for that **specific memory**:
 
-- `queued`:
-  - “Queued for processing…”
+- `scheduled`:
+  - “Processing scheduled…”
 - `processing`:
   - Default: “Processing in background…”
   - Optional refinement (if `metadata` exposes a phase):

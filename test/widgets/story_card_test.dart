@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/widgets/story_card.dart';
-import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/timeline_memory.dart';
 
 void main() {
   group('StoryCard', () {
-    Widget createWidget(TimelineMoment story) {
+    Widget createWidget(TimelineMemory story) {
       return ProviderScope(
         child: MaterialApp(
           home: Scaffold(
@@ -21,7 +21,7 @@ void main() {
     }
 
     testWidgets('displays story title', (WidgetTester tester) async {
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -46,7 +46,7 @@ void main() {
     });
 
     testWidgets('displays "Untitled Story" when title is empty', (WidgetTester tester) async {
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: '',
@@ -72,7 +72,7 @@ void main() {
 
     testWidgets('displays relative timestamp for recent story', (WidgetTester tester) async {
       final today = DateTime.now();
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -99,7 +99,7 @@ void main() {
 
     testWidgets('displays absolute timestamp for old story', (WidgetTester tester) async {
       final oldDate = DateTime(2020, 1, 17);
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -126,7 +126,7 @@ void main() {
 
     testWidgets('calls onTap when card is tapped', (WidgetTester tester) async {
       var tapped = false;
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -167,7 +167,7 @@ void main() {
     });
 
     testWidgets('has proper accessibility semantics', (WidgetTester tester) async {
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -197,7 +197,7 @@ void main() {
     });
 
     testWidgets('has minimum 44px tap target height', (WidgetTester tester) async {
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',
@@ -224,7 +224,7 @@ void main() {
     });
 
     testWidgets('displays calendar icon', (WidgetTester tester) async {
-      final story = TimelineMoment(
+      final story = TimelineMemory(
         id: 'test-id',
         userId: 'user-id',
         title: 'Test Story',

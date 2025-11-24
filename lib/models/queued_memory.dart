@@ -10,7 +10,7 @@ enum QueuedMemoryStatus {
 }
 
 /// Model representing a memory queued for offline sync
-/// 
+///
 /// Unified model for moments, mementos, and stories.
 /// Stories include optional audio fields (audioPath, audioDuration).
 class QueuedMemory {
@@ -99,7 +99,7 @@ class QueuedMemory {
   });
 
   /// Create from CaptureState
-  /// 
+  ///
   /// Handles optional audio fields when memoryType is 'story'
   factory QueuedMemory.fromCaptureState({
     required String localId,
@@ -126,7 +126,7 @@ class QueuedMemory {
   }
 
   /// Convert to CaptureState
-  /// 
+  ///
   /// Includes audioPath and audioDuration for stories
   CaptureState toCaptureState() {
     return CaptureState(
@@ -302,7 +302,7 @@ class QueuedMemory {
   /// Create from JSON
   factory QueuedMemory.fromJson(Map<String, dynamic> json) {
     final version = json['version'] as int? ?? 1;
-    
+
     return QueuedMemory(
       version: version,
       localId: json['localId'] as String,
@@ -330,4 +330,3 @@ class QueuedMemory {
     );
   }
 }
-

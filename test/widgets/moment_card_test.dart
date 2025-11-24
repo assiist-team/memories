@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:memories/widgets/moment_card.dart';
-import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/timeline_memory.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
 
@@ -30,7 +30,7 @@ void main() {
       when(() => mockBucketApi.from(any())).thenReturn(mockFileApi);
     });
 
-    Widget createWidget(TimelineMoment moment) {
+    Widget createWidget(TimelineMemory moment) {
       return ProviderScope(
         overrides: [
           supabaseClientProvider.overrideWithValue(mockSupabase),
@@ -47,7 +47,7 @@ void main() {
     }
 
     testWidgets('displays moment title', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -72,7 +72,7 @@ void main() {
     });
 
     testWidgets('displays "Untitled Moment" when title is empty', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: '',
@@ -97,7 +97,7 @@ void main() {
     });
 
     testWidgets('displays snippet text when available', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -123,7 +123,7 @@ void main() {
     });
 
     testWidgets('displays tags when available', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -150,7 +150,7 @@ void main() {
     });
 
     testWidgets('shows text-only badge when no media', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -176,7 +176,7 @@ void main() {
 
     testWidgets('calls onTap when card is tapped', (WidgetTester tester) async {
       var tapped = false;
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -221,7 +221,7 @@ void main() {
 
     testWidgets('displays relative date', (WidgetTester tester) async {
       final today = DateTime.now();
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',
@@ -246,7 +246,7 @@ void main() {
     });
 
     testWidgets('has proper accessibility semantics', (WidgetTester tester) async {
-      final moment = TimelineMoment(
+      final moment = TimelineMemory(
         id: 'test-id',
         userId: 'user-1',
         title: 'Test Moment',

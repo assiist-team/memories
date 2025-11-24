@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:memories/models/timeline_moment.dart';
+import 'package:memories/models/timeline_memory.dart';
 
 /// Test grouping logic for unified feed
 ///
@@ -8,7 +8,7 @@ void main() {
   group('Unified Feed Grouping Logic', () {
     test('groups memories by year correctly', () {
       final memories = [
-        TimelineMoment(
+        TimelineMemory(
           id: '1',
           userId: 'user-1',
           title: 'Memory 1',
@@ -26,7 +26,7 @@ void main() {
           serverId: '1',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '2',
           userId: 'user-1',
           title: 'Memory 2',
@@ -69,7 +69,7 @@ void main() {
 
     test('groups memories by season correctly', () {
       final memories = [
-        TimelineMoment(
+        TimelineMemory(
           id: '1',
           userId: 'user-1',
           title: 'Winter Memory',
@@ -87,7 +87,7 @@ void main() {
           serverId: '1',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '2',
           userId: 'user-1',
           title: 'Spring Memory',
@@ -116,7 +116,7 @@ void main() {
 
     test('groups memories by month correctly', () {
       final memories = [
-        TimelineMoment(
+        TimelineMemory(
           id: '1',
           userId: 'user-1',
           title: 'January Memory',
@@ -134,7 +134,7 @@ void main() {
           serverId: '1',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '2',
           userId: 'user-1',
           title: 'February Memory',
@@ -165,7 +165,7 @@ void main() {
 
     test('handles multiple memories in same month', () {
       final memories = [
-        TimelineMoment(
+        TimelineMemory(
           id: '1',
           userId: 'user-1',
           title: 'Memory 1',
@@ -183,7 +183,7 @@ void main() {
           serverId: '1',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '2',
           userId: 'user-1',
           title: 'Memory 2',
@@ -215,7 +215,7 @@ void main() {
 
     test('handles memories across multiple years, seasons, and months', () {
       final memories = [
-        TimelineMoment(
+        TimelineMemory(
           id: '1',
           userId: 'user-1',
           title: '2024 Winter Dec',
@@ -233,7 +233,7 @@ void main() {
           serverId: '1',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '2',
           userId: 'user-1',
           title: '2025 Winter Jan',
@@ -251,7 +251,7 @@ void main() {
           serverId: '2',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '3',
           userId: 'user-1',
           title: '2025 Spring Mar',
@@ -269,7 +269,7 @@ void main() {
           serverId: '3',
           offlineSyncStatus: OfflineSyncStatus.synced,
         ),
-        TimelineMoment(
+        TimelineMemory(
           id: '4',
           userId: 'user-1',
           title: '2025 Spring Apr',
@@ -311,10 +311,10 @@ void main() {
 /// Group memories by Year → Season → Month hierarchy
 ///
 /// This matches the implementation in timeline_screen.dart
-Map<int, Map<String, Map<int, List<TimelineMoment>>>> _groupMemoriesByHierarchy(
-  List<TimelineMoment> memories,
+Map<int, Map<String, Map<int, List<TimelineMemory>>>> _groupMemoriesByHierarchy(
+  List<TimelineMemory> memories,
 ) {
-  final grouped = <int, Map<String, Map<int, List<TimelineMoment>>>>{};
+  final grouped = <int, Map<String, Map<int, List<TimelineMemory>>>>{};
 
   for (final moment in memories) {
     grouped.putIfAbsent(moment.year, () => {});

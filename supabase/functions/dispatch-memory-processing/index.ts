@@ -14,7 +14,7 @@ const MAX_BATCH_SIZE = 10; // Process up to 10 memories per invocation
  * Dispatcher Edge Function for Memory Processing
  * 
  * This function:
- * - Claims queued memory processing jobs using SELECT ... FOR UPDATE SKIP LOCKED
+ * - Claims scheduled memory processing jobs using SELECT ... FOR UPDATE SKIP LOCKED
  * - Updates state to 'processing' and calls appropriate edge function
  * - Handles retries for failed jobs (if attempts < MAX_ATTEMPTS)
  * - Processes memories in batches for efficiency
@@ -68,10 +68,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Use service role key for admin access to claim jobs
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Claim queued jobs using SELECT ... FOR UPDATE SKIP LOCKED
+    // Claim scheduled jobs using SELECT ... FOR UPDATE SKIP LOCKED
     // This ensures only one dispatcher processes each job
-    const { data: queuedJobs, error: selectError } = await supabaseClient
-      .rpc("claim_queued_processing_jobs", { batch_size: MAX_BATCH_SIZE });
+    const { data: scheduledJobs, error: selectError } = await supabaseClient
+      .rpc("claim_scheduled_processing_jobs", { batch_size: MAX_BATCH_SIZE });
 
     if (selectError) {
       // If the RPC doesn't exist, fall back to manual query
@@ -80,7 +80,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const { data: jobs, error: fallbackError } = await supabaseClient
         .from("memory_processing_status")
         .select("memory_id, attempts, metadata")
-        .eq("state", "queued")
+        .eq("state", "scheduled")
         .lt("attempts", MAX_ATTEMPTS)
         .order("created_at", { ascending: true })
         .limit(MAX_BATCH_SIZE);
@@ -89,7 +89,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({
             processed: 0,
-            message: "No queued jobs found",
+            message: "No scheduled jobs found",
           }),
           {
             status: 200,
@@ -102,7 +102,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       let processedCount = 0;
       for (const job of jobs) {
         try {
-          // Update state to 'processing' atomically (only if still 'queued')
+          // Update state to 'processing' atomically (only if still 'scheduled')
           const { error: updateError } = await supabaseClient
             .from("memory_processing_status")
             .update({
@@ -111,7 +111,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
               last_updated_at: new Date().toISOString(),
             })
             .eq("memory_id", job.memory_id)
-            .eq("state", "queued"); // Only update if still queued (prevents race conditions)
+            .eq("state", "scheduled"); // Only update if still scheduled (prevents race conditions)
 
           if (updateError) {
             console.error(`Failed to claim job ${job.memory_id}:`, updateError);
@@ -158,11 +158,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
             // we'll handle retry logic here
             const newAttempts = (job.attempts || 0) + 1;
             if (newAttempts < MAX_ATTEMPTS) {
-              // Reset to queued for retry
+              // Reset to scheduled for retry
               await supabaseClient
                 .from("memory_processing_status")
                 .update({
-                  state: "queued",
+                  state: "scheduled",
                   attempts: newAttempts,
                   last_error: errorText,
                   last_error_at: new Date().toISOString(),
@@ -192,7 +192,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           await supabaseClient
             .from("memory_processing_status")
             .update({
-              state: newAttempts < MAX_ATTEMPTS ? "queued" : "failed",
+              state: newAttempts < MAX_ATTEMPTS ? "scheduled" : "failed",
               attempts: newAttempts,
               last_error: error instanceof Error ? error.message : String(error),
               last_error_at: new Date().toISOString(),
@@ -217,7 +217,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // If RPC exists, use it (would need to be created in a migration)
     return new Response(
       JSON.stringify({
-        processed: queuedJobs?.length || 0,
+        processed: scheduledJobs?.length || 0,
         message: "Jobs processed via RPC",
       }),
       {

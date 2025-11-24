@@ -106,11 +106,12 @@ class UnifiedFeedController extends _$UnifiedFeedController {
 
   @override
   UnifiedFeedViewState build([Set<MemoryType>? memoryTypeFilters]) {
-    _memoryTypeFilters = memoryTypeFilters ?? {
-      MemoryType.story,
-      MemoryType.moment,
-      MemoryType.memento,
-    };
+    _memoryTypeFilters = memoryTypeFilters ??
+        {
+          MemoryType.story,
+          MemoryType.moment,
+          MemoryType.memento,
+        };
     _setupSyncListener();
     _setupQueueChangeListeners();
     ref.onDispose(() {
@@ -147,7 +148,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       case QueueChangeType.updated:
         // For added/updated, re-fetch the feed to get latest queue state
         // This ensures the feed reflects the latest queue contents
-        if (state.state == UnifiedFeedState.ready || state.state == UnifiedFeedState.empty) {
+        if (state.state == UnifiedFeedState.ready ||
+            state.state == UnifiedFeedState.empty) {
           // Only refresh if feed is already loaded
           _fetchPage(
             cursor: null,
@@ -170,7 +172,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
 
     state = state.copyWith(memories: updated);
   }
-  
+
   /// Handle queue change event - remove queued entry by localId
   void _removeQueuedEntryByLocalId(String localId) {
     final updated = state.memories
@@ -205,7 +207,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         e,
         'unified_feed_initial_load',
         context: {
-          'memory_type_filters': _memoryTypeFilters.map((t) => t.apiValue).join(','),
+          'memory_type_filters':
+              _memoryTypeFilters.map((t) => t.apiValue).join(','),
           'is_offline': !isOnline,
         },
       );
@@ -256,7 +259,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         'unified_feed_pagination',
         context: {
           'page_number': _currentPageNumber,
-          'memory_type_filters': _memoryTypeFilters.map((t) => t.apiValue).join(','),
+          'memory_type_filters':
+              _memoryTypeFilters.map((t) => t.apiValue).join(','),
           'is_offline': !isOnline,
         },
       );
@@ -285,10 +289,17 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   }
 
   /// Remove a memory from the feed (optimistic update)
-  /// 
-  /// [memoryId] is the ID of the memory to remove
+  ///
+  /// [memoryId] is the ID of the memory to remove (can be server ID or local ID)
+  /// Also removes queued entries that have a matching serverId
   void removeMemory(String memoryId) {
-    final updatedMemories = state.memories.where((m) => m.id != memoryId).toList();
+    final updatedMemories = state.memories.where((m) {
+      // Remove if id matches (for server-backed memories or queued memories by localId)
+      if (m.id == memoryId) return false;
+      // Also remove queued entries that have a matching serverId
+      if (m.isOfflineQueued && m.serverId == memoryId) return false;
+      return true;
+    }).toList();
     state = state.copyWith(memories: updatedMemories);
   }
 

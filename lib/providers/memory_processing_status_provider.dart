@@ -69,11 +69,11 @@ class MemoryProcessingStatusService {
       if (memoryIds.isEmpty) return [];
 
       // Get all processing statuses and filter client-side
-      // Query for queued and processing states separately
-      final queuedStatuses = await _supabase
+      // Query for scheduled and processing states separately
+      final scheduledStatuses = await _supabase
           .from('memory_processing_status')
           .select()
-          .eq('state', 'queued');
+          .eq('state', 'scheduled');
 
       final processingStatuses = await _supabase
           .from('memory_processing_status')
@@ -81,7 +81,7 @@ class MemoryProcessingStatusService {
           .eq('state', 'processing');
 
       final allStatuses = <Map<String, dynamic>>[];
-      allStatuses.addAll((queuedStatuses as List).cast<Map<String, dynamic>>());
+      allStatuses.addAll((scheduledStatuses as List).cast<Map<String, dynamic>>());
       allStatuses.addAll((processingStatuses as List).cast<Map<String, dynamic>>());
 
       // Filter to only user's memories and sort by created_at descending
@@ -132,7 +132,7 @@ class MemoryProcessingStatusService {
           callback: (payload) {
             try {
               final status = MemoryProcessingStatus.fromJson(
-                payload.newRecord as Map<String, dynamic>,
+                payload.newRecord,
               );
               controller.add(status);
             } catch (e) {
@@ -173,23 +173,27 @@ class MemoryProcessingStatusService {
       return controller.stream;
     }
 
+    // Set up real-time subscription for all processing statuses
+    // Listen to all changes and filter client-side for scheduled and processing states
     final channel = _supabase
         .channel('memory_processing_status_all')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'memory_processing_status',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'state',
-            value: 'queued',
-          ),
           callback: (payload) async {
             try {
-              // Refetch all active statuses to ensure we have user filtering
-              final statuses = await getActiveProcessingStatuses();
-              if (!controller.isClosed) {
-                controller.add(statuses);
+              // Check if the change is for a state we care about
+              final newRecord = payload.newRecord as Map<String, dynamic>?;
+              final oldRecord = payload.oldRecord as Map<String, dynamic>?;
+              
+              final state = newRecord?['state'] as String? ?? oldRecord?['state'] as String?;
+              if (state != null && (state == 'scheduled' || state == 'processing')) {
+                // Refetch all active statuses to ensure we have user filtering
+                final statuses = await getActiveProcessingStatuses();
+                if (!controller.isClosed) {
+                  controller.add(statuses);
+                }
               }
             } catch (e) {
               debugPrint('Error updating active processing statuses: $e');

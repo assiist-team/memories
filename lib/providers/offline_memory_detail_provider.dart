@@ -31,46 +31,42 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
     final capturedAt = queued.capturedAt ?? queued.createdAt;
 
     // Convert photo paths to PhotoMedia
-    final photos = queued.photoPaths.asMap().entries
-        .where((entry) {
-          // Filter out entries whose file no longer exists
-          final path = entry.value.replaceFirst('file://', '');
-          return File(path).existsSync();
-        })
-        .map((entry) {
-          // Normalize path to file:// form for clarity
-          final path = entry.value.replaceFirst('file://', '');
-          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
-          return PhotoMedia(
-            url: normalizedPath,
-            index: entry.key,
-            caption: null,
-            source: MediaSource.localFile,
-          );
-        })
-        .toList();
+    final photos = queued.photoPaths.asMap().entries.where((entry) {
+      // Filter out entries whose file no longer exists
+      final path = entry.value.replaceFirst('file://', '');
+      return File(path).existsSync();
+    }).map((entry) {
+      // Normalize path to file:// form for clarity
+      final path = entry.value.replaceFirst('file://', '');
+      final normalizedPath =
+          path.startsWith('/') ? 'file://$path' : 'file:///$path';
+      return PhotoMedia(
+        url: normalizedPath,
+        index: entry.key,
+        caption: null,
+        source: MediaSource.localFile,
+      );
+    }).toList();
 
     // Convert video paths to VideoMedia
-    final videos = queued.videoPaths.asMap().entries
-        .where((entry) {
-          // Filter out entries whose file no longer exists
-          final path = entry.value.replaceFirst('file://', '');
-          return File(path).existsSync();
-        })
-        .map((entry) {
-          // Normalize path to file:// form for clarity
-          final path = entry.value.replaceFirst('file://', '');
-          final normalizedPath = path.startsWith('/') ? 'file://$path' : 'file:///$path';
-          return VideoMedia(
-            url: normalizedPath,
-            index: entry.key,
-            duration: null,
-            posterUrl: null,
-            caption: null,
-            source: MediaSource.localFile,
-          );
-        })
-        .toList();
+    final videos = queued.videoPaths.asMap().entries.where((entry) {
+      // Filter out entries whose file no longer exists
+      final path = entry.value.replaceFirst('file://', '');
+      return File(path).existsSync();
+    }).map((entry) {
+      // Normalize path to file:// form for clarity
+      final path = entry.value.replaceFirst('file://', '');
+      final normalizedPath =
+          path.startsWith('/') ? 'file://$path' : 'file:///$path';
+      return VideoMedia(
+        url: normalizedPath,
+        index: entry.key,
+        duration: null,
+        posterUrl: null,
+        caption: null,
+        source: MediaSource.localFile,
+      );
+    }).toList();
 
     // Create location data if available
     LocationData? locationData;
@@ -85,7 +81,8 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
     }
 
     // Generate title from input text if needed
-    final title = _generateTitleFromInputText(queued.inputText, queued.memoryType);
+    final title =
+        _generateTitleFromInputText(queued.inputText, queued.memoryType);
 
     return MemoryDetail(
       id: queued.localId,
@@ -98,7 +95,8 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
       memoryType: queued.memoryType,
       capturedAt: capturedAt,
       createdAt: queued.createdAt,
-      updatedAt: queued.createdAt, // Use createdAt as updatedAt for queued items
+      updatedAt:
+          queued.createdAt, // Use createdAt as updatedAt for queued items
       publicShareToken: null, // Not available for queued items
       locationData: locationData,
       photos: photos,
@@ -116,7 +114,9 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
       final lines = inputText.trim().split('\n');
       final firstLine = lines.first.trim();
       if (firstLine.isNotEmpty) {
-        return firstLine.length > 50 ? '${firstLine.substring(0, 50)}...' : firstLine;
+        return firstLine.length > 50
+            ? '${firstLine.substring(0, 50)}...'
+            : firstLine;
       }
     }
 
@@ -132,4 +132,3 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
     }
   }
 }
-

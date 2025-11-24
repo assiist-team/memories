@@ -23,7 +23,7 @@ import 'package:memories/widgets/rich_text_content.dart';
 import 'package:memories/widgets/sticky_audio_player.dart';
 
 /// Memory detail screen showing full memory content
-/// 
+///
 /// Displays title, description, media strip with preview, and metadata in a scrollable
 /// layout with app bar and skeleton loaders while loading.
 class MemoryDetailScreen extends ConsumerStatefulWidget {
@@ -49,14 +49,15 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   Widget build(BuildContext context) {
     // Route to offline provider for queued items, online provider for synced items
     final connectivityService = ref.read(connectivityServiceProvider);
-    
+
     // For offline queued items, use offline provider
     if (widget.isOfflineQueued) {
       return _buildOfflineDetailScreen(context, connectivityService);
     }
-    
+
     // For online/synced items, use existing online provider
-    final detailState = ref.watch(memoryDetailNotifierProvider(widget.memoryId));
+    final detailState =
+        ref.watch(memoryDetailNotifierProvider(widget.memoryId));
     return _buildOnlineDetailScreen(context, detailState, connectivityService);
   }
 
@@ -65,8 +66,9 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     BuildContext context,
     ConnectivityService connectivityService,
   ) {
-    final detailAsync = ref.watch(offlineMemoryDetailNotifierProvider(widget.memoryId));
-    
+    final detailAsync =
+        ref.watch(offlineMemoryDetailNotifierProvider(widget.memoryId));
+
     return Scaffold(
       appBar: AppBar(
         actions: [
@@ -76,8 +78,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               builder: (context) {
                 final memory = detailAsync.value!;
                 final memoryType = memory.memoryType;
-                final editLabel = memoryType == 'story' 
-                    ? 'Edit story' 
+                final editLabel = memoryType == 'story'
+                    ? 'Edit story'
                     : memoryType == 'memento'
                         ? 'Edit memento'
                         : 'Edit moment';
@@ -96,8 +98,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           Builder(
             builder: (context) {
               final memoryType = detailAsync.value?.memoryType ?? 'moment';
-              final shareLabel = memoryType == 'story' 
-                  ? 'Share story' 
+              final shareLabel = memoryType == 'story'
+                  ? 'Share story'
                   : memoryType == 'memento'
                       ? 'Share memento'
                       : 'Share moment';
@@ -126,7 +128,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     future: _getOfflineSyncStatus(ref, widget.memoryId),
                     builder: (context, snapshot) {
                       if (snapshot.hasData) {
-                        return _buildOfflineQueuedBanner(context, snapshot.data!);
+                        return _buildOfflineQueuedBanner(
+                            context, snapshot.data!);
                       }
                       return const SizedBox.shrink();
                     },
@@ -195,7 +198,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     WidgetRef ref,
     String memoryId,
   ) {
-    final statusAsync = ref.watch(memoryProcessingStatusStreamProvider(memoryId));
+    final statusAsync =
+        ref.watch(memoryProcessingStatusStreamProvider(memoryId));
 
     return statusAsync.when(
       data: (status) {
@@ -209,8 +213,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         Color textColor;
 
         switch (status.state) {
-          case MemoryProcessingState.queued:
-            message = 'Queued for processing…';
+          case MemoryProcessingState.scheduled:
+            message = 'Processing scheduled…';
             background = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
             break;
@@ -267,6 +271,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(textColor),
                   ),
+                )
+              else if (status.state == MemoryProcessingState.scheduled)
+                Icon(
+                  Icons.schedule,
+                  size: 16,
+                  color: textColor,
                 )
               else
                 Icon(
@@ -373,8 +383,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               builder: (context, snapshot) {
                 final isOnline = snapshot.data ?? false;
                 final memoryType = detailState.memory!.memoryType;
-                final editLabel = memoryType == 'story' 
-                    ? 'Edit story' 
+                final editLabel = memoryType == 'story'
+                    ? 'Edit story'
                     : memoryType == 'memento'
                         ? 'Edit memento'
                         : 'Edit moment';
@@ -385,7 +395,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     icon: const Icon(Icons.edit),
                     onPressed: isOnline
                         ? () => _handleEdit(context, ref, detailState.memory!)
-                        : () => _showOfflineTooltip(context, 'Edit requires internet connection'),
+                        : () => _showOfflineTooltip(
+                            context, 'Edit requires internet connection'),
                     tooltip: isOnline ? 'Edit' : 'Edit unavailable offline',
                   ),
                 );
@@ -396,12 +407,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             future: connectivityService.isOnline(),
             builder: (context, snapshot) {
               final isOnline = snapshot.data ?? false;
-              final canShare = isOnline && 
-                  detailState.memory != null && 
+              final canShare = isOnline &&
+                  detailState.memory != null &&
                   !detailState.isFromCache;
               final memoryType = detailState.memory?.memoryType ?? 'moment';
-              final shareLabel = memoryType == 'story' 
-                  ? 'Share story' 
+              final shareLabel = memoryType == 'story'
+                  ? 'Share story'
                   : memoryType == 'memento'
                       ? 'Share memento'
                       : 'Share moment';
@@ -413,8 +424,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                   onPressed: canShare
                       ? () => _handleShare(context, ref, detailState.memory!)
                       : null,
-                  tooltip: canShare 
-                      ? 'Share' 
+                  tooltip: canShare
+                      ? 'Share'
                       : detailState.isFromCache
                           ? 'Share unavailable for cached content'
                           : 'Share unavailable offline',
@@ -430,7 +441,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             children: [
               // Processing status banner for server-backed memories
               if (detailState.memory != null)
-                _buildProcessingStatusBanner(context, ref, detailState.memory!.id),
+                _buildProcessingStatusBanner(
+                    context, ref, detailState.memory!.id),
               Expanded(
                 child: _buildBody(context, detailState, ref),
               ),
@@ -454,7 +466,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       case MemoryDetailState.loading:
         return _buildLoadingState(context);
       case MemoryDetailState.error:
-        return _buildErrorState(context, state.errorMessage ?? 'Unknown error', ref);
+        return _buildErrorState(
+            context, state.errorMessage ?? 'Unknown error', ref);
       case MemoryDetailState.loaded:
         return _buildLoadedState(
           context,
@@ -483,10 +496,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               const SizedBox(height: 16),
               // Description skeleton - multiple lines with varying widths
               ...List.generate(4, (index) {
-                final width = index == 0 
-                    ? double.infinity 
-                    : index == 3 
-                        ? 120.0 
+                final width = index == 0
+                    ? double.infinity
+                    : index == 3
+                        ? 120.0
                         : double.infinity * (0.85 - (index * 0.1));
                 return Padding(
                   padding: EdgeInsets.only(bottom: index < 3 ? 8 : 0),
@@ -513,7 +526,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     child: Icon(
                       Icons.image_outlined,
                       size: 48,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.3),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.3),
                     ),
                   ),
                 ),
@@ -585,7 +601,9 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             Navigator.of(context).pop();
           }
           // Navigate to timeline screen
-          ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+          ref
+              .read(mainNavigationTabNotifierProvider.notifier)
+              .switchToTimeline();
         }
       });
       // Return empty container while navigating
@@ -623,8 +641,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                         Expanded(
                           child: Text(
                             'Failed to load memory',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.onErrorContainer,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
@@ -635,7 +658,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     Text(
                       errorMessage,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onErrorContainer,
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
                           ),
                     ),
                     const SizedBox(height: 16),
@@ -643,13 +667,18 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier).refresh();
+                          ref
+                              .read(
+                                  memoryDetailNotifierProvider(widget.memoryId)
+                                      .notifier)
+                              .refresh();
                         },
                         icon: const Icon(Icons.refresh),
                         label: const Text('Retry'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Theme.of(context).colorScheme.error,
-                          foregroundColor: Theme.of(context).colorScheme.onError,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onError,
                         ),
                       ),
                     ),
@@ -670,7 +699,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   }) {
     final isStory = memory.memoryType == 'story';
     final hasMedia = memory.photos.isNotEmpty || memory.videos.isNotEmpty;
-    
+
     return CustomScrollView(
       slivers: [
         // Offline banner if viewing cached data
@@ -695,31 +724,36 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: memory.tags.map((tag) => Chip(
-                    label: Text(tag),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  )).toList(),
+                  children: memory.tags
+                      .map((tag) => Chip(
+                            label: Text(tag),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ))
+                      .toList(),
                 ),
               ],
               const SizedBox(height: 16),
             ]),
           ),
         ),
-        
+
         // Sticky audio player for Stories (only if Story)
         if (isStory)
           SliverPersistentHeader(
             pinned: true,
             delegate: _StickyAudioPlayerDelegate(
               child: StickyAudioPlayer(
-                audioUrl: null, // TODO: Add audioUrl when available in memory_detail
-                duration: null, // TODO: Add duration when available in memory_detail
+                audioUrl:
+                    null, // TODO: Add audioUrl when available in memory_detail
+                duration:
+                    null, // TODO: Add duration when available in memory_detail
                 storyId: memory.id,
               ),
             ),
           ),
-        
+
         SliverPadding(
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
@@ -761,7 +795,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                   ],
                 ],
               ],
-              
+
               const SizedBox(height: 24),
               // Metadata section: timestamp, location, and related memories
               MemoryMetadataSection(memory: memory),
@@ -813,12 +847,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     MemoryDetail memory,
   ) {
     final memoryType = memory.memoryType;
-    final deleteLabel = memoryType == 'story' 
-        ? 'Delete story' 
+    final deleteLabel = memoryType == 'story'
+        ? 'Delete story'
         : memoryType == 'memento'
             ? 'Delete memento'
             : 'Delete moment';
-    
+
     // For offline queued memories, delete is always available (local operation)
     if (widget.isOfflineQueued) {
       return Positioned(
@@ -832,21 +866,22 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               Icons.delete,
               color: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () => _showDeleteConfirmationForQueued(context, ref, memory),
+            onPressed: () =>
+                _showDeleteConfirmationForQueued(context, ref, memory),
             tooltip: 'Delete',
           ),
         ),
       );
     }
-    
+
     // For server-backed memories, require online connection
     final connectivityService = ref.read(connectivityServiceProvider);
-    
+
     return FutureBuilder<bool>(
       future: connectivityService.isOnline(),
       builder: (context, snapshot) {
         final isOnline = snapshot.data ?? false;
-        
+
         return Positioned(
           bottom: 16,
           right: 16,
@@ -860,7 +895,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               ),
               onPressed: isOnline
                   ? () => _showDeleteConfirmation(context, ref, memory)
-                  : () => _showOfflineTooltip(context, 'Delete requires internet connection'),
+                  : () => _showOfflineTooltip(
+                      context, 'Delete requires internet connection'),
               tooltip: isOnline ? 'Delete' : 'Delete unavailable offline',
             ),
           ),
@@ -869,7 +905,6 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     );
   }
 
-
   /// Handle share action
   Future<void> _handleShare(
     BuildContext context,
@@ -877,11 +912,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     MemoryDetail memory,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
+    final notifier =
+        ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
 
     try {
       // Track share attempt
-      analytics.trackMemoryShare(memory.id, shareToken: memory.publicShareToken);
+      analytics.trackMemoryShare(memory.id,
+          shareToken: memory.publicShareToken);
 
       // Get share link
       final shareLink = await notifier.getShareLink();
@@ -927,12 +964,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
 
     // Extract local file paths from file:// URLs
-    final photoPaths = detail.photos
-        .map((p) => p.url.replaceFirst('file://', ''))
-        .toList();
-    final videoPaths = detail.videos
-        .map((v) => v.url.replaceFirst('file://', ''))
-        .toList();
+    final photoPaths =
+        detail.photos.map((p) => p.url.replaceFirst('file://', '')).toList();
+    final videoPaths =
+        detail.videos.map((v) => v.url.replaceFirst('file://', '')).toList();
 
     // Determine memory type
     final memoryType = MemoryTypeExtension.fromApiValue(detail.memoryType);
@@ -966,11 +1001,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
     // Load memory data into capture state for editing
     final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
-    
+
     // Extract existing media URLs
     final existingPhotoUrls = memory.photos.map((p) => p.url).toList();
     final existingVideoUrls = memory.videos.map((v) => v.url).toList();
-    
+
     captureNotifier.loadMemoryForEdit(
       memoryId: memory.id,
       captureType: memory.memoryType,
@@ -1141,36 +1176,36 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
     final queueService = ref.read(offlineMemoryQueueServiceProvider);
-    
+
     // Track delete action
     analytics.trackMemoryDetailDelete(memory.id);
-    
+
     // Capture navigator and scaffold messenger before async operation
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final canPop = navigator.canPop();
-    
+
     try {
       // Remove from unified queue (handles all memory types)
       await queueService.remove(memory.id);
-      
+
       // Queue-change event will drive unified feed update automatically
       // No need to manually remove from feed here
-      
-      final deleteMessage = memory.memoryType == 'story' 
-          ? 'Story deleted' 
+
+      final deleteMessage = memory.memoryType == 'story'
+          ? 'Story deleted'
           : memory.memoryType == 'memento'
               ? 'Memento deleted'
               : 'Moment deleted';
-      
+
       // Switch to timeline tab
       ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
-      
+
       // Pop detail screen
       if (canPop) {
         navigator.pop();
       }
-      
+
       // Show success message
       scaffoldMessenger.showSnackBar(
         SnackBar(
@@ -1181,13 +1216,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     } catch (e) {
       // Handle error
       if (!context.mounted) return;
-      
-      final errorMessage = memory.memoryType == 'story' 
+
+      final errorMessage = memory.memoryType == 'story'
           ? 'Failed to delete story. Please try again.'
           : memory.memoryType == 'memento'
               ? 'Failed to delete memento. Please try again.'
               : 'Failed to delete memory. Please try again.';
-      
+
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(errorMessage),
@@ -1205,17 +1240,20 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     MemoryDetail memory,
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
-    final notifier = ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
+    final notifier =
+        ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
     final isStory = memory.memoryType == 'story';
-    
+
     // Get unified feed controller for current selected types
     final tabState = ref.read(unifiedFeedTabNotifierProvider);
-    final selectedTypes = tabState.valueOrNull ?? {
-      MemoryType.story,
-      MemoryType.moment,
-      MemoryType.memento,
-    };
-    final unifiedFeedController = ref.read(unifiedFeedControllerProvider(selectedTypes).notifier);
+    final selectedTypes = tabState.valueOrNull ??
+        {
+          MemoryType.story,
+          MemoryType.moment,
+          MemoryType.memento,
+        };
+    final unifiedFeedController =
+        ref.read(unifiedFeedControllerProvider(selectedTypes).notifier);
 
     // Track delete action
     analytics.trackMemoryDetailDelete(memory.id);
@@ -1229,26 +1267,37 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       // Optimistically remove from unified feed
       unifiedFeedController.removeMemory(memory.id);
 
+      // Also remove any queued entries with matching serverId
+      // This handles the case where a synced memory still has a queued entry
+      final queueService = ref.read(offlineMemoryQueueServiceProvider);
+      final queuedMemories = await queueService.getAllQueued();
+      for (final queued in queuedMemories) {
+        if (queued.serverMemoryId == memory.id) {
+          await queueService.remove(queued.localId);
+        }
+      }
+
       // Delete from backend
       final success = await notifier.deleteMemory();
 
       debugPrint('[MemoryDetailScreen] Delete result: success=$success');
 
       if (success) {
-        debugPrint('[MemoryDetailScreen] Deletion succeeded, navigating to timeline');
-        final deleteMessage = isStory 
-            ? 'Story deleted' 
+        debugPrint(
+            '[MemoryDetailScreen] Deletion succeeded, navigating to timeline');
+        final deleteMessage = isStory
+            ? 'Story deleted'
             : memory.memoryType == 'memento'
                 ? 'Memento deleted'
                 : 'Moment deleted';
-        
+
         // Refresh unified feed to ensure consistency (memory is gone from DB)
         unifiedFeedController.refresh();
-        
+
         // Switch to timeline tab (doesn't need context)
         ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
         debugPrint('[MemoryDetailScreen] Switched to timeline tab');
-        
+
         // Pop detail screen using captured navigator
         if (canPop) {
           navigator.pop();
@@ -1256,7 +1305,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         } else {
           debugPrint('[MemoryDetailScreen] Cannot pop - no route to pop');
         }
-        
+
         // Show success message using captured scaffold messenger
         scaffoldMessenger.showSnackBar(
           SnackBar(
@@ -1268,9 +1317,9 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         debugPrint('[MemoryDetailScreen] Deletion failed, success=false');
         // Refresh unified feed to restore the memory if delete failed
         unifiedFeedController.refresh();
-        
+
         if (context.mounted) {
-          final errorMessage = isStory 
+          final errorMessage = isStory
               ? 'Failed to delete story. Please try again.'
               : memory.memoryType == 'memento'
                   ? 'Failed to delete memento. Please try again.'
@@ -1287,29 +1336,30 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     } catch (e, stackTrace) {
       debugPrint('[MemoryDetailScreen] Error in _handleDelete: $e');
       debugPrint('[MemoryDetailScreen] Stack trace: $stackTrace');
-      
+
       // Check if the error indicates the memory was actually deleted
       final errorString = e.toString().toLowerCase();
-      final mightBeDeleted = errorString.contains('not found') || 
-                            errorString.contains('does not exist') ||
-                            errorString.contains('already deleted');
-      
+      final mightBeDeleted = errorString.contains('not found') ||
+          errorString.contains('does not exist') ||
+          errorString.contains('already deleted');
+
       if (mightBeDeleted) {
         // Memory might have been deleted despite the error - navigate away
-        debugPrint('[MemoryDetailScreen] Error suggests memory was deleted, navigating away');
+        debugPrint(
+            '[MemoryDetailScreen] Error suggests memory was deleted, navigating away');
         if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
-        
+
         // Navigate to timeline screen
         ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
       } else {
         // Refresh unified feed to restore the memory
         unifiedFeedController.refresh();
-        
+
         if (!context.mounted) return;
-        
-        final errorMessage = isStory 
+
+        final errorMessage = isStory
             ? 'Failed to delete story: ${e.toString()}'
             : memory.memoryType == 'memento'
                 ? 'Failed to delete memento: ${e.toString()}'
@@ -1387,4 +1437,3 @@ class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
     return child != oldDelegate.child;
   }
 }
-

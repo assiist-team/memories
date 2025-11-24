@@ -305,7 +305,7 @@ class MemorySaveService {
         try {
           await _supabase.from('memory_processing_status').insert({
             'memory_id': memoryId,
-            'state': 'queued',
+            'state': 'scheduled',
             'attempts': 0,
             'metadata': {
               'memory_type': state.memoryType.apiValue,
@@ -604,18 +604,18 @@ class MemorySaveService {
             // Insert new processing status
             await _supabase.from('memory_processing_status').insert({
               'memory_id': memoryId,
-              'state': 'queued',
+              'state': 'scheduled',
               'attempts': 0,
               'metadata': {
                 'memory_type': state.memoryType.apiValue,
               },
             });
           } else {
-            // Reset to queued state for reprocessing
+            // Reset to scheduled state for reprocessing
             await _supabase
                 .from('memory_processing_status')
                 .update({
-                  'state': 'queued',
+                  'state': 'scheduled',
                   'attempts': 0,
                   'last_error': null,
                   'last_error_at': null,
