@@ -28,7 +28,7 @@ final memoryDetailServiceProvider =
 // ignore: unused_element
 typedef MemoryDetailServiceRef = AutoDisposeProviderRef<MemoryDetailService>;
 String _$memoryDetailNotifierHash() =>
-    r'bdc5023edb89db53ef56b7346993033a04394204';
+    r'f24d853e4bb4830ede51657e1bfd5df87badc1ef';
 
 /// Copied from Dart SDK
 class _SystemHash {

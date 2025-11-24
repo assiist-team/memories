@@ -295,9 +295,15 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
+          return GestureDetector(
+            onTap: () {
+              // Dismiss keyboard and unfocus search when tapping on timeline content
+              FocusScope.of(context).unfocus();
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
               // Timeline content or search results
               Column(
                 children: [
@@ -361,14 +367,15 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                   ),
                 ],
               ),
-              // Global search bar positioned on top - spans full width including over year sidebar
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: GlobalSearchBar(),
-              ),
-            ],
+                // Global search bar positioned on top - spans full width including over year sidebar
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: GlobalSearchBar(),
+                ),
+              ],
+            ),
           );
         },
       ),

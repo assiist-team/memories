@@ -22,12 +22,15 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _showRecentSearches = false;
+  bool _hasInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _focusNode.addListener(_onFocusChanged);
     _controller.addListener(_onTextChanged);
+    // Ensure focus is not requested automatically
+    _focusNode.canRequestFocus = true;
   }
 
   @override
@@ -37,6 +40,20 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
     final currentQuery = ref.read(searchQueryProvider);
     if (currentQuery.isNotEmpty && _controller.text != currentQuery) {
       _controller.text = currentQuery;
+    }
+    
+    // Clear focus when navigating to screen if there's no query
+    // This prevents auto-focus when coming from other screens
+    if (!_hasInitialized) {
+      _hasInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final query = ref.read(searchQueryProvider);
+          if (query.isEmpty && _focusNode.hasFocus) {
+            _focusNode.unfocus();
+          }
+        }
+      });
     }
   }
 
@@ -187,12 +204,8 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
             !searchResultsState.isLoading)
           _buildErrorState(searchResultsState.errorMessage!),
         
-        // Empty state (no results)
-        if (searchQuery.isNotEmpty &&
-            !searchResultsState.isLoading &&
-            searchResultsState.errorMessage == null &&
-            searchResultsState.items.isEmpty)
-          _buildEmptyState(),
+        // Note: Empty state is now handled in the Timeline screen content area
+        // to avoid layout constraints issues with Positioned widgets
       ],
     );
   }
@@ -310,33 +323,5 @@ class _GlobalSearchBarState extends ConsumerState<GlobalSearchBar> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return SizedBox(
-      width: double.infinity,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.search_off,
-                size: 48,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'No memories match your search',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 

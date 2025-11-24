@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:memories/services/search_service.dart';
 import 'package:memories/models/search_result.dart';
@@ -29,35 +30,43 @@ class SearchQuery extends _$SearchQuery {
 }
 
 /// Provider for debounced search query
-/// 
+///
 /// Debounces the search query by 250ms before updating
 @riverpod
 class DebouncedSearchQuery extends _$DebouncedSearchQuery {
   Timer? _debounceTimer;
+  String _lastDebouncedValue = '';
 
   @override
   String build() {
+    // Always initialize state first - this must happen before any reads
+    state = _lastDebouncedValue;
+
     final query = ref.watch(searchQueryProvider);
-    
+
     // Cancel previous timer
     _debounceTimer?.cancel();
-    
-    // If query is empty, update immediately
+
+    // If query is empty, update immediately and clear state
     if (query.isEmpty) {
+      state = '';
+      _lastDebouncedValue = '';
       return '';
     }
 
     // Otherwise, debounce by 250ms
+    // Keep the last debounced value while waiting for the timer
     _debounceTimer = Timer(const Duration(milliseconds: 250), () {
       state = query;
+      _lastDebouncedValue = query;
     });
 
     ref.onDispose(() {
       _debounceTimer?.cancel();
     });
 
-    // Return current state (will be updated by timer)
-    return state;
+    // Return last debounced value (will be updated by timer after debounce)
+    return _lastDebouncedValue;
   }
 }
 
@@ -118,28 +127,49 @@ class SearchResults extends _$SearchResults {
 
   @override
   SearchResultsState build() {
-    // Always start from a known initial state before we do anything that
-    // reads or updates `state` (e.g., inside `_performSearch`). This avoids
-    // "uninitialized provider" errors on first use in the app shell.
-    state = SearchResultsState.initial();
+    // Initialize state first
+    final initialState = SearchResultsState.initial();
 
-    // Watch debounced query and trigger search when it changes
-    final debouncedQuery = ref.watch(debouncedSearchQueryProvider);
-    
-    // Only search if query is non-empty and different from last query
-    if (debouncedQuery.isNotEmpty && debouncedQuery != _lastQuery) {
-      _lastQuery = debouncedQuery;
-      // Cancel any pending search
-      _lastSearchFuture?.ignore();
-      // Trigger new search
-      _lastSearchFuture = _performSearch(debouncedQuery, page: 1);
-    } else if (debouncedQuery.isEmpty && _lastQuery != null) {
-      // Clear results when query is cleared
-      _lastQuery = null;
-      // `state` has already been reset to the initial value above.
-    }
+    // React to debounced query changes instead of doing work directly in build.
+    // This avoids reading state before it has been initialized.
+    ref.listen<String>(
+      debouncedSearchQueryProvider,
+      (previous, next) {
+        // When query is cleared, reset results
+        if (next.isEmpty) {
+          if (_lastQuery != null) {
+            _lastQuery = null;
+            // Use post-frame callback to ensure state is initialized
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              try {
+                state = SearchResultsState.initial();
+              } catch (_) {
+                // Provider may have been disposed, ignore
+              }
+            });
+          }
+          return;
+        }
 
-    return state;
+        // For non-empty queries, trigger a new search when the query changes
+        if (next != _lastQuery) {
+          _lastQuery = next;
+          // Cancel any pending search
+          _lastSearchFuture?.ignore();
+          // Trigger new search after ensuring state is initialized
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            try {
+              _lastSearchFuture = _performSearch(next, page: 1);
+            } catch (_) {
+              // Provider may have been disposed, ignore
+            }
+          });
+        }
+      },
+    );
+
+    // Return initial state
+    return initialState;
   }
 
   Future<void> _performSearch(String query, {required int page}) async {
@@ -161,7 +191,7 @@ class SearchResults extends _$SearchResults {
         page: page,
       );
 
-      // Check if query changed during fetch (ignore stale response)
+      // Ignore stale responses if the query changed while we were fetching
       if (_lastQuery != query && page == 1) {
         return;
       }
@@ -172,7 +202,7 @@ class SearchResults extends _$SearchResults {
           await searchService.addRecentSearch(query);
           // Refresh recent searches provider
           ref.invalidate(recentSearchesProvider);
-        } catch (e) {
+        } catch (_) {
           // Don't fail the search if recent search save fails
         }
       }
@@ -187,7 +217,7 @@ class SearchResults extends _$SearchResults {
         clearError: true,
       );
     } catch (e) {
-      // Check if query changed during fetch (ignore stale error)
+      // Ignore stale errors if the query changed while we were fetching
       if (_lastQuery != query && page == 1) {
         return;
       }
@@ -237,7 +267,8 @@ class SearchResults extends _$SearchResults {
       return 'Unable to connect. Please check your internet connection.';
     } else if (errorString.contains('unauthorized')) {
       return 'Please sign in to search your memories.';
-    } else if (errorString.contains('empty') || errorString.contains('argument')) {
+    } else if (errorString.contains('empty') ||
+        errorString.contains('argument')) {
       return 'Please enter a search query.';
     } else {
       return 'Unable to search. Please try again.';

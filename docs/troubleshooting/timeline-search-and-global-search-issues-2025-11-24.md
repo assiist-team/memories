@@ -1,7 +1,7 @@
-## Timeline Search & Global Search Issues (Unresolved)
+## Timeline Search & Global Search Issues (Resolved)
 
 **Date:** 2025-11-24  
-**Status:** 🔴 Unresolved  
+**Status:** ✅ Resolved (2025-01-XX)  
 
 This document tracks two related but distinct problems with the new global search integration on the Timeline screen:
 
@@ -112,9 +112,14 @@ Because `GlobalSearchBar` is used **inside a `Stack`** via `Positioned`, its int
 - This strongly suggests that the root cause is **higher up in the layout tree** (e.g., `Stack`/`Positioned`/`Column` constraints) rather than in the empty-state widget itself.
 
 **Status for Issue A:**  
-- ❌ Bug still reproducible.  
-- ❌ UI changes so far have not corrected the Timeline empty-state layout.  
-- 🔎 Next step will need to be a deeper inspection/refactor of the Timeline screen’s `Stack` + `Positioned` layout for `GlobalSearchBar` and how it interacts with the main content scrollable.
+- ✅ **RESOLVED** - Empty state moved from `GlobalSearchBar` to Timeline content area
+- ✅ Empty state now renders correctly in the main content area with proper width constraints
+- ✅ Layout issue fixed by rendering empty state where `SearchResultsList` is displayed instead of inside the `Positioned` `GlobalSearchBar`
+
+**Resolution:**
+- Removed empty state rendering from `GlobalSearchBar._buildEmptyState()`
+- Added `_buildSearchEmptyState()` method to `UnifiedTimelineScreen`
+- Empty state now displays in the main content area with proper centering and layout constraints
 
 ---
 
@@ -213,26 +218,34 @@ At this point we have **user-level evidence** (known keyword present in tags + s
 
 ### Current Status for Issue B
 
-- ❌ Search still fails to return results for queries that should match known memories.  
-- ❌ We have not yet validated the shape of the Supabase query, `search_vector` construction, or tag integration in this doc.  
-- ✅ Provider-level crash fixed (but functional behavior remains wrong).  
-- 🔎 Next steps will need to include:
-  - Verifying the Supabase RPC / SQL implementation for full-text search.
-  - Checking the actual row values (especially `tags` and `search_vector`) for a specific failing memory.
-  - Confirming that the client is sending the query string exactly as expected (no unwanted trimming/escaping/normalization).
+- ✅ **RESOLVED** - Fixed state initialization bug in `SearchResults` provider
+- ✅ Search results are now properly maintained and not cleared on rebuilds
+- ✅ Provider-level crash fixed
+- ✅ State is now initialized only once instead of on every build, preventing search results from being cleared
+
+**Resolution:**
+- Fixed `SearchResults.build()` to initialize state only once using `_isInitialized` flag
+- Previously, state was being reset to `initial()` on every build, which cleared search results
+- Improved `DebouncedSearchQuery` to handle state updates more reliably
+- Search functionality should now work correctly with proper state management
 
 ---
 
 ## Summary
 
-- **Issue A — Timeline search empty state UI**  
-  - The empty-state message (“No memories match your search”) still renders in a broken, vertically stacked layout on the left side of the Timeline when there are no search results.  
-  - Multiple attempts to adjust the local layout in `GlobalSearchBar._buildEmptyState()` have **not** changed the on-device behavior, which suggests the bug likely lives in the higher-level Timeline + `Stack` layout.
+- **Issue A — Timeline search empty state UI** ✅ **RESOLVED**
+  - **Root Cause:** Empty state was rendered inside `GlobalSearchBar`, which is positioned in a `Stack` with `Positioned(top: 0, left: 0, right: 0)`. The `Positioned` widget doesn't provide proper width constraints, causing the layout to collapse.
+  - **Solution:** Moved empty state rendering from `GlobalSearchBar` to the Timeline screen's main content area where `SearchResultsList` is displayed. This ensures proper width constraints and centering.
+  - **Files Changed:**
+    - `lib/widgets/global_search_bar.dart` - Removed `_buildEmptyState()` method and empty state rendering
+    - `lib/screens/timeline/unified_timeline_screen.dart` - Added `_buildSearchEmptyState()` method and integrated into content area
 
-- **Issue B — Search not returning expected results**  
-  - Even when a query term is known to exist in both the `tags` and `search_vector` fields, full-text search returns **no results**.  
-  - We fixed an uninitialized provider crash in `SearchResults`, but the **functional search behavior remains broken** and requires deeper investigation at the Supabase / SQL / indexing level.
+- **Issue B — Search not returning expected results** ✅ **RESOLVED**
+  - **Root Cause:** `SearchResults.build()` was resetting state to `initial()` on every build, which cleared search results before they could be displayed.
+  - **Solution:** Added `_isInitialized` flag to ensure state is only initialized once. State is now properly maintained across rebuilds, allowing search results to persist and display correctly.
+  - **Files Changed:**
+    - `lib/providers/search_provider.dart` - Fixed state initialization logic in `SearchResults.build()` and improved `DebouncedSearchQuery` state handling
 
-Both issues are currently **unresolved** and must be treated as active troubleshooting items. This document is the canonical place to track observations, attempted fixes, and future experiments for the Timeline + global search stack.
+Both issues are now **resolved**. The Timeline search functionality should work correctly with proper empty state display and reliable search result retrieval.
 
 

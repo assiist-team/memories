@@ -29,7 +29,7 @@ final unifiedFeedRepositoryProvider =
 typedef UnifiedFeedRepositoryRef
     = AutoDisposeProviderRef<UnifiedFeedRepository>;
 String _$unifiedFeedControllerHash() =>
-    r'31e51a1f412c457c8307766863356caa2ec520ee';
+    r'b39804a01a410be12b5ad048e0cbba94fa32c402';
 
 /// Copied from Dart SDK
 class _SystemHash {

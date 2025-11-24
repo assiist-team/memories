@@ -63,7 +63,7 @@ final searchQueryProvider =
 
 typedef _$SearchQuery = AutoDisposeNotifier<String>;
 String _$debouncedSearchQueryHash() =>
-    r'd733a2743092d1b98a84647d84ddc383eb1401c7';
+    r'f199d81e5bd1c418276e9d4c893758b1349cb47a';
 
 /// Provider for debounced search query
 ///
@@ -83,7 +83,7 @@ final debouncedSearchQueryProvider =
 );
 
 typedef _$DebouncedSearchQuery = AutoDisposeNotifier<String>;
-String _$searchResultsHash() => r'454f5c6f69075be2df99e82794920ad1efeb6bd1';
+String _$searchResultsHash() => r'789e8b556cf080bd3537614a7c0201d64319d682';
 
 /// Provider for search results with pagination
 ///
