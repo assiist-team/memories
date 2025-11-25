@@ -87,6 +87,11 @@ class CaptureState {
   /// ID of memory being edited (null when creating new)
   final String? editingMemoryId;
 
+  /// Original ID of the memory being edited when the edit session started.
+  /// Used as a safety net so we can still perform an update even if
+  /// editingMemoryId is accidentally cleared or the provider is rebuilt.
+  final String? originalEditingMemoryId;
+
   /// List of existing photo URLs from the memory being edited
   final List<String> existingPhotoUrls;
 
@@ -125,6 +130,7 @@ class CaptureState {
     this.errorMessage,
     this.inputMode = InputMode.dictation,
     this.editingMemoryId,
+    this.originalEditingMemoryId,
     this.existingPhotoUrls = const [],
     this.existingVideoUrls = const [],
     this.deletedPhotoUrls = const [],
@@ -158,6 +164,7 @@ class CaptureState {
     String? errorMessage,
     InputMode? inputMode,
     String? editingMemoryId,
+    String? originalEditingMemoryId,
     List<String>? existingPhotoUrls,
     List<String>? existingVideoUrls,
     List<String>? deletedPhotoUrls,
@@ -167,6 +174,7 @@ class CaptureState {
     bool clearLocation = false,
     bool clearAudio = false,
     bool clearEditingMemoryId = false,
+    bool clearOriginalEditingMemoryId = false,
   }) {
     return CaptureState(
       memoryType: memoryType ?? this.memoryType,
@@ -196,6 +204,9 @@ class CaptureState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       inputMode: inputMode ?? this.inputMode,
       editingMemoryId: clearEditingMemoryId ? null : (editingMemoryId ?? this.editingMemoryId),
+      originalEditingMemoryId: clearOriginalEditingMemoryId
+          ? null
+          : (originalEditingMemoryId ?? this.originalEditingMemoryId),
       existingPhotoUrls: existingPhotoUrls ?? this.existingPhotoUrls,
       existingVideoUrls: existingVideoUrls ?? this.existingVideoUrls,
       deletedPhotoUrls: deletedPhotoUrls ?? this.deletedPhotoUrls,

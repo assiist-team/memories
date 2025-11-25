@@ -74,6 +74,53 @@ class UnifiedFeedRepository {
     this._localPreviewStore,
   );
 
+  /// Fetch a single memory by ID from the unified feed
+  ///
+  /// Returns the TimelineMemory if found, null otherwise.
+  /// This is useful for updating a specific memory in the timeline after edits.
+  ///
+  /// Note: This method fetches a large batch (100 items) and searches client-side.
+  /// If the memory is not in the first 100 results, it will return null.
+  /// For a more efficient solution, consider adding a dedicated RPC endpoint.
+  Future<TimelineMemory?> fetchMemoryById(String memoryId) async {
+    try {
+      // Use get_unified_timeline_feed with a large batch size and filter client-side
+      // This is a workaround since there's no direct "get by ID" endpoint
+      // In the future, we could add a dedicated RPC for this
+      final params = <String, dynamic>{
+        'p_batch_size': 100, // Large batch to increase chance of finding the memory
+        'p_memory_type': 'all',
+      };
+
+      final response =
+          await _supabase.rpc('get_unified_timeline_feed', params: params);
+
+      if (response is! List) {
+        return null;
+      }
+
+      final memories = response
+          .map((json) => TimelineMemory.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // Find the memory by ID (check id, serverId, and localId)
+      try {
+        return memories.firstWhere(
+          (memory) =>
+              memory.id == memoryId ||
+              memory.serverId == memoryId ||
+              memory.localId == memoryId,
+        );
+      } catch (e) {
+        // Memory not found in the batch
+        return null;
+      }
+    } catch (e) {
+      // Error fetching or parsing - return null
+      return null;
+    }
+  }
+
   /// Fetch a page of unified feed memories
   ///
   /// [cursor] is the pagination cursor (null for first page)
@@ -290,7 +337,11 @@ class UnifiedFeedRepository {
         limit: batchSize * 3,
       );
 
-      final merged = [...queued, ...previews]
+      // Deduplicate by serverId: if a preview entry has a serverId that matches a queued entry,
+      // prefer the queued entry (it has full detail). Also ensure at most one entry per serverId.
+      final deduplicated = _deduplicateByServerId([...queued, ...previews]);
+      
+      final merged = deduplicated
         ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
 
       final page = merged.take(batchSize).toList();
@@ -313,11 +364,17 @@ class UnifiedFeedRepository {
 
     // For Phase 1, it is acceptable to:
     // - show online results + queued; preview index is updated but not required for online rendering.
-    final merged = [...onlineResult.memories, ...queued]
+    // Deduplicate by serverId: if a queued entry has a serverId that matches an online entry,
+    // prefer the online (server-backed) entry. Also ensure at most one entry per serverId.
+    final deduplicated = _deduplicateByServerId(
+      [...onlineResult.memories, ...queued],
+    );
+    
+    final merged = deduplicated
       ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
 
     // Re-derive pagination over merged list.
-    final startIndex =
+    const startIndex =
         0; // keep simple; cursor-based merging can be refined later.
     final page = merged.skip(startIndex).take(batchSize).toList();
 
@@ -326,5 +383,73 @@ class UnifiedFeedRepository {
       nextCursor: onlineResult.nextCursor,
       hasMore: onlineResult.hasMore || merged.length > page.length,
     );
+  }
+
+  /// Deduplicate timeline memories by serverId.
+  ///
+  /// Ensures at most one TimelineMemory per serverId. When duplicates exist:
+  /// - Prefers server-backed entries (isOfflineQueued == false) over queued entries
+  /// - Prefers queued entries (isOfflineQueued == true) over preview-only entries
+  /// - Entries without a serverId are kept (they use localId or id as identifier)
+  List<TimelineMemory> _deduplicateByServerId(List<TimelineMemory> memories) {
+    final Map<String, TimelineMemory> byServerId = {};
+    final List<TimelineMemory> withoutServerId = [];
+
+    for (final memory in memories) {
+      if (memory.serverId == null) {
+        // Entries without serverId use localId or id as identifier - keep all
+        withoutServerId.add(memory);
+      } else {
+        final existing = byServerId[memory.serverId!];
+        if (existing == null) {
+          // First entry with this serverId
+          byServerId[memory.serverId!] = memory;
+        } else {
+          // Duplicate found - prefer server-backed over queued, queued over preview-only
+          final shouldReplace = _shouldReplaceEntry(existing, memory);
+          if (shouldReplace) {
+            byServerId[memory.serverId!] = memory;
+          }
+        }
+      }
+    }
+
+    return <TimelineMemory>[...byServerId.values, ...withoutServerId];
+  }
+
+  /// Determine if [newEntry] should replace [existingEntry] when both have the same serverId.
+  ///
+  /// Prefers server-backed entries over queued entries, and queued entries over preview-only.
+  /// When both are server-backed, prefers the newer entry (to handle memory updates).
+  bool _shouldReplaceEntry(TimelineMemory existing, TimelineMemory newEntry) {
+    // Prefer server-backed entries (not queued) over queued entries
+    if (!existing.isOfflineQueued && newEntry.isOfflineQueued) {
+      return false; // Keep existing server-backed entry
+    }
+    if (existing.isOfflineQueued && !newEntry.isOfflineQueued) {
+      return true; // Replace queued with server-backed
+    }
+    
+    // If both are queued
+    if (existing.isOfflineQueued && newEntry.isOfflineQueued) {
+      // Both queued - prefer the one with full detail cached locally
+      if (!existing.isDetailCachedLocally && newEntry.isDetailCachedLocally) {
+        return true;
+      }
+      if (existing.isDetailCachedLocally && !newEntry.isDetailCachedLocally) {
+        return false;
+      }
+      // If both have same detail cache status, prefer newer (later in list = more recent fetch)
+      return true;
+    }
+    
+    // If both are server-backed, prefer the newer entry (handles memory updates)
+    // The newEntry appears later in the list, so it's from a more recent fetch
+    if (!existing.isOfflineQueued && !newEntry.isOfflineQueued) {
+      return true; // Always replace with newer server-backed entry
+    }
+    
+    // Fallback: prefer existing (first seen)
+    return false;
   }
 }

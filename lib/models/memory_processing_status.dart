@@ -104,10 +104,15 @@ class MemoryProcessingStatus {
     return metadata!['phase'] as String?;
   }
 
-  /// Check if processing is in progress
+  /// Check if processing is actively in progress.
+  ///
+  /// We intentionally treat only the `processing` state as "in progress"
+  /// for UI purposes. A `scheduled` job means we have created a row and
+  /// plan to process it, but no worker has actually started yet. Showing
+  /// a spinner for `scheduled` creates the illusion of work that may not
+  /// have started (especially if the dispatcher is misconfigured).
   bool get isInProgress {
-    return state == MemoryProcessingState.scheduled ||
-        state == MemoryProcessingState.processing;
+    return state == MemoryProcessingState.processing;
   }
 
   /// Check if processing is complete

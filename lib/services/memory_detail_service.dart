@@ -135,7 +135,7 @@ class MemoryDetailService {
           'captured_at': memory.capturedAt.toIso8601String(),
           'created_at': memory.createdAt.toIso8601String(),
           'updated_at': memory.updatedAt.toIso8601String(),
-          'memory_date': memory.memoryDate?.toIso8601String(),
+          'memory_date': memory.memoryDate.toIso8601String(),
           'public_share_token': memory.publicShareToken,
           'location_data': memory.locationData != null
               ? {
@@ -268,6 +268,42 @@ class MemoryDetailService {
     } catch (e) {
       debugPrint('[MemoryDetailService] Error updating memory_date: $e');
       throw Exception('Failed to update memory date: $e');
+    }
+  }
+
+  /// Update title for a memory
+  ///
+  /// [memoryId] is the UUID of the memory to update
+  /// [title] is the new title (null to clear it, which will use generated_title or fallback)
+  ///
+  /// Throws an exception if the memory is not found or user doesn't have permission
+  Future<void> updateMemoryTitle(String memoryId, String? title) async {
+    try {
+      debugPrint('[MemoryDetailService] Updating title for memory: $memoryId');
+      
+      final updateData = <String, dynamic>{
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      
+      if (title != null && title.trim().isNotEmpty) {
+        updateData['title'] = title.trim();
+      } else {
+        // Set to null to clear the field (will use generated_title or fallback)
+        updateData['title'] = null;
+      }
+      
+      await _supabase
+          .from('memories')
+          .update(updateData)
+          .eq('id', memoryId);
+      
+      // Clear cache so fresh data is fetched next time
+      await _clearCache(memoryId);
+      
+      debugPrint('[MemoryDetailService] Successfully updated title');
+    } catch (e) {
+      debugPrint('[MemoryDetailService] Error updating title: $e');
+      throw Exception('Failed to update memory title: $e');
     }
   }
 

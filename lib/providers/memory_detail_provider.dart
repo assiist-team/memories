@@ -207,4 +207,24 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       rethrow;
     }
   }
+
+  /// Update memory title
+  ///
+  /// [title] is the new title (null to clear it)
+  /// Refreshes the memory detail after update
+  Future<void> updateMemoryTitle(String? title) async {
+    try {
+      debugPrint('[MemoryDetailNotifier] Updating title for: $_memoryId');
+      final service = ref.read(memoryDetailServiceProvider);
+      await service.updateMemoryTitle(_memoryId, title);
+      debugPrint('[MemoryDetailNotifier] Successfully updated title');
+      
+      // Refresh memory detail to get updated data
+      await refresh();
+    } catch (e, stackTrace) {
+      debugPrint('[MemoryDetailNotifier] Error updating title: $e');
+      debugPrint('[MemoryDetailNotifier] Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
 }

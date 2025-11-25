@@ -27,6 +27,7 @@ class TimelineMemory {
   final int day;
   final PrimaryMedia? primaryMedia;
   final String? snippetText;
+  final MemoryLocationData? memoryLocationData;
   final DateTime? nextCursorCapturedAt;
   final String? nextCursorId;
 
@@ -70,6 +71,7 @@ class TimelineMemory {
     required this.day,
     this.primaryMedia,
     this.snippetText,
+    this.memoryLocationData,
     this.nextCursorCapturedAt,
     this.nextCursorId,
     required this.isOfflineQueued,
@@ -139,6 +141,7 @@ class TimelineMemory {
     int? day,
     PrimaryMedia? primaryMedia,
     String? snippetText,
+    MemoryLocationData? memoryLocationData,
     DateTime? nextCursorCapturedAt,
     String? nextCursorId,
     bool? isOfflineQueued,
@@ -166,6 +169,7 @@ class TimelineMemory {
       day: day ?? this.day,
       primaryMedia: primaryMedia ?? this.primaryMedia,
       snippetText: snippetText ?? this.snippetText,
+      memoryLocationData: memoryLocationData ?? this.memoryLocationData,
       nextCursorCapturedAt: nextCursorCapturedAt ?? this.nextCursorCapturedAt,
       nextCursorId: nextCursorId ?? this.nextCursorId,
       isOfflineQueued: isOfflineQueued ?? this.isOfflineQueued,
@@ -201,7 +205,10 @@ class TimelineMemory {
       memoryType: json['memory_type'] as String? ?? 'moment',
       capturedAt: DateTime.parse(json['captured_at'] as String),
       createdAt: DateTime.parse(json['created_at'] as String),
-      memoryDate: DateTime.parse(json['memory_date'] as String),
+      // Use memory_date if available, otherwise fall back to captured_at (effective date)
+      memoryDate: json['memory_date'] != null
+          ? DateTime.parse(json['memory_date'] as String)
+          : DateTime.parse(json['captured_at'] as String),
       year: json['year'] as int,
       season: json['season'] as String,
       month: json['month'] as int,
@@ -210,6 +217,9 @@ class TimelineMemory {
           ? PrimaryMedia.fromJson(json['primary_media'] as Map<String, dynamic>)
           : null,
       snippetText: json['snippet_text'] as String?,
+      memoryLocationData: json['memory_location_data'] != null
+          ? MemoryLocationData.fromJson(json['memory_location_data'] as Map<String, dynamic>)
+          : null,
       nextCursorCapturedAt: json['next_cursor_captured_at'] != null
           ? DateTime.parse(json['next_cursor_captured_at'] as String)
           : null,
@@ -243,6 +253,7 @@ class TimelineMemory {
       'day': day,
       'primary_media': primaryMedia?.toJson(),
       'snippet_text': snippetText,
+      'memory_location_data': memoryLocationData?.toJson(),
       'next_cursor_captured_at': nextCursorCapturedAt?.toIso8601String(),
       'next_cursor_id': nextCursorId,
       'is_offline_queued': isOfflineQueued,

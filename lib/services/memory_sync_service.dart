@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/queued_memory.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
@@ -21,7 +22,7 @@ class SyncCompleteEvent {
 }
 
 /// Service for syncing queued memories (moments, mementos, and stories) to the server
-/// 
+///
 /// Handles automatic retry with exponential backoff for all memory types
 /// stored in the unified offline memory queue.
 @riverpod
@@ -29,7 +30,7 @@ MemorySyncService memorySyncService(MemorySyncServiceRef ref) {
   final queueService = ref.watch(offlineMemoryQueueServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
   final saveService = ref.watch(memorySaveServiceProvider);
-  
+
   return MemorySyncService(
     queueService,
     connectivityService,
@@ -41,11 +42,12 @@ class MemorySyncService {
   final OfflineMemoryQueueService _queueService;
   final ConnectivityService _connectivityService;
   final MemorySaveService _saveService;
-  
+
   Timer? _syncTimer;
   StreamSubscription<bool>? _connectivitySubscription;
   bool _isSyncing = false;
-  final _syncCompleteController = StreamController<SyncCompleteEvent>.broadcast();
+  final _syncCompleteController =
+      StreamController<SyncCompleteEvent>.broadcast();
 
   MemorySyncService(
     this._queueService,
@@ -97,12 +99,12 @@ class MemorySyncService {
   /// Manually trigger sync of all queued memories (moments, mementos, and stories)
   Future<void> syncQueuedMemories() async {
     if (_isSyncing) return;
-    
+
     final isOnline = await _connectivityService.isOnline();
     if (!isOnline) return;
 
     _isSyncing = true;
-    
+
     try {
       await _syncQueuedMemories();
     } finally {
@@ -111,7 +113,7 @@ class MemorySyncService {
   }
 
   /// Unified sync method for all queued memories
-  /// 
+  ///
   /// Handles moments, mementos, and stories from the unified queue.
   Future<void> _syncQueuedMemories() async {
     // Get all queued items
@@ -131,9 +133,8 @@ class MemorySyncService {
           ),
         );
 
-        // Convert to CaptureState and save
-        final state = queuedMemory.toCaptureState();
-        final result = await _saveService.saveMemory(state: state);
+        // Save queued memory (create or update)
+        final result = await _saveQueuedMemory(queuedMemory);
 
         // Mark as completed and remove from queue
         await _queueService.update(
@@ -144,7 +145,8 @@ class MemorySyncService {
         );
 
         // Emit sync completion event
-        final memoryType = MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
+        final memoryType =
+            MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
         _syncCompleteController.add(
           SyncCompleteEvent(
             localId: queuedMemory.localId,
@@ -204,8 +206,7 @@ class MemorySyncService {
         ),
       );
 
-      final state = queuedMemory.toCaptureState();
-      final result = await _saveService.saveMemory(state: state);
+      final result = await _saveQueuedMemory(queuedMemory);
 
       await _queueService.update(
         queuedMemory.copyWith(
@@ -215,7 +216,8 @@ class MemorySyncService {
       );
 
       // Emit sync completion event
-      final memoryType = MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
+      final memoryType =
+          MemoryTypeExtension.fromApiValue(queuedMemory.memoryType);
       _syncCompleteController.add(
         SyncCompleteEvent(
           localId: queuedMemory.localId,
@@ -240,3 +242,25 @@ class MemorySyncService {
   }
 }
 
+extension on MemorySyncService {
+  Future<MemorySaveResult> _saveQueuedMemory(QueuedMemory queuedMemory) {
+    final state = queuedMemory.toCaptureState();
+    if (queuedMemory.isUpdate) {
+      final targetId = queuedMemory.targetMemoryId;
+      if (targetId == null || targetId.isEmpty) {
+        throw Exception(
+            'Queued update is missing target memory id for localId=${queuedMemory.localId}');
+      }
+      return _saveService.updateMemory(
+        memoryId: targetId,
+        state: state,
+        memoryLocationDataMap: queuedMemory.memoryLocationData,
+      );
+    }
+
+    return _saveService.saveMemory(
+      state: state,
+      memoryLocationDataMap: queuedMemory.memoryLocationData,
+    );
+  }
+}

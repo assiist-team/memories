@@ -10,8 +10,7 @@ import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/providers/offline_memory_detail_provider.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
-import 'package:memories/providers/unified_feed_provider.dart';
-import 'package:memories/providers/unified_feed_tab_provider.dart';
+import 'package:memories/providers/memory_timeline_update_bus_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/providers/memory_processing_status_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
@@ -48,6 +47,14 @@ class MemoryDetailScreen extends ConsumerStatefulWidget {
 
 class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   int? _selectedMediaIndex;
+  bool _isEditingTitle = false;
+  final TextEditingController _titleController = TextEditingController();
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -715,13 +722,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              // Title section - handles empty title via displayTitle
-              Text(
-                memory.displayTitle,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
+              // Title section - editable when tapped
+              _buildTitleWidget(context, ref, memory),
               // Tags underneath title
               if (memory.tags.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -986,7 +988,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     captureNotifier.loadOfflineMemoryForEdit(
       localId: detail.id,
       memoryType: memoryType,
-      inputText: detail.inputText,
+      inputText: detail.displayText,
       tags: detail.tags,
       existingPhotoPaths: photoPaths,
       existingVideoPaths: videoPaths,
@@ -996,6 +998,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       capturedAt: detail.capturedAt,
       memoryDate: detail.memoryDate,
     );
+    
+    // Load memory location data (where event happened) if available
+    if (detail.memoryLocationData != null) {
+      captureNotifier.setMemoryLocationFromData(detail.memoryLocationData);
+    }
 
     // Navigate to capture screen as usual
     Navigator.of(context).pop();
@@ -1021,7 +1028,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     captureNotifier.loadMemoryForEdit(
       memoryId: memory.id,
       captureType: memory.memoryType,
-      inputText: memory.inputText, // Use inputText for editing (raw user text)
+      inputText: memory.displayText, // Use displayText to fall back to processed text
       tags: memory.tags,
       latitude: memory.locationData?.latitude,
       longitude: memory.locationData?.longitude,
@@ -1030,6 +1037,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       existingVideoUrls: existingVideoUrls,
       memoryDate: memory.memoryDate,
     );
+    
+    // Load memory location data (where event happened) if available
+    if (memory.memoryLocationData != null) {
+      captureNotifier.setMemoryLocationFromData(memory.memoryLocationData);
+    }
 
     // Pop back to main navigation shell, then switch to capture tab
     if (Navigator.of(context).canPop()) {
@@ -1257,17 +1269,6 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         ref.read(memoryDetailNotifierProvider(widget.memoryId).notifier);
     final isStory = memory.memoryType == 'story';
 
-    // Get unified feed controller for current selected types
-    final tabState = ref.read(unifiedFeedTabNotifierProvider);
-    final selectedTypes = tabState.valueOrNull ??
-        {
-          MemoryType.story,
-          MemoryType.moment,
-          MemoryType.memento,
-        };
-    final unifiedFeedController =
-        ref.read(unifiedFeedControllerProvider(selectedTypes).notifier);
-
     // Track delete action
     analytics.trackMemoryDetailDelete(memory.id);
 
@@ -1277,9 +1278,6 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     final canPop = navigator.canPop();
 
     try {
-      // Optimistically remove from unified feed
-      unifiedFeedController.removeMemory(memory.id);
-
       // Also remove any queued entries with matching serverId
       // This handles the case where a synced memory still has a queued entry
       final queueService = ref.read(offlineMemoryQueueServiceProvider);
@@ -1304,8 +1302,9 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                 ? 'Memento deleted'
                 : 'Moment deleted';
 
-        // Refresh unified feed to ensure consistency (memory is gone from DB)
-        unifiedFeedController.refresh();
+        // Emit deleted event so timeline can remove the memory
+        final bus = ref.read(memoryTimelineUpdateBusProvider);
+        bus.emitDeleted(memory.id);
 
         // Switch to timeline tab (doesn't need context)
         ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
@@ -1328,8 +1327,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         );
       } else {
         debugPrint('[MemoryDetailScreen] Deletion failed, success=false');
-        // Refresh unified feed to restore the memory if delete failed
-        unifiedFeedController.refresh();
+        // Delete failed - memory should still be in feed
 
         if (context.mounted) {
           final errorMessage = isStory
@@ -1357,9 +1355,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           errorString.contains('already deleted');
 
       if (mightBeDeleted) {
-        // Memory might have been deleted despite the error - navigate away
+        // Memory might have been deleted despite the error - emit deleted event
         debugPrint(
-            '[MemoryDetailScreen] Error suggests memory was deleted, navigating away');
+            '[MemoryDetailScreen] Error suggests memory was deleted, emitting deleted event');
+        final bus = ref.read(memoryTimelineUpdateBusProvider);
+        bus.emitDeleted(memory.id);
+        
+        // Navigate away
         if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
@@ -1367,8 +1369,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         // Navigate to timeline screen
         ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
       } else {
-        // Refresh unified feed to restore the memory
-        unifiedFeedController.refresh();
+        // Delete failed - memory should still be in feed
 
         if (!context.mounted) return;
 
@@ -1525,7 +1526,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       captureNotifier.loadMemoryForEdit(
         memoryId: memory.id,
         captureType: memory.memoryType,
-        inputText: memory.inputText,
+        inputText: memory.displayText,
         tags: memory.tags,
         latitude: memory.locationData?.latitude,
         longitude: memory.locationData?.longitude,
@@ -1534,6 +1535,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         existingVideoUrls: existingVideoUrls,
         memoryDate: memory.memoryDate,
       );
+      
+      // Load memory location data (where event happened) if available
+      if (memory.memoryLocationData != null) {
+        captureNotifier.setMemoryLocationFromData(memory.memoryLocationData);
+      }
     }
 
     // Get updated state after potential load
@@ -1569,6 +1575,198 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     if (context.mounted) {
       ref.read(memoryDetailNotifierProvider(memory.id).notifier).refresh();
     }
+  }
+
+  /// Build title widget - editable when edit icon is tapped
+  Widget _buildTitleWidget(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+  ) {
+    final theme = Theme.of(context);
+    
+    // If editing, show TextField with save/cancel buttons
+    if (_isEditingTitle) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _titleController,
+            style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            ),
+            maxLength: 200,
+            autofocus: true,
+            onSubmitted: (value) {
+              _handleSaveTitle(context, ref, memory, value);
+            },
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => _handleCancelTitleEdit(),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () => _handleSaveTitle(
+                  context,
+                  ref,
+                  memory,
+                  _titleController.text,
+                ),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    // If not editing, show title with edit icon (consistent with date/location pattern)
+    return Semantics(
+      label: 'Title: ${memory.displayTitle}',
+      button: true,
+      child: InkWell(
+        onTap: () => _handleEditTitle(context, ref, memory),
+        borderRadius: BorderRadius.circular(4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  memory.displayTitle,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Icon(
+                Icons.edit,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Handle title editing - enter edit mode
+  Future<void> _handleEditTitle(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+  ) async {
+    // Check if online (required for editing)
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isOnline = await connectivityService.isOnline();
+    
+    if (!isOnline) {
+      _showOfflineTooltip(context, 'Editing title requires internet connection');
+      return;
+    }
+
+    // Enter edit mode
+    setState(() {
+      _isEditingTitle = true;
+      // Initialize with current title (not displayTitle, as we want to edit the actual title field)
+      // If title is empty, use empty string (will fall back to generated_title or "Untitled..." after save)
+      _titleController.text = memory.title;
+    });
+  }
+
+  /// Handle saving title edit
+  Future<void> _handleSaveTitle(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+    String newTitle,
+  ) async {
+    // Trim the title
+    final trimmedTitle = newTitle.trim();
+    
+    // Show loading indicator
+    if (!context.mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('Updating title...'),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      // Update via provider
+      final notifier = ref.read(memoryDetailNotifierProvider(memory.id).notifier);
+      // Pass null if empty, otherwise pass trimmed title
+      await notifier.updateMemoryTitle(
+        trimmedTitle.isEmpty ? null : trimmedTitle,
+      );
+
+      // Exit edit mode
+      setState(() {
+        _isEditingTitle = false;
+      });
+
+      if (!context.mounted) return;
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Title updated'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to update title: ${e.toString()}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  /// Handle canceling title edit
+  void _handleCancelTitleEdit() {
+    setState(() {
+      _isEditingTitle = false;
+      _titleController.clear();
+    });
   }
 }
 

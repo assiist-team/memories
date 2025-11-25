@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:memories/models/timeline_memory.dart';
 import 'package:memories/models/memory_type.dart';
@@ -11,6 +12,8 @@ import 'package:memories/services/unified_feed_repository.dart';
 import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
 import 'package:memories/services/shared_preferences_local_memory_preview_store.dart';
+import 'package:memories/providers/memory_timeline_update_bus_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 part 'unified_feed_provider.g.dart';
 
@@ -103,6 +106,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   Set<MemoryType> _memoryTypeFilters = {};
   StreamSubscription<SyncCompleteEvent>? _syncSub;
   StreamSubscription<QueueChangeEvent>? _queueChangeSub;
+  StreamSubscription<MemoryTimelineEvent>? _timelineUpdateSub;
+  RealtimeChannel? _realtimeChannel;
 
   @override
   UnifiedFeedViewState build([Set<MemoryType>? memoryTypeFilters]) {
@@ -114,9 +119,14 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         };
     _setupSyncListener();
     _setupQueueChangeListeners();
+    _setupRealtimeSubscription();
+    _setupTimelineUpdateBusListener();
     ref.onDispose(() {
       _syncSub?.cancel();
       _queueChangeSub?.cancel();
+      _timelineUpdateSub?.cancel();
+      _realtimeChannel?.unsubscribe();
+      _realtimeChannel = null;
     });
     return const UnifiedFeedViewState(state: UnifiedFeedState.initial);
   }
@@ -139,6 +149,191 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     _queueChangeSub = queueService.changeStream.listen((event) {
       _handleQueueChange(event);
     });
+  }
+
+  void _setupTimelineUpdateBusListener() {
+    final bus = ref.read(memoryTimelineUpdateBusProvider);
+
+    _timelineUpdateSub?.cancel();
+    _timelineUpdateSub = bus.stream.listen((event) {
+      _handleTimelineUpdateEvent(event);
+    });
+  }
+
+  Future<void> _handleTimelineUpdateEvent(MemoryTimelineEvent event) async {
+    switch (event.type) {
+      case MemoryTimelineEventType.updated:
+        // Fetch the updated memory and update it in-place for deterministic refresh
+        debugPrint(
+            '[UnifiedFeedController] Handling updated event for memory: ${event.memoryId}');
+        try {
+          final connectivityService = ref.read(connectivityServiceProvider);
+          final isOnline = await connectivityService.isOnline();
+          
+          if (state.state == UnifiedFeedState.ready ||
+              state.state == UnifiedFeedState.empty) {
+            if (isOnline) {
+              // Online: Fetch the specific memory by ID for deterministic update
+              final repository = ref.read(unifiedFeedRepositoryProvider);
+              final updatedMemory = await repository.fetchMemoryById(event.memoryId);
+              
+              if (updatedMemory != null) {
+                // Update the memory in-place if it exists in the current feed
+                final memoryIndex = state.memories.indexWhere((m) =>
+                    m.id == event.memoryId ||
+                    m.serverId == event.memoryId ||
+                    m.localId == event.memoryId);
+                
+                if (memoryIndex != -1) {
+                  // Replace the existing memory with the updated one
+                  final updatedMemories = List<TimelineMemory>.from(state.memories);
+                  updatedMemories[memoryIndex] = updatedMemory;
+                  state = state.copyWith(memories: updatedMemories);
+                  debugPrint(
+                      '[UnifiedFeedController] Updated memory ${event.memoryId} in-place at index $memoryIndex');
+                } else {
+                  // Memory not in current feed, remove it (it may appear on pagination)
+                  removeMemory(event.memoryId);
+                  debugPrint(
+                      '[UnifiedFeedController] Updated memory ${event.memoryId} not in current feed, removed from view');
+                }
+              } else {
+                // Memory not found in feed (may have been deleted or filtered out)
+                removeMemory(event.memoryId);
+                debugPrint(
+                    '[UnifiedFeedController] Updated memory ${event.memoryId} not found in feed');
+              }
+            } else {
+              // Offline: Refresh feed to pick up queued edit
+              // The feed merge logic will prefer queued entries over server-backed ones
+              debugPrint(
+                  '[UnifiedFeedController] Offline edit detected, refreshing feed to show queued edit');
+              await _fetchPage(
+                cursor: null,
+                append: false,
+                pageNumber: 1,
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint(
+              '[UnifiedFeedController] Error handling updated memory: $e');
+          // Fallback: remove the old entry
+          removeMemory(event.memoryId);
+        }
+        break;
+      case MemoryTimelineEventType.deleted:
+        // Remove from feed immediately - memory was deleted on server
+        debugPrint(
+            '[UnifiedFeedController] Handling deleted event for memory: ${event.memoryId}');
+        removeMemory(event.memoryId);
+        break;
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    final supabase = ref.read(supabaseClientProvider);
+    final userId = supabase.auth.currentUser?.id;
+
+    if (userId == null) {
+      debugPrint('[UnifiedFeedController] No user ID, skipping realtime subscription');
+      return;
+    }
+
+    // Cancel existing subscription if any
+    _realtimeChannel?.unsubscribe();
+
+    // Set up realtime subscription for memory changes
+    _realtimeChannel = supabase
+        .channel('unified_feed_memories_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'memories',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            _handleMemoryUpdate(payload);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'memories',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            _handleMemoryDelete(payload);
+          },
+        )
+        .subscribe();
+
+    debugPrint('[UnifiedFeedController] Realtime subscription set up for user $userId');
+  }
+
+  void _handleMemoryUpdate(PostgresChangePayload payload) {
+    try {
+      final oldRecord = payload.oldRecord as Map<String, dynamic>?;
+      final newRecord = payload.newRecord as Map<String, dynamic>?;
+
+      if (oldRecord == null || newRecord == null) {
+        return;
+      }
+
+      final memoryId = oldRecord['id'] as String?;
+      if (memoryId == null) {
+        return;
+      }
+
+      // Check if the memory type matches our filters
+      final memoryTypeStr = newRecord['memory_type'] as String?;
+      if (memoryTypeStr != null) {
+        final memoryType = MemoryTypeExtension.fromApiValue(memoryTypeStr);
+        if (!_memoryTypeFilters.contains(memoryType)) {
+          // Memory type doesn't match filters, ignore
+          return;
+        }
+      }
+
+      debugPrint('[UnifiedFeedController] Memory updated via realtime: $memoryId');
+
+      // Remove the old entry - it will be refreshed on next fetch/refresh
+      // This ensures the timeline shows updated data without needing manual refresh
+      removeMemory(memoryId);
+
+      // Optionally refresh the feed to get the updated version immediately
+      // For now, we'll just remove it and let it appear on next pagination/refresh
+      // This is more efficient than immediately refetching
+    } catch (e) {
+      debugPrint('[UnifiedFeedController] Error handling memory update: $e');
+    }
+  }
+
+  void _handleMemoryDelete(PostgresChangePayload payload) {
+    try {
+      final oldRecord = payload.oldRecord as Map<String, dynamic>?;
+      if (oldRecord == null) {
+        return;
+      }
+
+      final memoryId = oldRecord['id'] as String?;
+      if (memoryId == null) {
+        return;
+      }
+
+      debugPrint('[UnifiedFeedController] Memory deleted via realtime: $memoryId');
+
+      // Remove from feed immediately
+      removeMemory(memoryId);
+    } catch (e) {
+      debugPrint('[UnifiedFeedController] Error handling memory delete: $e');
+    }
   }
 
   void _handleQueueChange(QueueChangeEvent event) {
@@ -291,13 +486,15 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   /// Remove a memory from the feed (optimistic update)
   ///
   /// [memoryId] is the ID of the memory to remove (can be server ID or local ID)
-  /// Also removes queued entries that have a matching serverId
+  /// Removes entries that match by id, serverId, or localId
   void removeMemory(String memoryId) {
     final updatedMemories = state.memories.where((m) {
       // Remove if id matches (for server-backed memories or queued memories by localId)
       if (m.id == memoryId) return false;
-      // Also remove queued entries that have a matching serverId
-      if (m.isOfflineQueued && m.serverId == memoryId) return false;
+      // Remove if serverId matches (for server-backed memories)
+      if (m.serverId == memoryId) return false;
+      // Remove if localId matches (for queued memories)
+      if (m.localId == memoryId) return false;
       return true;
     }).toList();
     state = state.copyWith(memories: updatedMemories);
@@ -344,18 +541,90 @@ class UnifiedFeedController extends _$UnifiedFeedController {
           stopwatch.elapsedMilliseconds,
         );
 
+    // Deduplicate by serverId when appending to prevent duplicate entries
+    final finalMemories = append
+        ? _deduplicateMemories([...state.memories, ...result.memories])
+        : result.memories;
+
     state = state.copyWith(
       state: result.memories.isEmpty && !append
           ? UnifiedFeedState.empty
           : UnifiedFeedState.ready,
-      memories:
-          append ? [...state.memories, ...result.memories] : result.memories,
+      memories: finalMemories,
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,
       errorMessage: null,
       isOffline: !isOnline,
       availableYears: resolvedAvailableYears,
     );
+  }
+
+  /// Deduplicate timeline memories by serverId.
+  ///
+  /// Ensures at most one TimelineMemory per serverId. When duplicates exist:
+  /// - Prefers server-backed entries (isOfflineQueued == false) over queued entries
+  /// - Prefers queued entries (isOfflineQueued == true) over preview-only entries
+  /// - Entries without a serverId are kept (they use localId or id as identifier)
+  List<TimelineMemory> _deduplicateMemories(List<TimelineMemory> memories) {
+    final Map<String, TimelineMemory> byServerId = {};
+    final List<TimelineMemory> withoutServerId = [];
+
+    for (final memory in memories) {
+      if (memory.serverId == null) {
+        // Entries without serverId use localId or id as identifier - keep all
+        withoutServerId.add(memory);
+      } else {
+        final existing = byServerId[memory.serverId!];
+        if (existing == null) {
+          // First entry with this serverId
+          byServerId[memory.serverId!] = memory;
+        } else {
+          // Duplicate found - prefer server-backed over queued, queued over preview-only
+          final shouldReplace = _shouldReplaceMemory(existing, memory);
+          if (shouldReplace) {
+            byServerId[memory.serverId!] = memory;
+          }
+        }
+      }
+    }
+
+    return <TimelineMemory>[...byServerId.values, ...withoutServerId];
+  }
+
+  /// Determine if [newEntry] should replace [existingEntry] when both have the same serverId.
+  ///
+  /// Prefers server-backed entries over queued entries, and queued entries over preview-only.
+  /// When both are server-backed, prefers the newer entry (to handle memory updates).
+  bool _shouldReplaceMemory(TimelineMemory existing, TimelineMemory newEntry) {
+    // Prefer server-backed entries (not queued) over queued entries
+    if (!existing.isOfflineQueued && newEntry.isOfflineQueued) {
+      return false; // Keep existing server-backed entry
+    }
+    if (existing.isOfflineQueued && !newEntry.isOfflineQueued) {
+      return true; // Replace queued with server-backed
+    }
+    
+    // If both are queued
+    if (existing.isOfflineQueued && newEntry.isOfflineQueued) {
+      // Both queued - prefer the one with full detail cached locally
+      if (!existing.isDetailCachedLocally && newEntry.isDetailCachedLocally) {
+        return true;
+      }
+      if (existing.isDetailCachedLocally && !newEntry.isDetailCachedLocally) {
+        return false;
+      }
+      // If both have same detail cache status, prefer newer (later in list = more recent fetch)
+      return true;
+    }
+    
+    // If both are server-backed, prefer the newer entry (handles memory updates)
+    // The newEntry appears later in the list, so it's from a more recent fetch
+    if (!existing.isOfflineQueued && !newEntry.isOfflineQueued) {
+      return true; // Always replace with newer server-backed entry
+    }
+    
+    // Fallback: prefer existing (first seen)
+    return false;
   }
 
   /// Get user-friendly error message from exception

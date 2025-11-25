@@ -278,36 +278,33 @@ class StoryCard extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        // Memory type badge
-        Semantics(
-          label: 'Story badge',
-          excludeSemantics: true,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
+        // Location display
+        if (story.memoryLocationData?.formattedLocation != null)
+          Semantics(
+            label: 'Location: ${story.memoryLocationData!.formattedLocation}',
+            excludeSemantics: true,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  MemoryType.story.icon,
+                  Icons.location_on,
                   size: 14,
-                  color: theme.colorScheme.onPrimaryContainer,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  'Story',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    story.memoryLocationData!.formattedLocation!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-        ),
       ],
     );
   }

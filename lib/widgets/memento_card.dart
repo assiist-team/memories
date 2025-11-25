@@ -222,8 +222,15 @@ class MementoCard extends ConsumerWidget {
     );
   }
 
+  /// Get memory type icon for this memento
+  IconData _getMemoryTypeIcon() {
+    final memoryType = MemoryTypeExtension.fromApiValue(memento.memoryType);
+    return memoryType.icon;
+  }
+
   Widget _buildThumbnail(BuildContext context, SupabaseClient supabase, TimelineImageCacheService imageCache) {
     const thumbnailSize = 80.0;
+    final memoryTypeIcon = _getMemoryTypeIcon();
 
     if (memento.primaryMedia == null) {
       // Text-only badge
@@ -238,7 +245,7 @@ class MementoCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
-            child: Icon(MemoryType.memento.icon, size: 32),
+            child: Icon(memoryTypeIcon, size: 32),
           ),
         ),
       );
@@ -263,7 +270,7 @@ class MementoCard extends ConsumerWidget {
           return Semantics(
             label: media.isPhoto ? 'Photo thumbnail' : 'Video thumbnail',
             image: true,
-            child: Hero(
+              child: Hero(
               tag: heroTag,
               child: Stack(
                 children: [
@@ -288,6 +295,23 @@ class MementoCard extends ConsumerWidget {
                           ),
                         );
                       },
+                    ),
+                  ),
+                  // Memory type icon overlay in upper right corner
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        memoryTypeIcon,
+                        size: 24,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   // Video duration pill
@@ -402,36 +426,33 @@ class MementoCard extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        // Memory type badge
-        Semantics(
-          label: 'Memento badge',
-          excludeSemantics: true,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
+        // Location display
+        if (memento.memoryLocationData?.formattedLocation != null)
+          Semantics(
+            label: 'Location: ${memento.memoryLocationData!.formattedLocation}',
+            excludeSemantics: true,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  MemoryType.memento.icon,
+                  Icons.location_on,
                   size: 14,
-                  color: theme.colorScheme.onPrimaryContainer,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  'Memento',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    memento.memoryLocationData!.formattedLocation!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-        ),
       ],
     );
   }

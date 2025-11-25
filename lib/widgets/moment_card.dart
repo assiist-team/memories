@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:memories/models/timeline_memory.dart';
 import 'package:memories/models/memory_type.dart';
+import 'package:memories/models/memory_processing_status.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_image_cache_provider.dart';
 import 'package:memories/providers/memory_processing_status_provider.dart';
@@ -167,12 +168,31 @@ class MomentCard extends ConsumerWidget {
 
         return statusAsync.when(
           data: (status) {
-            // Only show if processing is in progress
-            if (status == null || !status.isInProgress) {
+            if (status == null) {
               return const SizedBox.shrink();
             }
 
-            // Show a subtle processing indicator
+            // Map processing state to user-facing badge label.
+            String? label;
+            switch (status.state) {
+              case MemoryProcessingState.scheduled:
+                label = 'Scheduled for processing';
+                break;
+              case MemoryProcessingState.processing:
+                label = 'Processing';
+                break;
+              case MemoryProcessingState.complete:
+              case MemoryProcessingState.failed:
+                // No badge for completed/failed on the timeline card today.
+                label = null;
+                break;
+            }
+
+            if (label == null) {
+              return const SizedBox.shrink();
+            }
+
+            // Show a subtle processing/scheduled indicator
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -194,7 +214,7 @@ class MomentCard extends ConsumerWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    'Processing',
+                    label,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Colors.blue.shade800,
                           fontSize: 10,
@@ -278,8 +298,15 @@ class MomentCard extends ConsumerWidget {
     );
   }
 
+  /// Get memory type icon for this moment
+  IconData _getMemoryTypeIcon() {
+    final memoryType = MemoryTypeExtension.fromApiValue(moment.memoryType);
+    return memoryType.icon;
+  }
+
   Widget _buildThumbnail(BuildContext context, SupabaseClient supabase, TimelineImageCacheService imageCache) {
     const thumbnailSize = 80.0;
+    final memoryTypeIcon = _getMemoryTypeIcon();
 
     if (moment.primaryMedia == null) {
       // Text-only badge
@@ -294,7 +321,7 @@ class MomentCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
-            child: Icon(MemoryType.moment.icon, size: 32),
+            child: Icon(memoryTypeIcon, size: 32),
           ),
         ),
       );
@@ -333,25 +360,46 @@ class MomentCard extends ConsumerWidget {
           image: true,
           child: Hero(
             tag: heroTag,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                file,
-                width: thumbnailSize,
-                height: thumbnailSize,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Semantics(
-                    label: 'Failed to load thumbnail',
-                    child: Container(
-                      width: thumbnailSize,
-                      height: thumbnailSize,
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: const Icon(Icons.broken_image),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    file,
+                    width: thumbnailSize,
+                    height: thumbnailSize,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Semantics(
+                        label: 'Failed to load thumbnail',
+                        child: Container(
+                          width: thumbnailSize,
+                          height: thumbnailSize,
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Icon(Icons.broken_image),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Memory type icon overlay in upper right corner
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  );
-                },
-              ),
+                    child: Icon(
+                      memoryTypeIcon,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -372,6 +420,23 @@ class MomentCard extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(Icons.videocam, size: 32),
+                ),
+                // Memory type icon overlay in upper right corner
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      memoryTypeIcon,
+                      size: 24,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
                 Positioned(
                   bottom: 4,
@@ -425,33 +490,50 @@ class MomentCard extends ConsumerWidget {
           return Semantics(
             label: media.isPhoto ? 'Photo thumbnail' : 'Video thumbnail',
             image: true,
-            child: Hero(
-              tag: heroTag,
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      snapshot.data!,
-                      width: thumbnailSize,
-                      height: thumbnailSize,
-                      fit: BoxFit.cover,
-                      // Optimize image caching: cache at 2x resolution for retina displays
-                      cacheWidth: (thumbnailSize * 2).toInt(),
-                      cacheHeight: (thumbnailSize * 2).toInt(),
-                      errorBuilder: (context, error, stackTrace) {
-                        return Semantics(
-                          label: 'Failed to load thumbnail',
-                          child: Container(
-                            width: thumbnailSize,
-                            height: thumbnailSize,
-                            color: Theme.of(context).colorScheme.surfaceVariant,
-                            child: const Icon(Icons.broken_image),
-                          ),
-                        );
-                      },
+          child: Hero(
+            tag: heroTag,
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    snapshot.data!,
+                    width: thumbnailSize,
+                    height: thumbnailSize,
+                    fit: BoxFit.cover,
+                    // Optimize image caching: cache at 2x resolution for retina displays
+                    cacheWidth: (thumbnailSize * 2).toInt(),
+                    cacheHeight: (thumbnailSize * 2).toInt(),
+                    errorBuilder: (context, error, stackTrace) {
+                      return Semantics(
+                        label: 'Failed to load thumbnail',
+                        child: Container(
+                          width: thumbnailSize,
+                          height: thumbnailSize,
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Icon(Icons.broken_image),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Memory type icon overlay in upper right corner
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      memoryTypeIcon,
+                      size: 24,
+                      color: Colors.white,
                     ),
                   ),
+                ),
                 // Video duration pill
                 if (media.isVideo)
                   Positioned(
@@ -480,9 +562,9 @@ class MomentCard extends ConsumerWidget {
                       ),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
+          ),
           );
         } else if (snapshot.hasError) {
           return Semantics(
@@ -564,36 +646,33 @@ class MomentCard extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        // Memory type badge
-        Semantics(
-          label: 'Moment badge',
-          excludeSemantics: true,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
+        // Location display
+        if (moment.memoryLocationData?.formattedLocation != null)
+          Semantics(
+            label: 'Location: ${moment.memoryLocationData!.formattedLocation}',
+            excludeSemantics: true,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  MemoryType.moment.icon,
+                  Icons.location_on,
                   size: 14,
-                  color: theme.colorScheme.onPrimaryContainer,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  'Moment',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    moment.memoryLocationData!.formattedLocation!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-        ),
       ],
     );
   }

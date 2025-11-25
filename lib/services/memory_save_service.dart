@@ -688,13 +688,30 @@ class MemorySaveService {
         }
       }
 
-      // Use fallback title for now - will be updated when processing completes
-      generatedTitle = _getFallbackTitle(state.memoryType);
+      // Step 7: Preserve curated titles during edits
+      // Only set fallback title if the memory doesn't already have a non-fallback title
+      final existingMemory = await _supabase
+          .from('memories')
+          .select('title')
+          .eq('id', memoryId)
+          .maybeSingle();
 
-      // Set fallback title immediately
-      await _supabase.from('memories').update({
-        'title': generatedTitle,
-      }).eq('id', memoryId);
+      final existingTitle = existingMemory?['title'] as String?;
+      final fallbackTitle = _getFallbackTitle(state.memoryType);
+      final hasCuratedTitle = existingTitle != null &&
+          existingTitle.isNotEmpty &&
+          existingTitle != fallbackTitle;
+
+      // Only update title if memory doesn't have a curated title
+      if (!hasCuratedTitle) {
+        generatedTitle = fallbackTitle;
+        await _supabase.from('memories').update({
+          'title': generatedTitle,
+        }).eq('id', memoryId);
+      } else {
+        // Preserve existing curated title
+        generatedTitle = existingTitle;
+      }
 
       onProgress?.call(message: 'Complete!', progress: 1.0);
 

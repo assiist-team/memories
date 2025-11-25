@@ -14,6 +14,9 @@ enum QueuedMemoryStatus {
 /// Unified model for moments, mementos, and stories.
 /// Stories include optional audio fields (audioPath, audioDuration).
 class QueuedMemory {
+  static const String operationCreate = 'create';
+  static const String operationUpdate = 'update';
+
   /// Deterministic local ID (UUID)
   final String localId;
 
@@ -72,9 +75,30 @@ class QueuedMemory {
   /// Error message if sync failed
   final String? errorMessage;
 
+  /// Operation to perform when syncing ('create' or 'update')
+  final String operation;
+
+  /// Target memory ID for update operations
+  final String? targetMemoryId;
+
+  /// Full memory location data (city/state/country/source/lat/lng/display name)
+  final Map<String, dynamic>? memoryLocationData;
+
+  /// Existing remote photo URLs included when editing
+  final List<String> existingPhotoUrls;
+
+  /// Existing remote video URLs included when editing
+  final List<String> existingVideoUrls;
+
+  /// Remote photo URLs that should be deleted on sync
+  final List<String> deletedPhotoUrls;
+
+  /// Remote video URLs that should be deleted on sync
+  final List<String> deletedVideoUrls;
+
   /// Version of the serialization format
   /// Increment this when making breaking changes to the model structure
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
 
   /// Model version for this instance
   final int version;
@@ -99,8 +123,18 @@ class QueuedMemory {
     this.lastRetryAt,
     this.serverMemoryId,
     this.errorMessage,
+    this.operation = operationCreate,
+    this.targetMemoryId,
+    this.memoryLocationData,
+    this.existingPhotoUrls = const [],
+    this.existingVideoUrls = const [],
+    this.deletedPhotoUrls = const [],
+    this.deletedVideoUrls = const [],
     this.version = currentVersion,
   });
+
+  bool get isUpdate => operation == operationUpdate;
+  bool get isCreate => operation == operationCreate;
 
   /// Create from CaptureState
   ///
@@ -111,6 +145,9 @@ class QueuedMemory {
     String? audioPath,
     double? audioDuration,
     DateTime? capturedAt,
+    String operation = operationCreate,
+    String? targetMemoryId,
+    Map<String, dynamic>? memoryLocationData,
   }) {
     return QueuedMemory(
       localId: localId,
@@ -127,6 +164,14 @@ class QueuedMemory {
       capturedAt: capturedAt ?? DateTime.now(),
       memoryDate: state.memoryDate,
       createdAt: DateTime.now(),
+      operation: operation,
+      targetMemoryId: targetMemoryId,
+      serverMemoryId: operation == operationUpdate ? targetMemoryId : null,
+      memoryLocationData: _cloneMap(memoryLocationData),
+      existingPhotoUrls: List.from(state.existingPhotoUrls),
+      existingVideoUrls: List.from(state.existingVideoUrls),
+      deletedPhotoUrls: List.from(state.deletedPhotoUrls),
+      deletedVideoUrls: List.from(state.deletedVideoUrls),
     );
   }
 
@@ -134,6 +179,13 @@ class QueuedMemory {
   ///
   /// Includes audioPath and audioDuration for stories
   CaptureState toCaptureState() {
+    final mappedLocation = memoryLocationData ?? {};
+    final memoryLocationLabel = mappedLocation['display_name'] as String?;
+    final memoryLocationLatitude =
+        (mappedLocation['latitude'] as num?)?.toDouble();
+    final memoryLocationLongitude =
+        (mappedLocation['longitude'] as num?)?.toDouble();
+
     return CaptureState(
       memoryType: _parseMemoryType(memoryType),
       inputText: inputText,
@@ -147,6 +199,15 @@ class QueuedMemory {
       memoryDate: memoryDate,
       audioPath: audioPath,
       audioDuration: audioDuration,
+      memoryLocationLabel: memoryLocationLabel,
+      memoryLocationLatitude: memoryLocationLatitude,
+      memoryLocationLongitude: memoryLocationLongitude,
+      existingPhotoUrls: List.from(existingPhotoUrls),
+      existingVideoUrls: List.from(existingVideoUrls),
+      deletedPhotoUrls: List.from(deletedPhotoUrls),
+      deletedVideoUrls: List.from(deletedVideoUrls),
+      editingMemoryId: isUpdate ? targetMemoryId : null,
+      originalEditingMemoryId: isUpdate ? targetMemoryId : null,
     );
   }
 
@@ -177,6 +238,7 @@ class QueuedMemory {
     DateTime? lastRetryAt,
     String? serverMemoryId,
     String? errorMessage,
+    Map<String, dynamic>? memoryLocationData,
   }) {
     // Combine existing photo/video paths with new ones from capture state
     // Extract local paths from file:// URLs in existingPhotoUrls/existingVideoUrls
@@ -196,6 +258,10 @@ class QueuedMemory {
     // Preserve audio fields for stories
     final preservedAudioPath = memoryType == 'story' ? audioPath : null;
     final preservedAudioDuration = memoryType == 'story' ? audioDuration : null;
+
+    final updatedMemoryLocationData = _cloneMap(memoryLocationData) ??
+        _cloneMap(this.memoryLocationData) ??
+        _buildMemoryLocationDataFromState(state);
 
     return QueuedMemory(
       localId: localId,
@@ -217,6 +283,13 @@ class QueuedMemory {
       lastRetryAt: lastRetryAt ?? this.lastRetryAt,
       serverMemoryId: serverMemoryId ?? this.serverMemoryId,
       errorMessage: errorMessage ?? this.errorMessage,
+      operation: operation,
+      targetMemoryId: targetMemoryId,
+      memoryLocationData: updatedMemoryLocationData,
+      existingPhotoUrls: List.from(state.existingPhotoUrls),
+      existingVideoUrls: List.from(state.existingVideoUrls),
+      deletedPhotoUrls: List.from(state.deletedPhotoUrls),
+      deletedVideoUrls: List.from(state.deletedVideoUrls),
       version: version,
     );
   }
@@ -243,6 +316,13 @@ class QueuedMemory {
     String? serverMemoryId,
     String? errorMessage,
     int? version,
+    String? operation,
+    String? targetMemoryId,
+    Map<String, dynamic>? memoryLocationData,
+    List<String>? existingPhotoUrls,
+    List<String>? existingVideoUrls,
+    List<String>? deletedPhotoUrls,
+    List<String>? deletedVideoUrls,
   }) {
     return QueuedMemory(
       localId: localId ?? this.localId,
@@ -265,6 +345,15 @@ class QueuedMemory {
       serverMemoryId: serverMemoryId ?? this.serverMemoryId,
       errorMessage: errorMessage ?? this.errorMessage,
       version: version ?? this.version,
+      operation: operation ?? this.operation,
+      targetMemoryId: targetMemoryId ?? this.targetMemoryId,
+      memoryLocationData: memoryLocationData != null
+          ? _cloneMap(memoryLocationData)
+          : this.memoryLocationData,
+      existingPhotoUrls: existingPhotoUrls ?? this.existingPhotoUrls,
+      existingVideoUrls: existingVideoUrls ?? this.existingVideoUrls,
+      deletedPhotoUrls: deletedPhotoUrls ?? this.deletedPhotoUrls,
+      deletedVideoUrls: deletedVideoUrls ?? this.deletedVideoUrls,
     );
   }
 
@@ -306,6 +395,13 @@ class QueuedMemory {
       'lastRetryAt': lastRetryAt?.toIso8601String(),
       'serverMemoryId': serverMemoryId,
       'errorMessage': errorMessage,
+      'operation': operation,
+      'targetMemoryId': targetMemoryId,
+      'memoryLocationData': memoryLocationData,
+      'existingPhotoUrls': existingPhotoUrls,
+      'existingVideoUrls': existingVideoUrls,
+      'deletedPhotoUrls': deletedPhotoUrls,
+      'deletedVideoUrls': deletedVideoUrls,
     };
   }
 
@@ -319,12 +415,12 @@ class QueuedMemory {
       memoryType: json['memoryType'] as String,
       inputText: json['inputText'] as String?,
       audioPath: json['audioPath'] as String?,
-      audioDuration: json['audioDuration'] as double?,
+      audioDuration: (json['audioDuration'] as num?)?.toDouble(),
       photoPaths: List<String>.from(json['photoPaths'] as List? ?? []),
       videoPaths: List<String>.from(json['videoPaths'] as List? ?? []),
       tags: List<String>.from(json['tags'] as List? ?? []),
-      latitude: json['latitude'] as double?,
-      longitude: json['longitude'] as double?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       locationStatus: json['locationStatus'] as String?,
       capturedAt: json['capturedAt'] != null
           ? DateTime.parse(json['capturedAt'] as String)
@@ -340,6 +436,60 @@ class QueuedMemory {
           : null,
       serverMemoryId: json['serverMemoryId'] as String?,
       errorMessage: json['errorMessage'] as String?,
+      operation: json['operation'] as String? ?? operationCreate,
+      targetMemoryId: json['targetMemoryId'] as String?,
+      memoryLocationData: _decodeMemoryLocationData(json['memoryLocationData']),
+      existingPhotoUrls:
+          List<String>.from(json['existingPhotoUrls'] as List? ?? []),
+      existingVideoUrls:
+          List<String>.from(json['existingVideoUrls'] as List? ?? []),
+      deletedPhotoUrls:
+          List<String>.from(json['deletedPhotoUrls'] as List? ?? []),
+      deletedVideoUrls:
+          List<String>.from(json['deletedVideoUrls'] as List? ?? []),
     );
+  }
+
+  static Map<String, dynamic>? _decodeMemoryLocationData(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _buildMemoryLocationDataFromState(CaptureState state) {
+    if (state.memoryLocationLabel == null &&
+        state.memoryLocationLatitude == null &&
+        state.memoryLocationLongitude == null) {
+      return _cloneMap(memoryLocationData);
+    }
+
+    final map = <String, dynamic>{};
+    if (state.memoryLocationLabel != null) {
+      map['display_name'] = state.memoryLocationLabel;
+    }
+    if (state.memoryLocationLatitude != null) {
+      map['latitude'] = state.memoryLocationLatitude;
+    }
+    if (state.memoryLocationLongitude != null) {
+      map['longitude'] = state.memoryLocationLongitude;
+    }
+    return {
+      ...?_cloneMap(memoryLocationData),
+      ...map,
+    };
+  }
+
+  static Map<String, dynamic>? _cloneMap(Map<String, dynamic>? source) {
+    if (source == null) {
+      return null;
+    }
+    return Map<String, dynamic>.from(source);
   }
 }

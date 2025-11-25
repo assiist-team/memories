@@ -12,7 +12,7 @@ class MemoryMetadataSection extends StatelessWidget {
   final VoidCallback? onDateTap;
   final VoidCallback? onLocationTap;
   /// Memory location label (client-side only, from CaptureState when editing)
-  /// This is separate from memory.locationData which is persisted location
+  /// This is separate from memory.memoryLocationData which is persisted location
   final String? memoryLocationLabel;
 
   const MemoryMetadataSection({
@@ -27,7 +27,7 @@ class MemoryMetadataSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasLocation = memoryLocationLabel != null ||
-        memory.locationData?.formattedLocation != null;
+        memory.memoryLocationData?.formattedLocation != null;
     final hasRelatedStories = memory.relatedStories.isNotEmpty;
     final hasRelatedMementos = memory.relatedMementos.isNotEmpty;
     final hasRelatedMemories = hasRelatedStories || hasRelatedMementos;
@@ -114,9 +114,9 @@ class MemoryMetadataSection extends StatelessWidget {
   }
 
   Widget _buildLocationRow(BuildContext context, ThemeData theme) {
-    // Prefer memoryLocationLabel (from CaptureState when editing) over persisted locationData
+    // Prefer memoryLocationLabel (from CaptureState when editing) over persisted memoryLocationData
     final locationText = memoryLocationLabel ??
-        memory.locationData?.formattedLocation ??
+        memory.memoryLocationData?.formattedLocation ??
         'Current location';
     final isEditable = onLocationTap != null;
 

@@ -77,7 +77,7 @@ final geolocationServiceProvider =
 // ignore: unused_element
 typedef GeolocationServiceRef = AutoDisposeProviderRef<GeolocationService>;
 String _$captureStateNotifierHash() =>
-    r'69d3be2fae1fbc5c3a929b12652ce2d4f053f3c1';
+    r'd19ee6071d3360fe23b1f097d5ccd8c36ce86899';
 
 /// Provider for capture state
 ///
@@ -92,7 +92,7 @@ String _$captureStateNotifierHash() =>
 /// Copied from [CaptureStateNotifier].
 @ProviderFor(CaptureStateNotifier)
 final captureStateNotifierProvider =
-    AutoDisposeNotifierProvider<CaptureStateNotifier, CaptureState>.internal(
+    NotifierProvider<CaptureStateNotifier, CaptureState>.internal(
   CaptureStateNotifier.new,
   name: r'captureStateNotifierProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -102,6 +102,6 @@ final captureStateNotifierProvider =
   allTransitiveDependencies: null,
 );
 
-typedef _$CaptureStateNotifier = AutoDisposeNotifier<CaptureState>;
+typedef _$CaptureStateNotifier = Notifier<CaptureState>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

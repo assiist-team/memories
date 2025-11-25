@@ -64,7 +64,7 @@ GeolocationService geolocationService(GeolocationServiceRef ref) {
 /// - Media attachments (photos/videos)
 /// - Tags
 /// - Dictation status
-@riverpod
+@Riverpod(keepAlive: true)
 class CaptureStateNotifier extends _$CaptureStateNotifier {
   @override
   CaptureState build() {
@@ -467,7 +467,14 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     // Clear offline editing state
     _editingOfflineLocalId = null;
     
-    state = const CaptureState().copyWith(clearAudio: true, clearEditingMemoryId: true);
+    // Clear memory location data map (instance variable, not part of state)
+    _memoryLocationDataMap = null;
+    
+    state = const CaptureState().copyWith(
+      clearAudio: true,
+      clearEditingMemoryId: true,
+      clearOriginalEditingMemoryId: true,
+    );
   }
 
   /// Set error message
@@ -538,6 +545,21 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       memoryLocationLongitude: longitude,
       hasUnsavedChanges: true,
     );
+
+    // Update internal map if it exists, or create it
+    if (_memoryLocationDataMap != null) {
+      _memoryLocationDataMap!['display_name'] = label;
+      _memoryLocationDataMap!['latitude'] = latitude;
+      _memoryLocationDataMap!['longitude'] = longitude;
+      _memoryLocationDataMap!['source'] = 'manual_update';
+    } else if (label != null || latitude != null || longitude != null) {
+      _memoryLocationDataMap = {
+        'display_name': label,
+        'latitude': latitude,
+        'longitude': longitude,
+        'source': 'manual_update',
+      };
+    }
   }
 
   /// Set memory location from MemoryLocationData object
@@ -576,7 +598,18 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Falls back to constructing a minimal map from basic fields if full data not available
   Map<String, dynamic>? getMemoryLocationDataForSave() {
     if (_memoryLocationDataMap != null) {
-      return _memoryLocationDataMap;
+      // Ensure the map is in sync with the state
+      final map = Map<String, dynamic>.from(_memoryLocationDataMap!);
+      if (state.memoryLocationLabel != null) {
+        map['display_name'] = state.memoryLocationLabel;
+      }
+      if (state.memoryLocationLatitude != null) {
+        map['latitude'] = state.memoryLocationLatitude;
+      }
+      if (state.memoryLocationLongitude != null) {
+        map['longitude'] = state.memoryLocationLongitude;
+      }
+      return map;
     }
     
     // Fall back to constructing from basic fields
@@ -653,6 +686,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   ///
   /// Preloads inputText, tags, location, memory type, existing media URLs, and memoryDate
   /// from a MemoryDetail. Sets editingMemoryId to track edit mode.
+  /// 
+  /// Note: Memory location data (where event happened) should be set separately via
+  /// setMemoryLocationFromData() after calling this method.
   void loadMemoryForEdit({
     required String memoryId,
     required String captureType,
@@ -667,8 +703,13 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }) {
     final memoryType = MemoryTypeExtension.fromApiValue(captureType);
 
+    // Clear any previous memory location data map when starting a new edit session
+    // It will be set again by setMemoryLocationFromData() if available
+    _memoryLocationDataMap = null;
+
     state = state.copyWith(
       editingMemoryId: memoryId,
+      originalEditingMemoryId: memoryId,
       memoryType: memoryType,
       inputText: inputText,
       tags: tags ?? [],

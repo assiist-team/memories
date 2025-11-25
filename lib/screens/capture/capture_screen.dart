@@ -10,13 +10,14 @@ import 'package:memories/models/queued_memory.dart';
 import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/media_picker_provider.dart';
 import 'package:memories/providers/memory_detail_provider.dart';
+import 'package:memories/providers/memory_timeline_update_bus_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
 import 'package:memories/services/media_picker_service.dart';
 import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
-// import 'package:memories/widgets/inspirational_quote.dart';
+import 'package:memories/widgets/inspirational_quote.dart';
 import 'package:memories/widgets/save_button_success_checkmark.dart';
 import 'package:memories/models/location_suggestion.dart';
 import 'package:memories/services/location_suggestion_service.dart';
@@ -44,7 +45,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   bool _showSuccessCheckmark = false;
   bool _hasInitializedDescription = false;
   String? _previousInputText; // Track previous state to detect external changes
-  String? _previousEditingMemoryId; // Track editing state to reset checkmark when editing starts
+  String?
+      _previousEditingMemoryId; // Track editing state to reset checkmark when editing starts
 
   @override
   void initState() {
@@ -238,8 +240,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   Future<void> _handleSave() async {
     final state = ref.read(captureStateNotifierProvider);
     final notifier = ref.read(captureStateNotifierProvider.notifier);
+    final isEditingOffline = notifier.isEditingOffline;
+    final isEditing = state.isEditing || isEditingOffline;
 
-    if (!state.canSave) {
+    // Creation flow: enforce content requirements (text/photo/video).
+    if (!isEditing && !state.canSave) {
       final message = state.memoryType == MemoryType.story
           ? 'Please add text or record audio to save'
           : state.memoryType == MemoryType.memento
@@ -250,6 +255,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           content: Text(message),
         ),
       );
+      return;
+    }
+
+    // Edit flow (online or offline): allow saving any change, but block if nothing changed.
+    if (isEditing && !state.hasUnsavedChanges) {
+      // No-op save – nothing to persist.
       return;
     }
 
@@ -270,68 +281,6 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       final capturedAt = DateTime.now();
       notifier.setCapturedAt(capturedAt);
       final finalState = ref.read(captureStateNotifierProvider);
-
-      // Step 3: Queue for offline sync if needed
-      // MemorySyncService will automatically sync when connectivity is restored
-      // This queues whenever uploads cannot proceed (offline or when upload service unavailable)
-      try {
-        final queueService = ref.read(offlineMemoryQueueServiceProvider);
-        final localId = OfflineMemoryQueueService.generateLocalId();
-
-        // Check for duplicate submissions: if a memory with identical content is already queued,
-        // update it instead of creating a duplicate. The deterministic local ID prevents
-        // duplicate submissions during the same save operation.
-        final queuedMemory = QueuedMemory.fromCaptureState(
-          localId: localId,
-          state: finalState,
-          audioPath: finalState.audioPath,
-          audioDuration: finalState.audioDuration,
-          capturedAt: capturedAt,
-        );
-        await queueService.enqueue(queuedMemory);
-
-        if (mounted) {
-          // Show success checkmark briefly before navigation
-          setState(() {
-            _isSaving = false;
-            _showSuccessCheckmark = true;
-          });
-
-          // Wait for checkmark animation
-          await Future.delayed(const Duration(milliseconds: 600));
-
-          if (mounted) {
-            await notifier.clear(keepAudioIfQueued: true);
-            // Reset checkmark before navigation
-            setState(() {
-              _showSuccessCheckmark = false;
-            });
-            // Only pop if there's a route to pop (i.e., if this screen was pushed)
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-          }
-          return;
-        }
-      } catch (e) {
-        // Handle queue errors gracefully
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to queue memory: ${e.toString()}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-              action: SnackBarAction(
-                label: 'Retry',
-                textColor: Colors.white,
-                onPressed: () => _handleSave(),
-              ),
-            ),
-          );
-        }
-        // Re-throw to be caught by outer catch block
-        rethrow;
-      }
 
       // Step 3: Check if editing offline queued memory
       final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
@@ -368,81 +317,105 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       // Step 3: Save or update memory with progress updates (or queue if offline)
       final saveService = ref.read(memorySaveServiceProvider);
       MemorySaveResult? result;
-      final isEditing = finalState.isEditing;
-      final editingMemoryId = finalState.editingMemoryId;
+      // Use originalEditingMemoryId as a safety net so that edits never
+      // silently fall back to creating a new memory row.
+      final effectiveEditingMemoryId =
+          finalState.editingMemoryId ?? finalState.originalEditingMemoryId;
+      final isEditing = effectiveEditingMemoryId != null;
 
+      // Defensive check: If we have originalEditingMemoryId but isEditing is false,
+      // this indicates a state corruption issue. Abort to prevent accidental creation.
+      if (finalState.originalEditingMemoryId != null && !isEditing) {
+        debugPrint(
+            '[CaptureScreen] ERROR: originalEditingMemoryId exists but isEditing is false. Aborting save to prevent accidental creation.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Error: Edit state was lost. Please try editing again.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Log save operation for debugging
+      debugPrint(
+          '[CaptureScreen] Saving memory: isEditing=$isEditing, effectiveEditingMemoryId=$effectiveEditingMemoryId');
+
+      Map<String, dynamic>? memoryLocationDataMap;
       try {
         // Get full memory location data from notifier if available
-        final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
-        final memoryLocationDataMap = captureNotifier.getMemoryLocationDataForSave();
+        memoryLocationDataMap = captureNotifier.getMemoryLocationDataForSave();
 
-        if (isEditing && editingMemoryId != null) {
+        if (isEditing) {
           // Update existing memory
+          debugPrint(
+              '[CaptureScreen] Updating existing memory: $effectiveEditingMemoryId');
           result = await saveService.updateMemory(
-            memoryId: editingMemoryId,
+            memoryId: effectiveEditingMemoryId,
             state: finalState,
             memoryLocationDataMap: memoryLocationDataMap,
           );
         } else {
           // Create new memory
+          debugPrint('[CaptureScreen] Creating new memory');
           result = await saveService.saveMemory(
             state: finalState,
             memoryLocationDataMap: memoryLocationDataMap,
           );
         }
       } on OfflineException {
-        // Queue for offline sync (only for new memories, not edits)
+        final queueService = ref.read(offlineMemoryQueueServiceProvider);
+        final effectiveLocationDataMap = memoryLocationDataMap ??
+            captureNotifier.getMemoryLocationDataForSave();
+
         if (!isEditing) {
-          final queueService = ref.read(offlineMemoryQueueServiceProvider);
-          final localId = OfflineMemoryQueueService.generateLocalId();
           final queuedMemory = QueuedMemory.fromCaptureState(
-            localId: localId,
+            localId: OfflineMemoryQueueService.generateLocalId(),
             state: finalState,
             audioPath: finalState.audioPath,
             audioDuration: finalState.audioDuration,
             capturedAt: capturedAt,
+            memoryLocationData: effectiveLocationDataMap,
           );
           await queueService.enqueue(queuedMemory);
-
-          if (mounted) {
-            // Show success checkmark briefly before navigation
-            setState(() {
-              _isSaving = false;
-              _showSuccessCheckmark = true;
-            });
-
-            // Wait for checkmark animation
-            await Future.delayed(const Duration(milliseconds: 600));
-
-            if (mounted) {
-              await notifier.clear(keepAudioIfQueued: true);
-              // Reset checkmark before navigation
-              setState(() {
-                _showSuccessCheckmark = false;
-              });
-              // Only pop if there's a route to pop (i.e., if this screen was pushed)
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-            }
-            return;
-          }
+          await _showOfflineQueueSuccess(
+            message:
+                'Saved offline. We\'ll sync this memory once you reconnect.',
+            notifier: notifier,
+          );
         } else {
-          // Editing requires online connection
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Editing requires internet connection'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-          return;
+          final String targetMemoryId = effectiveEditingMemoryId;
+          final queuedMemory = QueuedMemory.fromCaptureState(
+            localId: OfflineMemoryQueueService.generateLocalId(),
+            state: finalState,
+            audioPath: finalState.audioPath,
+            audioDuration: finalState.audioDuration,
+            capturedAt: capturedAt,
+            operation: QueuedMemory.operationUpdate,
+            targetMemoryId: targetMemoryId,
+            memoryLocationData: effectiveLocationDataMap,
+          );
+          await queueService.enqueue(queuedMemory);
+          
+          // Emit updated event so timeline can reflect the pending edit immediately
+          // The timeline will merge the queued edit with the existing server-backed entry
+          final bus = ref.read(memoryTimelineUpdateBusProvider);
+          bus.emitUpdated(targetMemoryId);
+          
+          await _showOfflineQueueSuccess(
+            message:
+                'Edits saved offline. We\'ll update this memory once you\'re online.',
+            notifier: notifier,
+          );
         }
+        return;
       }
 
-      if (result == null) return; // Should not happen, but safety check
+      final MemorySaveResult resolvedResult = result;
 
       // Step 4: Show success checkmark and navigate appropriately
       if (mounted) {
@@ -456,6 +429,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         await Future.delayed(const Duration(milliseconds: 600));
 
         if (mounted) {
+          // Capture effective editing ID BEFORE clearing state (since clear() resets it)
+          final savedEditingMemoryId = effectiveEditingMemoryId;
+          final wasEditing = isEditing && savedEditingMemoryId != null;
+
           // Clear state completely (including editingMemoryId)
           await notifier.clear();
           // Reset checkmark before navigation
@@ -463,17 +440,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             _showSuccessCheckmark = false;
           });
 
-          if (isEditing) {
+          if (wasEditing) {
+            // When editing, emit updated event so timeline can refresh with updated data
+            // savedEditingMemoryId is guaranteed to be non-null when wasEditing is true
+            final memoryId = savedEditingMemoryId;
+            debugPrint(
+                '[CaptureScreen] Emitting updated event for memory: $memoryId');
+            final bus = ref.read(memoryTimelineUpdateBusProvider);
+            bus.emitUpdated(memoryId);
+
             // When editing, navigate back to detail screen
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             }
             // Refresh detail screen to show updated content
-            if (editingMemoryId != null) {
-              ref
-                  .read(memoryDetailNotifierProvider(editingMemoryId).notifier)
-                  .refresh();
-            }
+            ref.read(memoryDetailNotifierProvider(memoryId).notifier).refresh();
           } else {
             // When creating, navigate to detail view
             // Only pop if there's a route to pop (i.e., if this screen was pushed)
@@ -481,7 +462,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               Navigator.of(context).pop();
             }
             // Navigate to memory detail view
-            final savedMemoryId = result.memoryId;
+            final savedMemoryId = resolvedResult.memoryId;
             if (savedMemoryId.isNotEmpty) {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -562,6 +543,45 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     }
   }
 
+  Future<void> _showOfflineQueueSuccess({
+    required String message,
+    required CaptureStateNotifier notifier,
+  }) async {
+    if (!mounted) return;
+
+    setState(() {
+      _isSaving = false;
+      _showSuccessCheckmark = true;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    if (!mounted) {
+      return;
+    }
+
+    await notifier.clear(keepAudioIfQueued: true);
+
+    setState(() {
+      _showSuccessCheckmark = false;
+    });
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(captureStateNotifierProvider);
@@ -576,9 +596,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // or when state is cleared (normal capture state)
     final currentEditingId = state.editingMemoryId;
     final editingStateChanged = _previousEditingMemoryId != currentEditingId;
-    final shouldResetCheckmark = !_isSaving && 
-        (_showSuccessCheckmark && (editingStateChanged || !state.hasUnsavedChanges));
-    
+    final shouldResetCheckmark = !_isSaving &&
+        (_showSuccessCheckmark &&
+            (editingStateChanged || !state.hasUnsavedChanges));
+
     if (shouldResetCheckmark) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -588,7 +609,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         }
       });
     }
-    
+
     // Update previous editing ID for next comparison
     _previousEditingMemoryId = currentEditingId;
 
@@ -634,13 +655,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Inspirational quote - hide when media/tags are present to make room
-                      // InspirationalQuote(
-                      //   showQuote: state.photoPaths.isEmpty &&
-                      //       state.videoPaths.isEmpty &&
-                      //       state.tags.isEmpty &&
-                      //       (state.inputText == null ||
-                      //           state.inputText!.isEmpty),
-                      // ),
+                      InspirationalQuote(
+                        showQuote: state.photoPaths.isEmpty &&
+                            state.videoPaths.isEmpty &&
+                            state.tags.isEmpty &&
+                            (state.inputText == null ||
+                                state.inputText!.isEmpty),
+                      ),
                       // Centered capture controls section
                       Expanded(
                         child: Column(
@@ -925,7 +946,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             // Date picker row - full-width tappable bar
                             _MemoryDatePicker(
                               memoryDate: state.memoryDate ?? DateTime.now(),
-                              onDateChanged: (date) => notifier.setMemoryDate(date),
+                              onDateChanged: (date) =>
+                                  notifier.setMemoryDate(date),
                             ),
 
                             const SizedBox(height: 8),
@@ -940,7 +962,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                 String? label,
                                 double? latitude,
                                 double? longitude,
-                              }) => notifier.setMemoryLocationLabel(
+                              }) =>
+                                  notifier.setMemoryLocationLabel(
                                 label: label,
                                 latitude: latitude,
                                 longitude: longitude,
@@ -1031,7 +1054,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             label: 'Save memory',
                             button: true,
                             child: ElevatedButton(
-                              onPressed: (state.canSave &&
+                              onPressed: (((state.isEditing ||
+                                              ref
+                                                  .read(
+                                                      captureStateNotifierProvider
+                                                          .notifier)
+                                                  .isEditingOffline)
+                                          ? state.hasUnsavedChanges
+                                          : state.canSave) &&
                                       !_isSaving &&
                                       !_showSuccessCheckmark)
                                   ? _handleSave
@@ -1239,21 +1269,25 @@ class _DictationTextContainer extends ConsumerWidget {
           // When empty, center the placeholder text both vertically and horizontally
           // When not empty, align content to top-left and allow scrolling when content exceeds container
           final transcriptWidget = isEmpty
-              ? Center(
-                  child: Semantics(
-                    label: 'Dictation transcript',
-                    liveRegion: true,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 150),
-                      child: Text(
-                        displayText,
-                        key: ValueKey(displayText),
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                        textAlign: TextAlign.center,
+              ? Transform.translate(
+                  offset: const Offset(0, -40),
+                  child: Center(
+                    child: Semantics(
+                      label: 'Dictation transcript',
+                      liveRegion: true,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 150),
+                        child: Text(
+                          displayText,
+                          key: ValueKey(displayText),
+                          style:
+                              Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
                   ),
@@ -1533,7 +1567,7 @@ class _SwipeableInputContainerState
         final screenHeight = MediaQuery.of(context).size.height;
         final maxHeight = screenHeight * 0.4; // Max 40% of screen height
         final minHeight =
-            250.0; // Minimum height for consistent layout - increased for larger initial size
+            180.0; // Minimum height for consistent layout - increased for larger initial size
 
         // Cache height calculation - only recalculate if not dragging or if cached value is null
         // This prevents resizing during swipe transitions
@@ -1811,19 +1845,22 @@ class _SwipeableInputContainerState
                                     if (shouldShowPlaceholder)
                                       IgnorePointer(
                                         child: SizedBox.expand(
-                                          child: Center(
-                                            child: Text(
-                                              _getPlaceholderText(
-                                                  widget.memoryType),
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyLarge
-                                                  ?.copyWith(
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                                  ),
-                                              textAlign: TextAlign.center,
+                                          child: Transform.translate(
+                                            offset: const Offset(0, -40),
+                                            child: Center(
+                                              child: Text(
+                                                _getPlaceholderText(
+                                                    widget.memoryType),
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyLarge
+                                                    ?.copyWith(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                                    ),
+                                                textAlign: TextAlign.center,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1969,7 +2006,7 @@ class _MemoryDatePicker extends StatelessWidget {
   Future<void> _showDatePicker(BuildContext context) async {
     // Convert UTC to local time for display
     final localDate = memoryDate.toLocal();
-    
+
     // Show date picker
     final pickedDate = await showDatePicker(
       context: context,
@@ -1998,10 +2035,10 @@ class _MemoryDatePicker extends StatelessWidget {
       pickedTime.hour,
       pickedTime.minute,
     );
-    
+
     // Convert to UTC for storage
     final utcDateTime = combinedDateTime.toUtc();
-    
+
     onDateChanged(utcDateTime);
   }
 
@@ -2069,7 +2106,8 @@ class _MemoryLocationPicker extends StatelessWidget {
   final double? gpsLatitude;
   final double? gpsLongitude;
   final String? locationStatus;
-  final void Function({String? label, double? latitude, double? longitude}) onLocationChanged;
+  final void Function({String? label, double? latitude, double? longitude})
+      onLocationChanged;
 
   const _MemoryLocationPicker({
     required this.memoryLocationLabel,
@@ -2100,16 +2138,18 @@ class _MemoryLocationPicker extends StatelessWidget {
     if (memoryLocationLabel != null && memoryLocationLabel!.isNotEmpty) {
       return memoryLocationLabel!;
     }
-    
+
     // Check GPS status
-    if (locationStatus == 'granted' && gpsLatitude != null && gpsLongitude != null) {
+    if (locationStatus == 'granted' &&
+        gpsLatitude != null &&
+        gpsLongitude != null) {
       return 'Use current location';
     }
-    
+
     if (locationStatus == 'denied' || locationStatus == 'unavailable') {
       return 'Location unavailable (tap to set)';
     }
-    
+
     // If we have no location status yet, we are not actually detecting anything.
     // Default to unavailable to avoid implying background work that isn't happening.
     return 'Location unavailable (tap to set)';
@@ -2172,7 +2212,8 @@ class _LocationPickerBottomSheet extends ConsumerStatefulWidget {
   final double? gpsLatitude;
   final double? gpsLongitude;
   final String? locationStatus;
-  final void Function({String? label, double? latitude, double? longitude}) onLocationSaved;
+  final void Function({String? label, double? latitude, double? longitude})
+      onLocationSaved;
 
   const _LocationPickerBottomSheet({
     this.initialLabel,
@@ -2183,10 +2224,12 @@ class _LocationPickerBottomSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_LocationPickerBottomSheet> createState() => _LocationPickerBottomSheetState();
+  ConsumerState<_LocationPickerBottomSheet> createState() =>
+      _LocationPickerBottomSheetState();
 }
 
-class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBottomSheet> {
+class _LocationPickerBottomSheetState
+    extends ConsumerState<_LocationPickerBottomSheet> {
   late final TextEditingController _textController;
   bool _hasGpsLocation = false;
   List<LocationSuggestion> _suggestions = [];
@@ -2201,10 +2244,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
     _hasGpsLocation = widget.locationStatus == 'granted' &&
         widget.gpsLatitude != null &&
         widget.gpsLongitude != null;
-    
+
     // Check connectivity and load initial suggestions if online
     _checkConnectivityAndSearch();
-    
+
     // Listen to text changes for debounced search
     _textController.addListener(_onTextChanged);
   }
@@ -2222,7 +2265,7 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
   Future<void> _checkConnectivityAndSearch() async {
     final connectivityService = ref.read(connectivityServiceProvider);
     final isOnline = await connectivityService.isOnline();
-    
+
     setState(() {
       _isOffline = !isOnline;
     });
@@ -2235,7 +2278,7 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
 
   void _onTextChanged() {
     final query = _textController.text.trim();
-    
+
     // Clear suggestions if query is too short
     if (query.length < 2) {
       setState(() {
@@ -2268,10 +2311,12 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
 
     try {
       final suggestionService = ref.read(locationSuggestionServiceProvider);
-      
+
       // Get user location for biasing if available
       ({double latitude, double longitude})? userLocation;
-      if (_hasGpsLocation && widget.gpsLatitude != null && widget.gpsLongitude != null) {
+      if (_hasGpsLocation &&
+          widget.gpsLatitude != null &&
+          widget.gpsLongitude != null) {
         userLocation = (
           latitude: widget.gpsLatitude!,
           longitude: widget.gpsLongitude!,
@@ -2320,9 +2365,11 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
 
     try {
       final suggestionService = ref.read(locationSuggestionServiceProvider);
-      
+
       ({double latitude, double longitude})? userLocation;
-      if (_hasGpsLocation && widget.gpsLatitude != null && widget.gpsLongitude != null) {
+      if (_hasGpsLocation &&
+          widget.gpsLatitude != null &&
+          widget.gpsLongitude != null) {
         userLocation = (
           latitude: widget.gpsLatitude!,
           longitude: widget.gpsLongitude!,
@@ -2365,7 +2412,7 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
   void _handleSuggestionSelected(LocationSuggestion suggestion) {
     // Fill the text field with the suggestion's display name
     _textController.text = suggestion.displayName;
-    
+
     // Save with the suggestion's coordinates and structured data
     widget.onLocationSaved(
       label: suggestion.displayName,
@@ -2407,7 +2454,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant
+                      .withOpacity(0.4),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2438,7 +2488,8 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                       )
                     : null,
               ),
-              autofocus: widget.initialLabel == null || widget.initialLabel!.isEmpty,
+              autofocus:
+                  widget.initialLabel == null || widget.initialLabel!.isEmpty,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _handleSave(),
             ),
@@ -2464,7 +2515,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                   constraints: const BoxConstraints(maxHeight: 200),
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withOpacity(0.2),
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2474,7 +2528,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                     separatorBuilder: (context, index) => Divider(
                       height: 1,
                       thickness: 1,
-                      color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withOpacity(0.1),
                     ),
                     itemBuilder: (context, index) {
                       final suggestion = _suggestions[index];
@@ -2499,7 +2556,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                                   children: [
                                     Text(
                                       suggestion.displayName,
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
                                             fontWeight: FontWeight.w500,
                                           ),
                                     ),
@@ -2507,8 +2567,13 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                                       const SizedBox(height: 2),
                                       Text(
                                         suggestion.secondaryLine!,
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
                                             ),
                                       ),
                                     ],
@@ -2534,7 +2599,10 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withOpacity(0.2),
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2552,14 +2620,22 @@ class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBotto
                           children: [
                             Text(
                               'Use current location',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w500,
                                   ),
                             ),
                             Text(
                               _isOffline ? 'Coordinates only' : 'From GPS',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
                             ),
                           ],
