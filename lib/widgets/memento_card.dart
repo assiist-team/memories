@@ -9,7 +9,7 @@ import 'package:memories/services/timeline_image_cache_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Reusable card widget for displaying a Memento in the timeline
-/// 
+///
 /// Shows primary thumbnail from first asset, Memento badge, generated title fallback,
 /// and friendly timestamp identical to Stories. Uses the same card container styles
 /// as MomentCard and StoryCard for visual consistency.
@@ -41,12 +41,14 @@ class MementoCard extends ConsumerWidget {
     // Format: "Memento titled [title] captured [absolute date]"
     final absoluteTime = _formatAbsoluteTimestamp(memento.capturedAt, locale);
     final semanticLabel = StringBuffer('Memento');
-    if (memento.displayTitle.isNotEmpty && memento.displayTitle != 'Untitled Memento') {
+    if (memento.displayTitle.isNotEmpty &&
+        memento.displayTitle != 'Untitled Memento') {
       semanticLabel.write(' titled ${memento.displayTitle}');
     }
     semanticLabel.write(' captured $absoluteTime');
     if (memento.primaryMedia != null) {
-      semanticLabel.write(', ${memento.primaryMedia!.isPhoto ? 'photo' : 'video'}');
+      semanticLabel
+          .write(', ${memento.primaryMedia!.isPhoto ? 'photo' : 'video'}');
     }
     if (isQueuedOffline) {
       semanticLabel.write(', pending sync');
@@ -65,7 +67,8 @@ class MementoCard extends ConsumerWidget {
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 2,
           color: theme.colorScheme.surface,
-          shape: _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
+          shape:
+              _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
           child: InkWell(
             onTap: isPreviewOnlyOffline
                 ? () => _showNotAvailableOfflineMessage(context)
@@ -95,7 +98,8 @@ class MementoCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     // Footer badges
-                    _buildFooterBadges(context, isQueuedOffline, isPreviewOnlyOffline),
+                    _buildFooterBadges(
+                        context, isQueuedOffline, isPreviewOnlyOffline),
                   ],
                 ),
               ),
@@ -228,7 +232,8 @@ class MementoCard extends ConsumerWidget {
     return memoryType.icon;
   }
 
-  Widget _buildThumbnail(BuildContext context, SupabaseClient supabase, TimelineImageCacheService imageCache) {
+  Widget _buildThumbnail(BuildContext context, SupabaseClient supabase,
+      TimelineImageCacheService imageCache) {
     const thumbnailSize = 80.0;
     final memoryTypeIcon = _getMemoryTypeIcon();
 
@@ -253,7 +258,7 @@ class MementoCard extends ConsumerWidget {
 
     final media = memento.primaryMedia!;
     final bucket = media.isPhoto ? 'memories-photos' : 'memories-videos';
-    
+
     // Get signed URL from cache or generate new one
     final signedUrl = imageCache.getSignedUrl(
       supabase,
@@ -270,7 +275,7 @@ class MementoCard extends ConsumerWidget {
           return Semantics(
             label: media.isPhoto ? 'Photo thumbnail' : 'Video thumbnail',
             image: true,
-              child: Hero(
+            child: Hero(
               tag: heroTag,
               child: Stack(
                 children: [
@@ -309,7 +314,7 @@ class MementoCard extends ConsumerWidget {
                       ),
                       child: Icon(
                         memoryTypeIcon,
-                        size: 24,
+                        size: 16,
                         color: Colors.white,
                       ),
                     ),
@@ -401,7 +406,8 @@ class MementoCard extends ConsumerWidget {
         const SizedBox(height: 8),
         // Date - shows actual date
         Semantics(
-          label: 'Captured ${_formatAbsoluteTimestamp(memento.capturedAt, locale)}',
+          label:
+              'Captured ${_formatAbsoluteTimestamp(memento.capturedAt, locale)}',
           excludeSemantics: true,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -463,4 +469,3 @@ class MementoCard extends ConsumerWidget {
     return dateFormat.format(date);
   }
 }
-

@@ -39,12 +39,14 @@ class MomentCard extends ConsumerWidget {
     // Build semantic label with all relevant information
     final absoluteTime = _formatAbsoluteTimestamp(moment.capturedAt, locale);
     final semanticLabel = StringBuffer('Moment');
-    if (moment.displayTitle.isNotEmpty && moment.displayTitle != 'Untitled Moment') {
+    if (moment.displayTitle.isNotEmpty &&
+        moment.displayTitle != 'Untitled Moment') {
       semanticLabel.write(' titled ${moment.displayTitle}');
     }
     semanticLabel.write(' captured $absoluteTime');
     if (moment.primaryMedia != null) {
-      semanticLabel.write(', ${moment.primaryMedia!.isPhoto ? 'photo' : 'video'}');
+      semanticLabel
+          .write(', ${moment.primaryMedia!.isPhoto ? 'photo' : 'video'}');
     }
     if (isQueuedOffline) {
       semanticLabel.write(', pending sync');
@@ -61,7 +63,8 @@ class MomentCard extends ConsumerWidget {
         child: Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 2,
-          shape: _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
+          shape:
+              _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
           child: InkWell(
             onTap: isPreviewOnlyOffline
                 ? () => _showNotAvailableOfflineMessage(context)
@@ -91,7 +94,8 @@ class MomentCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     // Footer badges
-                    _buildFooterBadges(context, isQueuedOffline, isPreviewOnlyOffline),
+                    _buildFooterBadges(
+                        context, isQueuedOffline, isPreviewOnlyOffline),
                   ],
                 ),
               ),
@@ -304,7 +308,8 @@ class MomentCard extends ConsumerWidget {
     return memoryType.icon;
   }
 
-  Widget _buildThumbnail(BuildContext context, SupabaseClient supabase, TimelineImageCacheService imageCache) {
+  Widget _buildThumbnail(BuildContext context, SupabaseClient supabase,
+      TimelineImageCacheService imageCache) {
     const thumbnailSize = 80.0;
     final memoryTypeIcon = _getMemoryTypeIcon();
 
@@ -328,13 +333,13 @@ class MomentCard extends ConsumerWidget {
     }
 
     final media = moment.primaryMedia!;
-    
+
     // Branch on local vs remote media
     if (media.isLocal) {
       // Local file path - use Image.file or video placeholder
       final path = media.url.replaceFirst('file://', '');
       final file = File(path);
-      
+
       if (!file.existsSync()) {
         // File missing - show broken image placeholder
         return Semantics(
@@ -350,10 +355,10 @@ class MomentCard extends ConsumerWidget {
           ),
         );
       }
-      
+
       // Hero tag for transition animation to detail view
       final heroTag = 'moment_thumbnail_${moment.id}';
-      
+
       if (media.isPhoto) {
         return Semantics(
           label: 'Photo thumbnail',
@@ -394,7 +399,7 @@ class MomentCard extends ConsumerWidget {
                     ),
                     child: Icon(
                       memoryTypeIcon,
-                      size: 24,
+                      size: 16,
                       color: Colors.white,
                     ),
                   ),
@@ -433,7 +438,7 @@ class MomentCard extends ConsumerWidget {
                     ),
                     child: Icon(
                       memoryTypeIcon,
-                      size: 24,
+                      size: 16,
                       color: Colors.white,
                     ),
                   ),
@@ -470,10 +475,10 @@ class MomentCard extends ConsumerWidget {
         );
       }
     }
-    
+
     // Remote Supabase media - use signed URL
     final bucket = media.isPhoto ? 'memories-photos' : 'memories-videos';
-    
+
     // Get signed URL from cache or generate new one
     final signedUrl = imageCache.getSignedUrl(
       supabase,
@@ -490,81 +495,81 @@ class MomentCard extends ConsumerWidget {
           return Semantics(
             label: media.isPhoto ? 'Photo thumbnail' : 'Video thumbnail',
             image: true,
-          child: Hero(
-            tag: heroTag,
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    snapshot.data!,
-                    width: thumbnailSize,
-                    height: thumbnailSize,
-                    fit: BoxFit.cover,
-                    // Optimize image caching: cache at 2x resolution for retina displays
-                    cacheWidth: (thumbnailSize * 2).toInt(),
-                    cacheHeight: (thumbnailSize * 2).toInt(),
-                    errorBuilder: (context, error, stackTrace) {
-                      return Semantics(
-                        label: 'Failed to load thumbnail',
-                        child: Container(
-                          width: thumbnailSize,
-                          height: thumbnailSize,
-                          color: Theme.of(context).colorScheme.surfaceVariant,
-                          child: const Icon(Icons.broken_image),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Memory type icon overlay in upper right corner
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Icon(
-                      memoryTypeIcon,
-                      size: 24,
-                      color: Colors.white,
+            child: Hero(
+              tag: heroTag,
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      snapshot.data!,
+                      width: thumbnailSize,
+                      height: thumbnailSize,
+                      fit: BoxFit.cover,
+                      // Optimize image caching: cache at 2x resolution for retina displays
+                      cacheWidth: (thumbnailSize * 2).toInt(),
+                      cacheHeight: (thumbnailSize * 2).toInt(),
+                      errorBuilder: (context, error, stackTrace) {
+                        return Semantics(
+                          label: 'Failed to load thumbnail',
+                          child: Container(
+                            width: thumbnailSize,
+                            height: thumbnailSize,
+                            color: Theme.of(context).colorScheme.surfaceVariant,
+                            child: const Icon(Icons.broken_image),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                ),
-                // Video duration pill
-                if (media.isVideo)
+                  // Memory type icon overlay in upper right corner
                   Positioned(
-                    bottom: 4,
+                    top: 4,
                     right: 4,
-                    child: Semantics(
-                      label: 'Video',
-                      excludeSemantics: true,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'VIDEO',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        memoryTypeIcon,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  // Video duration pill
+                  if (media.isVideo)
+                    Positioned(
+                      bottom: 4,
+                      right: 4,
+                      child: Semantics(
+                        label: 'Video',
+                        excludeSemantics: true,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'VIDEO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
           );
         } else if (snapshot.hasError) {
           return Semantics(
@@ -621,7 +626,8 @@ class MomentCard extends ConsumerWidget {
         const SizedBox(height: 8),
         // Date - shows actual date
         Semantics(
-          label: 'Captured ${_formatAbsoluteTimestamp(moment.capturedAt, locale)}',
+          label:
+              'Captured ${_formatAbsoluteTimestamp(moment.capturedAt, locale)}',
           excludeSemantics: true,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -683,4 +689,3 @@ class MomentCard extends ConsumerWidget {
     return dateFormat.format(date);
   }
 }
-

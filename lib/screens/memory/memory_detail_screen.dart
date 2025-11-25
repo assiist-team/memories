@@ -710,11 +710,9 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     final hasMedia = memory.photos.isNotEmpty || memory.videos.isNotEmpty;
     final hasRelatedMemories =
         memory.relatedStories.isNotEmpty || memory.relatedMementos.isNotEmpty;
-    final memoryLocationLabel =
-        ref.watch(captureStateNotifierProvider.select(
-      (state) => state.editingMemoryId == memory.id
-          ? state.memoryLocationLabel
-          : null,
+    final memoryLocationLabel = ref.watch(captureStateNotifierProvider.select(
+      (state) =>
+          state.editingMemoryId == memory.id ? state.memoryLocationLabel : null,
     ));
 
     return CustomScrollView(
@@ -1008,7 +1006,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       capturedAt: detail.capturedAt,
       memoryDate: detail.memoryDate,
     );
-    
+
     // Load memory location data (where event happened) if available
     if (detail.memoryLocationData != null) {
       captureNotifier.setMemoryLocationFromData(detail.memoryLocationData);
@@ -1038,7 +1036,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     captureNotifier.loadMemoryForEdit(
       memoryId: memory.id,
       captureType: memory.memoryType,
-      inputText: memory.displayText, // Use displayText to fall back to processed text
+      inputText:
+          memory.displayText, // Use displayText to fall back to processed text
       tags: memory.tags,
       latitude: memory.locationData?.latitude,
       longitude: memory.locationData?.longitude,
@@ -1047,7 +1046,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       existingVideoUrls: existingVideoUrls,
       memoryDate: memory.memoryDate,
     );
-    
+
     // Load memory location data (where event happened) if available
     if (memory.memoryLocationData != null) {
       captureNotifier.setMemoryLocationFromData(memory.memoryLocationData);
@@ -1370,7 +1369,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             '[MemoryDetailScreen] Error suggests memory was deleted, emitting deleted event');
         final bus = ref.read(memoryTimelineUpdateBusProvider);
         bus.emitDeleted(memory.id);
-        
+
         // Navigate away
         if (context.mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
@@ -1416,7 +1415,6 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     );
   }
 
-
   /// Build title widget - editable when edit icon is tapped
   Widget _buildTitleWidget(
     BuildContext context,
@@ -1424,7 +1422,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     MemoryDetail memory,
   ) {
     final theme = Theme.of(context);
-    
+
     // If editing, show TextField with save/cancel buttons
     if (_isEditingTitle) {
       return Column(
@@ -1433,8 +1431,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           TextField(
             controller: _titleController,
             style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+              fontWeight: FontWeight.w600,
+            ),
             decoration: InputDecoration(
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1514,9 +1512,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     // Check if online (required for editing)
     final connectivityService = ref.read(connectivityServiceProvider);
     final isOnline = await connectivityService.isOnline();
-    
+
     if (!isOnline) {
-      _showOfflineTooltip(context, 'Editing title requires internet connection');
+      _showOfflineTooltip(
+          context, 'Editing title requires internet connection');
       return;
     }
 
@@ -1538,7 +1537,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   ) async {
     // Trim the title
     final trimmedTitle = newTitle.trim();
-    
+
     // Show loading indicator
     if (!context.mounted) return;
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -1564,7 +1563,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
     try {
       // Update via provider
-      final notifier = ref.read(memoryDetailNotifierProvider(memory.id).notifier);
+      final notifier =
+          ref.read(memoryDetailNotifierProvider(memory.id).notifier);
       // Pass null if empty, otherwise pass trimmed title
       await notifier.updateMemoryTitle(
         trimmedTitle.isEmpty ? null : trimmedTitle,
