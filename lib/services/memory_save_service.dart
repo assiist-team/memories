@@ -73,9 +73,13 @@ class MemorySaveService {
   ///
   /// Returns the saved memory ID and generated title (if any)
   /// Throws OfflineException if offline (caller should handle queueing)
+  /// 
+  /// [memoryLocationDataMap] - Optional full memory location data including city, state, country, provider, source.
+  /// If not provided, constructs a minimal map from CaptureState fields.
   Future<MemorySaveResult> saveMemory({
     required CaptureState state,
     SaveProgressCallback? onProgress,
+    Map<String, dynamic>? memoryLocationDataMap,
   }) async {
     // Check connectivity first
     final isOnline = await _connectivityService.isOnline();
@@ -252,6 +256,26 @@ class MemorySaveService {
         momentData['captured_location'] = locationWkt;
       }
 
+      // Add memory_location_data if available (where event happened)
+      if (memoryLocationDataMap != null) {
+        momentData['memory_location_data'] = memoryLocationDataMap;
+      } else if (state.memoryLocationLabel != null || 
+          state.memoryLocationLatitude != null || 
+          state.memoryLocationLongitude != null) {
+        // Fall back to constructing from basic fields
+        final memoryLocationData = <String, dynamic>{};
+        if (state.memoryLocationLabel != null) {
+          memoryLocationData['display_name'] = state.memoryLocationLabel;
+        }
+        if (state.memoryLocationLatitude != null) {
+          memoryLocationData['latitude'] = state.memoryLocationLatitude;
+        }
+        if (state.memoryLocationLongitude != null) {
+          memoryLocationData['longitude'] = state.memoryLocationLongitude;
+        }
+        momentData['memory_location_data'] = memoryLocationData;
+      }
+
       final response = await _supabase
           .from('memories')
           .insert(momentData)
@@ -381,10 +405,14 @@ class MemorySaveService {
   ///
   /// Returns the updated memory ID
   /// Throws OfflineException if offline
+  /// 
+  /// [memoryLocationDataMap] - Optional full memory location data including city, state, country, provider, source.
+  /// If not provided, constructs a minimal map from CaptureState fields.
   Future<MemorySaveResult> updateMemory({
     required String memoryId,
     required CaptureState state,
     SaveProgressCallback? onProgress,
+    Map<String, dynamic>? memoryLocationDataMap,
   }) async {
     // Check connectivity first
     final isOnline = await _connectivityService.isOnline();
@@ -587,6 +615,29 @@ class MemorySaveService {
       } else {
         // Clear location if not provided
         updateData['captured_location'] = null;
+      }
+
+      // Add memory_location_data if available (where event happened)
+      if (memoryLocationDataMap != null) {
+        updateData['memory_location_data'] = memoryLocationDataMap;
+      } else if (state.memoryLocationLabel != null || 
+          state.memoryLocationLatitude != null || 
+          state.memoryLocationLongitude != null) {
+        // Fall back to constructing from basic fields
+        final memoryLocationData = <String, dynamic>{};
+        if (state.memoryLocationLabel != null) {
+          memoryLocationData['display_name'] = state.memoryLocationLabel;
+        }
+        if (state.memoryLocationLatitude != null) {
+          memoryLocationData['latitude'] = state.memoryLocationLatitude;
+        }
+        if (state.memoryLocationLongitude != null) {
+          memoryLocationData['longitude'] = state.memoryLocationLongitude;
+        }
+        updateData['memory_location_data'] = memoryLocationData;
+      } else {
+        // Clear memory_location_data if not provided
+        updateData['memory_location_data'] = null;
       }
 
       await _supabase.from('memories').update(updateData).eq('id', memoryId);

@@ -10,17 +10,24 @@ import 'package:memories/models/memory_type.dart';
 class MemoryMetadataSection extends StatelessWidget {
   final MemoryDetail memory;
   final VoidCallback? onDateTap;
+  final VoidCallback? onLocationTap;
+  /// Memory location label (client-side only, from CaptureState when editing)
+  /// This is separate from memory.locationData which is persisted location
+  final String? memoryLocationLabel;
 
   const MemoryMetadataSection({
     super.key,
     required this.memory,
     this.onDateTap,
+    this.onLocationTap,
+    this.memoryLocationLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasLocation = memory.locationData?.formattedLocation != null;
+    final hasLocation = memoryLocationLabel != null ||
+        memory.locationData?.formattedLocation != null;
     final hasRelatedStories = memory.relatedStories.isNotEmpty;
     final hasRelatedMementos = memory.relatedMementos.isNotEmpty;
     final hasRelatedMemories = hasRelatedStories || hasRelatedMementos;
@@ -107,27 +114,44 @@ class MemoryMetadataSection extends StatelessWidget {
   }
 
   Widget _buildLocationRow(BuildContext context, ThemeData theme) {
-    final locationText = memory.locationData!.formattedLocation!;
+    // Prefer memoryLocationLabel (from CaptureState when editing) over persisted locationData
+    final locationText = memoryLocationLabel ??
+        memory.locationData?.formattedLocation ??
+        'Current location';
+    final isEditable = onLocationTap != null;
 
     return Semantics(
       label: 'Location: $locationText',
-      child: Row(
-        children: [
-          Icon(
-            Icons.location_on,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              locationText,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface,
+      button: isEditable,
+      child: InkWell(
+        onTap: isEditable ? onLocationTap : null,
+        borderRadius: BorderRadius.circular(4),
+        child: Row(
+          children: [
+            Icon(
+              Icons.location_on,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                locationText,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
               ),
             ),
-          ),
-        ],
+            if (isEditable) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.edit,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

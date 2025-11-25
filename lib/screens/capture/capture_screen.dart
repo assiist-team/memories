@@ -16,8 +16,11 @@ import 'package:memories/services/media_picker_service.dart';
 import 'package:memories/screens/memory/memory_detail_screen.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
-import 'package:memories/widgets/inspirational_quote.dart';
+// import 'package:memories/widgets/inspirational_quote.dart';
 import 'package:memories/widgets/save_button_success_checkmark.dart';
+import 'package:memories/models/location_suggestion.dart';
+import 'package:memories/services/location_suggestion_service.dart';
+import 'package:memories/services/connectivity_service.dart';
 
 /// Unified capture screen for creating Moments, Stories, and Mementos
 ///
@@ -369,16 +372,22 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       final editingMemoryId = finalState.editingMemoryId;
 
       try {
+        // Get full memory location data from notifier if available
+        final captureNotifier = ref.read(captureStateNotifierProvider.notifier);
+        final memoryLocationDataMap = captureNotifier.getMemoryLocationDataForSave();
+
         if (isEditing && editingMemoryId != null) {
           // Update existing memory
           result = await saveService.updateMemory(
             memoryId: editingMemoryId,
             state: finalState,
+            memoryLocationDataMap: memoryLocationDataMap,
           );
         } else {
           // Create new memory
           result = await saveService.saveMemory(
             state: finalState,
+            memoryLocationDataMap: memoryLocationDataMap,
           );
         }
       } on OfflineException {
@@ -625,13 +634,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Inspirational quote - hide when media/tags are present to make room
-                      InspirationalQuote(
-                        showQuote: state.photoPaths.isEmpty &&
-                            state.videoPaths.isEmpty &&
-                            state.tags.isEmpty &&
-                            (state.inputText == null ||
-                                state.inputText!.isEmpty),
-                      ),
+                      // InspirationalQuote(
+                      //   showQuote: state.photoPaths.isEmpty &&
+                      //       state.videoPaths.isEmpty &&
+                      //       state.tags.isEmpty &&
+                      //       (state.inputText == null ||
+                      //           state.inputText!.isEmpty),
+                      // ),
                       // Centered capture controls section
                       Expanded(
                         child: Column(
@@ -917,6 +926,25 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                             _MemoryDatePicker(
                               memoryDate: state.memoryDate ?? DateTime.now(),
                               onDateChanged: (date) => notifier.setMemoryDate(date),
+                            ),
+
+                            const SizedBox(height: 8),
+
+                            // Location picker row - full-width tappable bar
+                            _MemoryLocationPicker(
+                              memoryLocationLabel: state.memoryLocationLabel,
+                              gpsLatitude: state.latitude,
+                              gpsLongitude: state.longitude,
+                              locationStatus: state.locationStatus,
+                              onLocationChanged: ({
+                                String? label,
+                                double? latitude,
+                                double? longitude,
+                              }) => notifier.setMemoryLocationLabel(
+                                label: label,
+                                latitude: latitude,
+                                longitude: longitude,
+                              ),
                             ),
 
                             const SizedBox(height: 16),
@@ -2029,6 +2057,536 @@ class _MemoryDatePicker extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Location picker widget for selecting memory location
+class _MemoryLocationPicker extends StatelessWidget {
+  final String? memoryLocationLabel;
+  final double? gpsLatitude;
+  final double? gpsLongitude;
+  final String? locationStatus;
+  final void Function({String? label, double? latitude, double? longitude}) onLocationChanged;
+
+  const _MemoryLocationPicker({
+    required this.memoryLocationLabel,
+    this.gpsLatitude,
+    this.gpsLongitude,
+    this.locationStatus,
+    required this.onLocationChanged,
+  });
+
+  Future<void> _showLocationPicker(BuildContext context) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => _LocationPickerBottomSheet(
+        initialLabel: memoryLocationLabel,
+        gpsLatitude: gpsLatitude,
+        gpsLongitude: gpsLongitude,
+        locationStatus: locationStatus,
+        onLocationSaved: onLocationChanged,
+      ),
+    );
+  }
+
+  String _getDisplayText() {
+    if (memoryLocationLabel != null && memoryLocationLabel!.isNotEmpty) {
+      return memoryLocationLabel!;
+    }
+    
+    // Check GPS status
+    if (locationStatus == 'granted' && gpsLatitude != null && gpsLongitude != null) {
+      return 'Use current location';
+    }
+    
+    if (locationStatus == 'denied' || locationStatus == 'unavailable') {
+      return 'Location unavailable (tap to set)';
+    }
+    
+    // If we have no location status yet, we are not actually detecting anything.
+    // Default to unavailable to avoid implying background work that isn't happening.
+    return 'Location unavailable (tap to set)';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Location: ${_getDisplayText()}',
+      button: true,
+      child: InkWell(
+        onTap: () => _showLocationPicker(context),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.location_on,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _getDisplayText(),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for location picker
+class _LocationPickerBottomSheet extends ConsumerStatefulWidget {
+  final String? initialLabel;
+  final double? gpsLatitude;
+  final double? gpsLongitude;
+  final String? locationStatus;
+  final void Function({String? label, double? latitude, double? longitude}) onLocationSaved;
+
+  const _LocationPickerBottomSheet({
+    this.initialLabel,
+    this.gpsLatitude,
+    this.gpsLongitude,
+    this.locationStatus,
+    required this.onLocationSaved,
+  });
+
+  @override
+  ConsumerState<_LocationPickerBottomSheet> createState() => _LocationPickerBottomSheetState();
+}
+
+class _LocationPickerBottomSheetState extends ConsumerState<_LocationPickerBottomSheet> {
+  late final TextEditingController _textController;
+  bool _hasGpsLocation = false;
+  List<LocationSuggestion> _suggestions = [];
+  bool _isLoadingSuggestions = false;
+  bool _isOffline = false;
+  String? _lastSearchQuery;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(text: widget.initialLabel ?? '');
+    _hasGpsLocation = widget.locationStatus == 'granted' &&
+        widget.gpsLatitude != null &&
+        widget.gpsLongitude != null;
+    
+    // Check connectivity and load initial suggestions if online
+    _checkConnectivityAndSearch();
+    
+    // Listen to text changes for debounced search
+    _textController.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    _textController.removeListener(_onTextChanged);
+    _textController.dispose();
+    // Cancel any pending debounced searches
+    final suggestionService = ref.read(locationSuggestionServiceProvider);
+    suggestionService.cancelDebouncedSearch();
+    super.dispose();
+  }
+
+  Future<void> _checkConnectivityAndSearch() async {
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isOnline = await connectivityService.isOnline();
+    
+    setState(() {
+      _isOffline = !isOnline;
+    });
+
+    // If online and we have an initial label, try to search
+    if (isOnline && _textController.text.trim().length >= 2) {
+      _performSearch(_textController.text.trim());
+    }
+  }
+
+  void _onTextChanged() {
+    final query = _textController.text.trim();
+    
+    // Clear suggestions if query is too short
+    if (query.length < 2) {
+      setState(() {
+        _suggestions = [];
+        _isLoadingSuggestions = false;
+      });
+      return;
+    }
+
+    // Skip if same query (avoid duplicate searches)
+    if (query == _lastSearchQuery) {
+      return;
+    }
+
+    // Only search if online
+    if (!_isOffline) {
+      _performDebouncedSearch(query);
+    } else {
+      setState(() {
+        _suggestions = [];
+      });
+    }
+  }
+
+  Future<void> _performDebouncedSearch(String query) async {
+    setState(() {
+      _isLoadingSuggestions = true;
+      _lastSearchQuery = query;
+    });
+
+    try {
+      final suggestionService = ref.read(locationSuggestionServiceProvider);
+      
+      // Get user location for biasing if available
+      ({double latitude, double longitude})? userLocation;
+      if (_hasGpsLocation && widget.gpsLatitude != null && widget.gpsLongitude != null) {
+        userLocation = (
+          latitude: widget.gpsLatitude!,
+          longitude: widget.gpsLongitude!,
+        );
+      }
+
+      final results = await suggestionService.searchDebounced(
+        query: query,
+        limit: 5,
+        userLocation: userLocation,
+        delay: const Duration(milliseconds: 300),
+      );
+
+      // Only update if query hasn't changed
+      if (mounted && query == _textController.text.trim()) {
+        setState(() {
+          _suggestions = results;
+          _isLoadingSuggestions = false;
+        });
+      }
+    } catch (e) {
+      // On error, clear suggestions but don't show error to user
+      // They can still use manual text entry
+      if (mounted && query == _textController.text.trim()) {
+        setState(() {
+          _suggestions = [];
+          _isLoadingSuggestions = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.length < 2) {
+      setState(() {
+        _suggestions = [];
+        _isLoadingSuggestions = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingSuggestions = true;
+      _lastSearchQuery = query;
+    });
+
+    try {
+      final suggestionService = ref.read(locationSuggestionServiceProvider);
+      
+      ({double latitude, double longitude})? userLocation;
+      if (_hasGpsLocation && widget.gpsLatitude != null && widget.gpsLongitude != null) {
+        userLocation = (
+          latitude: widget.gpsLatitude!,
+          longitude: widget.gpsLongitude!,
+        );
+      }
+
+      final results = await suggestionService.search(
+        query: query,
+        limit: 5,
+        userLocation: userLocation,
+      );
+
+      if (mounted && query == _textController.text.trim()) {
+        setState(() {
+          _suggestions = results;
+          _isLoadingSuggestions = false;
+        });
+      }
+    } catch (e) {
+      if (mounted && query == _textController.text.trim()) {
+        setState(() {
+          _suggestions = [];
+          _isLoadingSuggestions = false;
+        });
+      }
+    }
+  }
+
+  void _handleUseCurrentLocation() {
+    if (_hasGpsLocation) {
+      widget.onLocationSaved(
+        label: 'Current location',
+        latitude: widget.gpsLatitude,
+        longitude: widget.gpsLongitude,
+      );
+      Navigator.pop(context);
+    }
+  }
+
+  void _handleSuggestionSelected(LocationSuggestion suggestion) {
+    // Fill the text field with the suggestion's display name
+    _textController.text = suggestion.displayName;
+    
+    // Save with the suggestion's coordinates and structured data
+    widget.onLocationSaved(
+      label: suggestion.displayName,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
+    );
+    Navigator.pop(context);
+  }
+
+  void _handleSave() {
+    final label = _textController.text.trim();
+    widget.onLocationSaved(
+      label: label.isEmpty ? null : label,
+      latitude: widget.gpsLatitude,
+      longitude: widget.gpsLongitude,
+    );
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Title
+            Text(
+              'Memory Location',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            // Search/input field
+            TextField(
+              controller: _textController,
+              decoration: InputDecoration(
+                hintText: 'Search for a place or type one in…',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _isLoadingSuggestions
+                    ? const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
+              ),
+              autofocus: widget.initialLabel == null || widget.initialLabel!.isEmpty,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _handleSave(),
+            ),
+            // Offline hint
+            if (_isOffline) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Text(
+                  'Offline: suggestions not available',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                      ),
+                ),
+              ),
+            ],
+            // Suggestions list
+            if (_suggestions.isNotEmpty && !_isOffline) ...[
+              const SizedBox(height: 16),
+              Flexible(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _suggestions.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                    ),
+                    itemBuilder: (context, index) {
+                      final suggestion = _suggestions[index];
+                      return InkWell(
+                        onTap: () => _handleSuggestionSelected(suggestion),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.place,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      suggestion.displayName,
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                    ),
+                                    if (suggestion.secondaryLine != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        suggestion.secondaryLine!,
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+            // Use current location option
+            if (_hasGpsLocation) ...[
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: _handleUseCurrentLocation,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.my_location,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Use current location',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                            Text(
+                              _isOffline ? 'Coordinates only' : 'From GPS',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            // Action buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _handleSave,
+                  child: const Text('Save location'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

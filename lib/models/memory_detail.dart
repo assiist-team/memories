@@ -26,6 +26,7 @@ class MemoryDetail {
   final DateTime memoryDate;
   final String? publicShareToken;
   final LocationData? locationData;
+  final MemoryLocationData? memoryLocationData;
   final List<PhotoMedia> photos;
   final List<VideoMedia> videos;
   final List<String> relatedStories;
@@ -52,6 +53,7 @@ class MemoryDetail {
     required this.memoryDate,
     this.publicShareToken,
     this.locationData,
+    this.memoryLocationData,
     required this.photos,
     required this.videos,
     required this.relatedStories,
@@ -139,6 +141,9 @@ class MemoryDetail {
       locationData: json['location_data'] != null
           ? LocationData.fromJson(json['location_data'] as Map<String, dynamic>)
           : null,
+      memoryLocationData: json['memory_location_data'] != null
+          ? MemoryLocationData.fromJson(json['memory_location_data'] as Map<String, dynamic>)
+          : null,
       photos: photos,
       videos: (json['videos'] as List<dynamic>?)
               ?.map((e) => VideoMedia.fromJson(e as Map<String, dynamic>))
@@ -161,6 +166,9 @@ class MemoryDetail {
 }
 
 /// Location data for a Memory
+/// 
+/// This represents captured location (where the phone was when capturing)
+/// For memory location (where the event happened), see MemoryLocationData
 class LocationData {
   final String? city;
   final String? state;
@@ -192,6 +200,74 @@ class LocationData {
 
   /// Get formatted location string (City, State)
   String? get formattedLocation {
+    if (city != null && state != null) {
+      return '$city, $state';
+    } else if (city != null) {
+      return city;
+    } else if (state != null) {
+      return state;
+    }
+    return null;
+  }
+}
+
+/// Memory location data (where the event happened, distinct from captured location)
+class MemoryLocationData {
+  final String? displayName;
+  final String? city;
+  final String? state;
+  final String? country;
+  final double? latitude;
+  final double? longitude;
+  final String? provider;
+  final String? source; // e.g., 'gps_suggestion', 'manual_text_only', 'manual_with_suggestion'
+
+  MemoryLocationData({
+    this.displayName,
+    this.city,
+    this.state,
+    this.country,
+    this.latitude,
+    this.longitude,
+    this.provider,
+    this.source,
+  });
+
+  factory MemoryLocationData.fromJson(Map<String, dynamic> json) {
+    return MemoryLocationData(
+      displayName: json['display_name'] as String?,
+      city: json['city'] as String?,
+      state: json['state'] as String?,
+      country: json['country'] as String?,
+      latitude: json['latitude'] != null
+          ? (json['latitude'] as num).toDouble()
+          : null,
+      longitude: json['longitude'] != null
+          ? (json['longitude'] as num).toDouble()
+          : null,
+      provider: json['provider'] as String?,
+      source: json['source'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (displayName != null) 'display_name': displayName,
+      if (city != null) 'city': city,
+      if (state != null) 'state': state,
+      if (country != null) 'country': country,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (provider != null) 'provider': provider,
+      if (source != null) 'source': source,
+    };
+  }
+
+  /// Get formatted location string - prefers displayName, falls back to city/state
+  String? get formattedLocation {
+    if (displayName != null && displayName!.isNotEmpty) {
+      return displayName;
+    }
     if (city != null && state != null) {
       return '$city, $state';
     } else if (city != null) {

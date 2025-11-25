@@ -67,6 +67,14 @@ class CaptureState {
   /// Location status: 'granted', 'denied', or 'unavailable'
   final String? locationStatus;
   
+  /// User-specified memory location label (where the event happened)
+  /// This is separate from captured_location (GPS coordinates at capture time)
+  final String? memoryLocationLabel;
+  
+  /// Memory location coordinates (optional, may come from GPS suggestion or manual entry)
+  final double? memoryLocationLatitude;
+  final double? memoryLocationLongitude;
+  
   /// Whether there are unsaved changes
   final bool hasUnsavedChanges;
   
@@ -110,6 +118,9 @@ class CaptureState {
     this.latitude,
     this.longitude,
     this.locationStatus,
+    this.memoryLocationLabel,
+    this.memoryLocationLatitude,
+    this.memoryLocationLongitude,
     this.hasUnsavedChanges = false,
     this.errorMessage,
     this.inputMode = InputMode.dictation,
@@ -140,6 +151,9 @@ class CaptureState {
     double? latitude,
     double? longitude,
     String? locationStatus,
+    String? memoryLocationLabel,
+    double? memoryLocationLatitude,
+    double? memoryLocationLongitude,
     bool? hasUnsavedChanges,
     String? errorMessage,
     InputMode? inputMode,
@@ -175,6 +189,9 @@ class CaptureState {
       latitude: clearLocation ? null : (latitude ?? this.latitude),
       longitude: clearLocation ? null : (longitude ?? this.longitude),
       locationStatus: clearLocation ? null : (locationStatus ?? this.locationStatus),
+      memoryLocationLabel: memoryLocationLabel ?? this.memoryLocationLabel,
+      memoryLocationLatitude: memoryLocationLatitude ?? this.memoryLocationLatitude,
+      memoryLocationLongitude: memoryLocationLongitude ?? this.memoryLocationLongitude,
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       inputMode: inputMode ?? this.inputMode,

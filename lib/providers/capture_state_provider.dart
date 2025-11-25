@@ -7,6 +7,9 @@ import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/dictation_service.dart';
 import 'package:memories/services/geolocation_service.dart';
 import 'package:memories/services/audio_cache_service.dart';
+import 'package:memories/services/location_lookup_service.dart';
+import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/models/memory_detail.dart';
 import 'package:memories/providers/feature_flags_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -518,6 +521,122 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       memoryDate: date,
       hasUnsavedChanges: true,
     );
+  }
+
+  /// Set memory location label and optional coordinates
+  /// 
+  /// [label] is the user-visible location name (e.g., "Grandma's house", "Brooklyn, NY")
+  /// [latitude] and [longitude] are optional coordinates
+  void setMemoryLocationLabel({
+    String? label,
+    double? latitude,
+    double? longitude,
+  }) {
+    state = state.copyWith(
+      memoryLocationLabel: label,
+      memoryLocationLatitude: latitude,
+      memoryLocationLongitude: longitude,
+      hasUnsavedChanges: true,
+    );
+  }
+
+  /// Set memory location from MemoryLocationData object
+  /// 
+  /// Updates all memory location fields from a MemoryLocationData object,
+  /// typically from reverse geocoding results.
+  void setMemoryLocationFromData(MemoryLocationData? locationData) {
+    if (locationData == null) {
+      state = state.copyWith(
+        memoryLocationLabel: null,
+        memoryLocationLatitude: null,
+        memoryLocationLongitude: null,
+        hasUnsavedChanges: true,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      memoryLocationLabel: locationData.displayName,
+      memoryLocationLatitude: locationData.latitude,
+      memoryLocationLongitude: locationData.longitude,
+      hasUnsavedChanges: true,
+    );
+    
+    // Store full location data in a map for saving to database
+    // This includes city, state, country, provider, source
+    _memoryLocationDataMap = locationData.toJson();
+  }
+
+  /// Internal storage for full memory location data (city, state, country, provider, source)
+  /// This is used by MemorySaveService to save all fields to memory_location_data JSONB
+  Map<String, dynamic>? _memoryLocationDataMap;
+
+  /// Get full memory location data map for saving to database
+  /// Returns the full location data including city, state, country, provider, source
+  /// Falls back to constructing a minimal map from basic fields if full data not available
+  Map<String, dynamic>? getMemoryLocationDataForSave() {
+    if (_memoryLocationDataMap != null) {
+      return _memoryLocationDataMap;
+    }
+    
+    // Fall back to constructing from basic fields
+    if (state.memoryLocationLabel != null || 
+        state.memoryLocationLatitude != null || 
+        state.memoryLocationLongitude != null) {
+      final map = <String, dynamic>{};
+      if (state.memoryLocationLabel != null) {
+        map['display_name'] = state.memoryLocationLabel;
+      }
+      if (state.memoryLocationLatitude != null) {
+        map['latitude'] = state.memoryLocationLatitude;
+      }
+      if (state.memoryLocationLongitude != null) {
+        map['longitude'] = state.memoryLocationLongitude;
+      }
+      return map;
+    }
+    
+    return null;
+  }
+
+  /// Reverse geocode memory location coordinates
+  /// 
+  /// Calls the reverse geocoding service to get place information from coordinates.
+  /// Only attempts if online and coordinates are available.
+  /// Falls back gracefully if offline or the call fails.
+  /// 
+  /// Updates memory location with all fields from the geocoding result.
+  Future<void> reverseGeocodeMemoryLocation() async {
+    // Only proceed if we have coordinates
+    if (state.memoryLocationLatitude == null || 
+        state.memoryLocationLongitude == null) {
+      return;
+    }
+
+    // Check connectivity
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isOnline = await connectivityService.isOnline();
+    if (!isOnline) {
+      // Fall back gracefully - don't update state
+      return;
+    }
+
+    try {
+      final locationLookupService = ref.read(locationLookupServiceProvider);
+      final result = await locationLookupService.reverseGeocode(
+        latitude: state.memoryLocationLatitude!,
+        longitude: state.memoryLocationLongitude!,
+      );
+
+      if (result != null) {
+        // Update state with full geocoded location data
+        setMemoryLocationFromData(result);
+      }
+    } catch (e) {
+      // Fall back gracefully - don't update state on error
+      // The user can still manually set a location label
+      print('Reverse geocoding failed: $e');
+    }
   }
 
   /// Set input mode (dictation or type)
