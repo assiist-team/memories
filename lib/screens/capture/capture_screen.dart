@@ -54,6 +54,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     // Initialize input text controller from capture state after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = ref.read(captureStateNotifierProvider);
+      final notifier = ref.read(captureStateNotifierProvider.notifier);
+      
       if (state.inputText != null && !_hasInitializedDescription) {
         _descriptionController.text = state.inputText!;
         _hasInitializedDescription = true;
@@ -67,6 +69,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       }
       // Initialize previous editing ID
       _previousEditingMemoryId = state.editingMemoryId;
+      
+      // Proactively capture location on screen load (if not already captured)
+      // Only capture if we don't already have location status set
+      if (state.locationStatus == null) {
+        notifier.captureLocation().catchError((e) {
+          // Silently handle errors - location capture is optional
+          debugPrint('[CaptureScreen] Failed to capture location on init: $e');
+        });
+      }
     });
   }
 
@@ -958,6 +969,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                               gpsLatitude: state.latitude,
                               gpsLongitude: state.longitude,
                               locationStatus: state.locationStatus,
+                              isReverseGeocoding: state.isReverseGeocoding,
                               onLocationChanged: ({
                                 String? label,
                                 double? latitude,
@@ -2106,6 +2118,7 @@ class _MemoryLocationPicker extends StatelessWidget {
   final double? gpsLatitude;
   final double? gpsLongitude;
   final String? locationStatus;
+  final bool isReverseGeocoding;
   final void Function({String? label, double? latitude, double? longitude})
       onLocationChanged;
 
@@ -2114,6 +2127,7 @@ class _MemoryLocationPicker extends StatelessWidget {
     this.gpsLatitude,
     this.gpsLongitude,
     this.locationStatus,
+    this.isReverseGeocoding = false,
     required this.onLocationChanged,
   });
 
@@ -2135,15 +2149,23 @@ class _MemoryLocationPicker extends StatelessWidget {
   }
 
   String _getDisplayText() {
+    // Show resolved location name if available
     if (memoryLocationLabel != null && memoryLocationLabel!.isNotEmpty) {
       return memoryLocationLabel!;
+    }
+
+    // Show "Detecting location..." while reverse geocoding is in progress
+    if (isReverseGeocoding) {
+      return 'Detecting location…';
     }
 
     // Check GPS status
     if (locationStatus == 'granted' &&
         gpsLatitude != null &&
         gpsLongitude != null) {
-      return 'Use current location';
+      // GPS captured but reverse geocoding hasn't completed yet (or failed)
+      // Show a more neutral message since we're auto-detecting
+      return 'Detecting location…';
     }
 
     if (locationStatus == 'denied' || locationStatus == 'unavailable') {
@@ -2186,11 +2208,31 @@ class _MemoryLocationPicker extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  _getDisplayText(),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _getDisplayText(),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                       ),
+                    ),
+                    if (isReverseGeocoding)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8.0),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Icon(
@@ -2589,8 +2631,9 @@ class _LocationPickerBottomSheetState
                 ),
               ),
             ],
-            // Use current location option
-            if (_hasGpsLocation) ...[
+            // Use GPS location option (shown when GPS is available and user wants to change/edit)
+            // Only show if we don't already have a location label set (to avoid redundancy)
+            if (_hasGpsLocation && widget.initialLabel == null) ...[
               const SizedBox(height: 16),
               InkWell(
                 onTap: _handleUseCurrentLocation,
@@ -2619,7 +2662,7 @@ class _LocationPickerBottomSheetState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Use current location',
+                              'Use GPS location',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyMedium
@@ -2628,7 +2671,7 @@ class _LocationPickerBottomSheetState
                                   ),
                             ),
                             Text(
-                              _isOffline ? 'Coordinates only' : 'From GPS',
+                              _isOffline ? 'Coordinates only' : 'From current position',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall

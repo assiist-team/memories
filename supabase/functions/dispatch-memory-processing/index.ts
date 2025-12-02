@@ -35,7 +35,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const isInternalTrigger = req.headers.get("X-Internal-Trigger") === "true";
+    
+    // Allow internal trigger calls (from database triggers) without auth header
+    // They will use the service role key from environment
+    if (!authHeader && !isInternalTrigger) {
       return new Response(
         JSON.stringify({
           code: "UNAUTHORIZED",
@@ -66,6 +70,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // Use service role key for admin access to claim jobs
+    // For internal trigger calls, construct auth header from service key
+    const effectiveAuthHeader = isInternalTrigger && supabaseServiceKey
+      ? `Bearer ${supabaseServiceKey}`
+      : authHeader || `Bearer ${supabaseServiceKey}`;
+    
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Claim scheduled jobs using SELECT ... FOR UPDATE SKIP LOCKED
@@ -143,7 +152,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": authHeader, // Pass through auth header
+              "Authorization": effectiveAuthHeader, // Use effective auth header (service key for internal calls)
             },
             body: JSON.stringify({
               memoryId: job.memory_id,

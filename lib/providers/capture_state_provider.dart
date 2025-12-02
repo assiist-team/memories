@@ -511,7 +511,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Capture location metadata
   ///
   /// Attempts to get current position and updates state with location
-  /// or location status (denied/unavailable)
+  /// or location status (denied/unavailable).
+  /// 
+  /// When GPS capture succeeds, automatically populates memory location fields
+  /// and triggers reverse geocoding (when online) to get human-readable location name.
   Future<void> captureLocation() async {
     final geolocationService = ref.read(geolocationServiceProvider);
 
@@ -519,12 +522,30 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       final position = await geolocationService.getCurrentPosition();
       final status = await geolocationService.getLocationStatus();
 
-      if (position != null) {
+      if (position != null && status == 'granted') {
+        // Update GPS coordinates
         state = state.copyWith(
           latitude: position.latitude,
           longitude: position.longitude,
           locationStatus: status,
         );
+
+        // Automatically populate memory location fields from GPS
+        // Only set if memory location hasn't been manually set yet
+        if (state.memoryLocationLatitude == null && 
+            state.memoryLocationLongitude == null) {
+          state = state.copyWith(
+            memoryLocationLatitude: position.latitude,
+            memoryLocationLongitude: position.longitude,
+          );
+
+          // Trigger reverse geocoding automatically (non-blocking, when online)
+          // This will update the memory location label with a human-readable name
+          reverseGeocodeMemoryLocation().catchError((e) {
+            // Silently handle errors - reverse geocoding is best-effort
+            debugPrint('[CaptureStateNotifier] Reverse geocoding failed: $e');
+          });
+        }
       } else {
         state = state.copyWith(
           locationStatus: status,
@@ -555,6 +576,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// 
   /// [label] is the user-visible location name (e.g., "Grandma's house", "Brooklyn, NY")
   /// [latitude] and [longitude] are optional coordinates
+  /// 
+  /// This is called when the user manually sets or changes the location,
+  /// so it clears the reverse geocoding flag and sets source to 'manual_update'.
   void setMemoryLocationLabel({
     String? label,
     double? latitude,
@@ -564,6 +588,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       memoryLocationLabel: label,
       memoryLocationLatitude: latitude,
       memoryLocationLongitude: longitude,
+      isReverseGeocoding: false, // Clear reverse geocoding flag on manual update
       hasUnsavedChanges: true,
     );
 
@@ -660,6 +685,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Falls back gracefully if offline or the call fails.
   /// 
   /// Updates memory location with all fields from the geocoding result.
+  /// Sets source to 'gps_auto' to indicate this was automatically detected.
   Future<void> reverseGeocodeMemoryLocation() async {
     // Only proceed if we have coordinates
     if (state.memoryLocationLatitude == null || 
@@ -675,6 +701,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       return;
     }
 
+    // Set reverse geocoding in progress
+    state = state.copyWith(isReverseGeocoding: true);
+
     try {
       final locationLookupService = ref.read(locationLookupServiceProvider);
       final result = await locationLookupService.reverseGeocode(
@@ -685,11 +714,19 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       if (result != null) {
         // Update state with full geocoded location data
         setMemoryLocationFromData(result);
+        
+        // Ensure source is set to 'gps_auto' for auto-detected locations
+        if (_memoryLocationDataMap != null) {
+          _memoryLocationDataMap!['source'] = 'gps_auto';
+        }
       }
     } catch (e) {
       // Fall back gracefully - don't update state on error
       // The user can still manually set a location label
-      print('Reverse geocoding failed: $e');
+      debugPrint('Reverse geocoding failed: $e');
+    } finally {
+      // Always clear reverse geocoding flag when done
+      state = state.copyWith(isReverseGeocoding: false);
     }
   }
 

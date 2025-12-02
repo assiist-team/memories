@@ -75,6 +75,9 @@ class CaptureState {
   final double? memoryLocationLatitude;
   final double? memoryLocationLongitude;
   
+  /// Whether reverse geocoding is currently in progress
+  final bool isReverseGeocoding;
+  
   /// Whether there are unsaved changes
   final bool hasUnsavedChanges;
   
@@ -126,6 +129,7 @@ class CaptureState {
     this.memoryLocationLabel,
     this.memoryLocationLatitude,
     this.memoryLocationLongitude,
+    this.isReverseGeocoding = false,
     this.hasUnsavedChanges = false,
     this.errorMessage,
     this.inputMode = InputMode.dictation,
@@ -160,6 +164,7 @@ class CaptureState {
     String? memoryLocationLabel,
     double? memoryLocationLatitude,
     double? memoryLocationLongitude,
+    bool? isReverseGeocoding,
     bool? hasUnsavedChanges,
     String? errorMessage,
     InputMode? inputMode,
@@ -200,6 +205,7 @@ class CaptureState {
       memoryLocationLabel: memoryLocationLabel ?? this.memoryLocationLabel,
       memoryLocationLatitude: memoryLocationLatitude ?? this.memoryLocationLatitude,
       memoryLocationLongitude: memoryLocationLongitude ?? this.memoryLocationLongitude,
+      isReverseGeocoding: isReverseGeocoding ?? this.isReverseGeocoding,
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       inputMode: inputMode ?? this.inputMode,

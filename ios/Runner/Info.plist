@@ -59,6 +59,8 @@
 	<string>Memories needs access to save photos and videos to your photo library.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Memories uses local network access to check connectivity status and sync your memories.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Memories needs access to your location to tag your memories with where they happened.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_dartobservatory._tcp</string>
