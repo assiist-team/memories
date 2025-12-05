@@ -13,6 +13,8 @@ import 'package:memories/providers/timeline_analytics_provider.dart';
 import 'package:memories/providers/memory_timeline_update_bus_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/providers/memory_processing_status_provider.dart';
+import 'package:memories/providers/unified_feed_provider.dart';
+import 'package:memories/providers/unified_feed_tab_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
 import 'package:memories/providers/supabase_provider.dart';
@@ -155,10 +157,11 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               );
             },
             loading: () => _buildLoadingState(context),
-            error: (error, stackTrace) => _buildErrorState(
+            error: (error, stackTrace) => _buildOfflineErrorState(
               context,
               error.toString(),
               ref,
+              connectivityService,
             ),
           ),
           // Floating action button for delete - disabled for offline queued items
@@ -224,7 +227,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
         switch (status.state) {
           case MemoryProcessingState.scheduled:
-            message = 'Processing scheduled…';
+            message = 'Processing scheduled�';
             background = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
             break;
@@ -235,20 +238,20 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               switch (phase) {
                 case 'title':
                 case 'title_generation':
-                  message = 'Generating title…';
+                  message = 'Generating title�';
                   break;
                 case 'text':
                 case 'text_processing':
-                  message = 'Processing text…';
+                  message = 'Processing text�';
                   break;
                 case 'narrative':
-                  message = 'Generating narrative…';
+                  message = 'Generating narrative�';
                   break;
                 default:
-                  message = 'Processing memory…';
+                  message = 'Processing memory�';
               }
             } else {
-              message = 'Processing memory…';
+              message = 'Processing memory�';
             }
             background = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
@@ -330,7 +333,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         textColor = Colors.orange.shade900;
         break;
       case OfflineSyncStatus.syncing:
-        title = 'Syncing…';
+        title = 'Syncing�';
         subtitle = 'We\'re uploading this memory in the background.';
         background = Colors.blue.shade50;
         textColor = Colors.blue.shade900;
@@ -597,6 +600,149 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     );
   }
 
+  /// Build error state specifically for offline queued memory errors
+  Widget _buildOfflineErrorState(
+    BuildContext context,
+    String errorMessage,
+    WidgetRef ref,
+    ConnectivityService connectivityService,
+  ) {
+    // Check if this is the "Offline queued memory not found" error
+    final isOfflineQueuedNotFound =
+        errorMessage.contains('Offline queued memory not found');
+
+    if (isOfflineQueuedNotFound) {
+      // Memory was removed from queue (likely synced or failed)
+      // Show helpful message with escape hatch
+      return CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                          Theme.of(context).colorScheme.error.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Theme.of(context).colorScheme.error,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Memory Already Synced',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onErrorContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'This memory has already synced to the server. Refresh the timeline to see the updated version.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            // Pop back to timeline
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
+                            // Refresh the timeline to remove stale entry
+                            final tabState =
+                                ref.read(unifiedFeedTabNotifierProvider);
+                            tabState.whenData((selectedTypes) {
+                              ref
+                                  .read(unifiedFeedControllerProvider(
+                                          selectedTypes)
+                                      .notifier)
+                                  .refresh();
+                            });
+                          },
+                          icon: const Icon(Icons.arrow_back),
+                          label: const Text('Go Back to Timeline'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onError,
+                          ),
+                        ),
+                      ),
+                      // Optionally try online provider if connectivity is available
+                      FutureBuilder<bool>(
+                        future: connectivityService.isOnline(),
+                        builder: (context, snapshot) {
+                          if (snapshot.data == true) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    // Try switching to online provider
+                                    // Note: This may not work if memoryId is localId, but worth trying
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            MemoryDetailScreen(
+                                          memoryId: widget.memoryId,
+                                          heroTag: widget.heroTag,
+                                          isOfflineQueued: false,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.cloud_download),
+                                  label: const Text('Try Loading from Server'),
+                                ),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // For other errors, fall back to standard error handling
+    return _buildErrorState(context, errorMessage, ref);
+  }
+
   Widget _buildErrorState(
     BuildContext context,
     String errorMessage,
@@ -779,7 +925,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                   text: memory.displayText,
                 ),
               ] else ...[
-                // Memory layout: description → media strip → media preview
+                // Memory layout: description ? media strip ? media preview
                 // Rich text description with markdown support and "Read more" functionality
                 // Handles empty/absent description gracefully (returns SizedBox.shrink)
                 RichTextContent(

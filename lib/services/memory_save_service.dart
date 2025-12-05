@@ -40,7 +40,8 @@ typedef SaveProgressCallback = void Function({
 MemorySaveService memorySaveService(MemorySaveServiceRef ref) {
   final supabase = ref.watch(supabaseClientProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
-  final offlineMemoryQueueService = ref.watch(offlineMemoryQueueServiceProvider);
+  final offlineMemoryQueueService =
+      ref.watch(offlineMemoryQueueServiceProvider);
   return MemorySaveService(
     supabase,
     connectivityService,
@@ -73,7 +74,7 @@ class MemorySaveService {
   ///
   /// Returns the saved memory ID and generated title (if any)
   /// Throws OfflineException if offline (caller should handle queueing)
-  /// 
+  ///
   /// [memoryLocationDataMap] - Optional full memory location data including city, state, country, provider, source.
   /// If not provided, constructs a minimal map from CaptureState fields.
   Future<MemorySaveResult> saveMemory({
@@ -259,8 +260,8 @@ class MemorySaveService {
       // Add memory_location_data if available (where event happened)
       if (memoryLocationDataMap != null) {
         momentData['memory_location_data'] = memoryLocationDataMap;
-      } else if (state.memoryLocationLabel != null || 
-          state.memoryLocationLatitude != null || 
+      } else if (state.memoryLocationLabel != null ||
+          state.memoryLocationLatitude != null ||
           state.memoryLocationLongitude != null) {
         // Fall back to constructing from basic fields
         final memoryLocationData = <String, dynamic>{};
@@ -345,7 +346,7 @@ class MemorySaveService {
       }
 
       // Use fallback title for now - will be updated when processing completes
-      generatedTitle = _getFallbackTitle(state.memoryType);
+      generatedTitle = _getFallbackTitle(state.memoryType, state.inputText);
 
       // Set fallback title immediately
       await _supabase.from('memories').update({
@@ -405,7 +406,7 @@ class MemorySaveService {
   ///
   /// Returns the updated memory ID
   /// Throws OfflineException if offline
-  /// 
+  ///
   /// [memoryLocationDataMap] - Optional full memory location data including city, state, country, provider, source.
   /// If not provided, constructs a minimal map from CaptureState fields.
   Future<MemorySaveResult> updateMemory({
@@ -620,8 +621,8 @@ class MemorySaveService {
       // Add memory_location_data if available (where event happened)
       if (memoryLocationDataMap != null) {
         updateData['memory_location_data'] = memoryLocationDataMap;
-      } else if (state.memoryLocationLabel != null || 
-          state.memoryLocationLatitude != null || 
+      } else if (state.memoryLocationLabel != null ||
+          state.memoryLocationLatitude != null ||
           state.memoryLocationLongitude != null) {
         // Fall back to constructing from basic fields
         final memoryLocationData = <String, dynamic>{};
@@ -669,18 +670,15 @@ class MemorySaveService {
             });
           } else {
             // Reset to scheduled state for reprocessing
-            await _supabase
-                .from('memory_processing_status')
-                .update({
-                  'state': 'scheduled',
-                  'attempts': 0,
-                  'last_error': null,
-                  'last_error_at': null,
-                  'metadata': {
-                    'memory_type': state.memoryType.apiValue,
-                  },
-                })
-                .eq('memory_id', memoryId);
+            await _supabase.from('memory_processing_status').update({
+              'state': 'scheduled',
+              'attempts': 0,
+              'last_error': null,
+              'last_error_at': null,
+              'metadata': {
+                'memory_type': state.memoryType.apiValue,
+              },
+            }).eq('memory_id', memoryId);
           }
         } catch (e) {
           // Log but don't fail - processing status insert is best-effort
@@ -697,7 +695,8 @@ class MemorySaveService {
           .maybeSingle();
 
       final existingTitle = existingMemory?['title'] as String?;
-      final fallbackTitle = _getFallbackTitle(state.memoryType);
+      final fallbackTitle =
+          _getFallbackTitle(state.memoryType, state.inputText);
       final hasCuratedTitle = existingTitle != null &&
           existingTitle.isNotEmpty &&
           existingTitle != fallbackTitle;
@@ -755,7 +754,16 @@ class MemorySaveService {
     }
   }
 
-  String _getFallbackTitle(MemoryType memoryType) {
+  String _getFallbackTitle(MemoryType memoryType, String? text) {
+    // If text is available, use first 60 characters
+    if (text != null && text.trim().isNotEmpty) {
+      final trimmed = text.trim();
+      if (trimmed.length <= 60) {
+        return trimmed;
+      }
+      return '${trimmed.substring(0, 60)}...';
+    }
+    // Fallback to appropriate "Untitled" text based on memory type
     switch (memoryType) {
       case MemoryType.moment:
         return 'Untitled Moment';

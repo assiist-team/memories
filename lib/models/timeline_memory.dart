@@ -82,7 +82,7 @@ class TimelineMemory {
     required this.offlineSyncStatus,
   });
 
-  /// Display title - prefers generated title, falls back to title, then appropriate "Untitled" text
+  /// Display title - prefers generated title, falls back to title, then first 60 chars of memory text
   String get displayTitle {
     if (generatedTitle != null && generatedTitle!.isNotEmpty) {
       return generatedTitle!;
@@ -90,7 +90,15 @@ class TimelineMemory {
     if (title.isNotEmpty) {
       return title;
     }
-    // Return appropriate untitled text based on memory type
+    // Fallback to first 60 characters of memory text
+    final text = displayText;
+    if (text != null && text.isNotEmpty) {
+      if (text.length <= 60) {
+        return text;
+      }
+      return '${text.substring(0, 60)}...';
+    }
+    // If no text available, return appropriate untitled text based on memory type
     switch (memoryType.toLowerCase()) {
       case 'story':
         return 'Untitled Story';
@@ -174,7 +182,8 @@ class TimelineMemory {
       nextCursorId: nextCursorId ?? this.nextCursorId,
       isOfflineQueued: isOfflineQueued ?? this.isOfflineQueued,
       isPreviewOnly: isPreviewOnly ?? this.isPreviewOnly,
-      isDetailCachedLocally: isDetailCachedLocally ?? this.isDetailCachedLocally,
+      isDetailCachedLocally:
+          isDetailCachedLocally ?? this.isDetailCachedLocally,
       localId: localId ?? this.localId,
       serverId: serverId ?? this.serverId,
       offlineSyncStatus: offlineSyncStatus ?? this.offlineSyncStatus,
@@ -182,7 +191,7 @@ class TimelineMemory {
   }
 
   /// Create from Supabase RPC response
-  /// 
+  ///
   /// For server-synced entries, offline fields are explicitly set to:
   /// - isOfflineQueued: false (server-synced entries are not queued)
   /// - isPreviewOnly: false (full detail available from server)
@@ -198,10 +207,9 @@ class TimelineMemory {
       inputText: json['input_text'] as String?,
       processedText: json['processed_text'] as String?,
       generatedTitle: json['generated_title'] as String?,
-      tags: (json['tags'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
+      tags:
+          (json['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+              [],
       memoryType: json['memory_type'] as String? ?? 'moment',
       capturedAt: DateTime.parse(json['captured_at'] as String),
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -218,7 +226,8 @@ class TimelineMemory {
           : null,
       snippetText: json['snippet_text'] as String?,
       memoryLocationData: json['memory_location_data'] != null
-          ? MemoryLocationData.fromJson(json['memory_location_data'] as Map<String, dynamic>)
+          ? MemoryLocationData.fromJson(
+              json['memory_location_data'] as Map<String, dynamic>)
           : null,
       nextCursorCapturedAt: json['next_cursor_captured_at'] != null
           ? DateTime.parse(json['next_cursor_captured_at'] as String)
@@ -226,7 +235,8 @@ class TimelineMemory {
       nextCursorId: json['next_cursor_id'] as String?,
       isOfflineQueued: false, // Server-synced entries are never queued
       isPreviewOnly: false, // Server-synced entries have full detail available
-      isDetailCachedLocally: false, // Phase 1: server entries not cached locally
+      isDetailCachedLocally:
+          false, // Phase 1: server entries not cached locally
       localId: null, // Server-synced entries don't have local IDs
       serverId: id, // Server ID is the id from JSON
       offlineSyncStatus: OfflineSyncStatus.synced, // Server entries are synced
@@ -301,7 +311,7 @@ class PrimaryMedia {
     final source = sourceString == 'localFile'
         ? MediaSource.localFile
         : MediaSource.supabaseStorage;
-    
+
     return PrimaryMedia(
       type: json['type'] as String,
       url: json['url'] as String,
@@ -315,11 +325,11 @@ class PrimaryMedia {
       'type': type,
       'url': url,
       'index': index,
-      'source': source == MediaSource.localFile ? 'localFile' : 'supabaseStorage',
+      'source':
+          source == MediaSource.localFile ? 'localFile' : 'supabaseStorage',
     };
   }
 
   bool get isPhoto => type == 'photo';
   bool get isVideo => type == 'video';
 }
-

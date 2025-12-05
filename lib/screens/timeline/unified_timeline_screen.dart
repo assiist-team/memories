@@ -16,6 +16,7 @@ import 'package:memories/widgets/global_search_bar.dart';
 import 'package:memories/widgets/search_results_list.dart';
 import 'package:memories/providers/search_provider.dart';
 import 'package:memories/screens/memory/memory_detail_screen.dart';
+import 'package:memories/services/offline_memory_queue_service.dart';
 
 /// Unified Timeline screen displaying Stories, Moments, and Mementos
 /// in a single reverse-chronological feed with filtering and grouping.
@@ -103,8 +104,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
       try {
         final viewport = RenderAbstractViewport.of(renderObject);
-        final targetOffset =
-            viewport.getOffsetToReveal(renderObject, 0).offset;
+        final targetOffset = viewport.getOffsetToReveal(renderObject, 0).offset;
         if (targetOffset <= scrollOffset + revealThreshold) {
           newActiveYear = year;
           break;
@@ -168,7 +168,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
             feedState.memories.any((memory) => memory.year == year);
         final cannotLoadMore = !feedState.hasMore ||
             feedState.state == UnifiedFeedState.paginationError;
-        final isCurrentlyLoading = feedState.state == UnifiedFeedState.appending;
+        final isCurrentlyLoading =
+            feedState.state == UnifiedFeedState.appending;
 
         if (hasYearLoaded || cannotLoadMore) {
           break;
@@ -210,7 +211,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     });
   }
 
-  void _navigateToDetail(TimelineMemory memory, int position) {
+  Future<void> _navigateToDetail(TimelineMemory memory, int position) async {
     final memoryType = _getMemoryType(memory.memoryType);
     ref.read(timelineAnalyticsServiceProvider).trackUnifiedFeedCardTap(
           memory.id,
@@ -221,17 +222,20 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
     // Check if we can open detail offline
     final tabState = ref.read(unifiedFeedTabNotifierProvider);
-    final selectedTypes = tabState.valueOrNull ?? {
-      MemoryType.story,
-      MemoryType.moment,
-      MemoryType.memento,
-    };
+    final selectedTypes = tabState.valueOrNull ??
+        {
+          MemoryType.story,
+          MemoryType.moment,
+          MemoryType.memento,
+        };
     final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
     final isOffline = feedState.isOffline;
-    
-    final canOpenDetailOffline = memory.isOfflineQueued || memory.isDetailCachedLocally;
-    final isPreviewOnlyOffline = isOffline && memory.isPreviewOnly && !canOpenDetailOffline;
-    
+
+    final canOpenDetailOffline =
+        memory.isOfflineQueued || memory.isDetailCachedLocally;
+    final isPreviewOnlyOffline =
+        isOffline && memory.isPreviewOnly && !canOpenDetailOffline;
+
     // If preview-only and offline, show message instead of navigating
     if (isPreviewOnlyOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,12 +249,54 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
     // Determine if this is an offline queued memory
     final isOfflineQueued = memory.isOfflineQueued;
-    
+
+    // Guard navigation: if offline queued, verify entry still exists in queue
+    if (isOfflineQueued && memory.localId != null) {
+      final queueService = ref.read(offlineMemoryQueueServiceProvider);
+      final queuedMemory = await queueService.getByLocalId(memory.localId!);
+
+      if (queuedMemory == null) {
+        // Queue entry was removed (likely synced or failed)
+        // If we have a serverId, redirect to online detail screen
+        if (memory.serverId != null) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => MemoryDetailScreen(
+                memoryId: memory.serverId!,
+                heroTag: memory.primaryMedia != null
+                    ? 'memory_thumbnail_${memory.id}'
+                    : null,
+                isOfflineQueued: false,
+              ),
+            ),
+          );
+          return;
+        }
+
+        // No serverId available, show error and refresh timeline
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('This memory has already synced. Refreshing timeline...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Refresh the feed to remove stale entry
+        ref
+            .read(unifiedFeedControllerProvider(selectedTypes).notifier)
+            .refresh();
+        return;
+      }
+    }
+
     // Use localId for queued items, serverId for synced items
-    final memoryId = isOfflineQueued 
+    final memoryId = isOfflineQueued
         ? (memory.localId ?? memory.effectiveId)
         : (memory.serverId ?? memory.effectiveId);
 
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MemoryDetailScreen(
@@ -275,7 +321,6 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
         return MemoryType.moment;
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -304,69 +349,78 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-              // Timeline content or search results
-              Column(
-                children: [
-                  // Spacer for search bar - will be measured dynamically
-                  const SizedBox(height: 64), // Approximate, will be adjusted
-                  // Timeline content or search results
-                  Expanded(
-                    child: Consumer(
-                      builder: (context, ref, child) {
-                        final searchQuery = ref.watch(searchQueryProvider);
-                        final searchResultsState = ref.watch(searchResultsProvider);
+                // Timeline content or search results
+                Column(
+                  children: [
+                    // Spacer for search bar - will be measured dynamically
+                    const SizedBox(height: 64), // Approximate, will be adjusted
+                    // Timeline content or search results
+                    Expanded(
+                      child: Consumer(
+                        builder: (context, ref, child) {
+                          final searchQuery = ref.watch(searchQueryProvider);
+                          final searchResultsState =
+                              ref.watch(searchResultsProvider);
 
-                        // Show search results if there's an active search query
-                        if (searchQuery.isNotEmpty) {
-                          // Show search results list if we have results or are loading
-                          if (searchResultsState.items.isNotEmpty ||
-                              searchResultsState.isLoading) {
-                            return SearchResultsList(
-                              results: searchResultsState.items,
-                              query: searchQuery,
-                              hasMore: searchResultsState.hasMore,
-                              isLoadingMore: searchResultsState.isLoadingMore,
-                            );
-                          }
-                          // Empty/error states are handled by GlobalSearchBar
-                          return const SizedBox.shrink();
-                        }
-
-                        // Otherwise show timeline content
-                        // Watch selected types changes
-                        final tabState = ref.watch(unifiedFeedTabNotifierProvider);
-
-                        return tabState.when(
-                          data: (selectedTypes) {
-                            // Get the controller for the selected types
-                            final controller = unifiedFeedControllerProvider(selectedTypes);
-                            final feedState = ref.watch(controller);
-
-                            // Handle selection change - update filter which will reload
-                            if (_previousSelectedTypes != selectedTypes) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                ref.read(controller.notifier).setFilter(selectedTypes);
-                              });
-                              _previousSelectedTypes = selectedTypes;
-                            } else if (feedState.state == UnifiedFeedState.initial) {
-                              // Initial load for the current selection
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                ref.read(controller.notifier).loadInitial();
-                              });
+                          // Show search results if there's an active search query
+                          if (searchQuery.isNotEmpty) {
+                            // Show search results list if we have results or are loading
+                            if (searchResultsState.items.isNotEmpty ||
+                                searchResultsState.isLoading) {
+                              return SearchResultsList(
+                                results: searchResultsState.items,
+                                query: searchQuery,
+                                hasMore: searchResultsState.hasMore,
+                                isLoadingMore: searchResultsState.isLoadingMore,
+                              );
                             }
+                            // Empty/error states are handled by GlobalSearchBar
+                            return const SizedBox.shrink();
+                          }
 
-                            return _buildTimelineContent(feedState, selectedTypes);
-                          },
-                          loading: () => const UnifiedFeedSkeletonList(),
-                          error: (error, stack) => _buildErrorState(
-                            'Failed to load tab selection: ${error.toString()}',
-                          ),
-                        );
-                      },
+                          // Otherwise show timeline content
+                          // Watch selected types changes
+                          final tabState =
+                              ref.watch(unifiedFeedTabNotifierProvider);
+
+                          return tabState.when(
+                            data: (selectedTypes) {
+                              // Get the controller for the selected types
+                              final controller =
+                                  unifiedFeedControllerProvider(selectedTypes);
+                              final feedState = ref.watch(controller);
+
+                              // Handle selection change - update filter which will reload
+                              if (_previousSelectedTypes != selectedTypes) {
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  ref
+                                      .read(controller.notifier)
+                                      .setFilter(selectedTypes);
+                                });
+                                _previousSelectedTypes = selectedTypes;
+                              } else if (feedState.state ==
+                                  UnifiedFeedState.initial) {
+                                // Initial load for the current selection
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  ref.read(controller.notifier).loadInitial();
+                                });
+                              }
+
+                              return _buildTimelineContent(
+                                  feedState, selectedTypes);
+                            },
+                            loading: () => const UnifiedFeedSkeletonList(),
+                            error: (error, stack) => _buildErrorState(
+                              'Failed to load tab selection: ${error.toString()}',
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
                 // Global search bar positioned on top - spans full width including over year sidebar
                 const Positioned(
                   top: 0,
@@ -412,9 +466,11 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     // Check if offline
     final tabState = ref.read(unifiedFeedTabNotifierProvider);
     final isOffline = tabState.whenData((selectedTypes) {
-      final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
-      return feedState.isOffline;
-    }).valueOrNull ?? false;
+          final feedState =
+              ref.read(unifiedFeedControllerProvider(selectedTypes));
+          return feedState.isOffline;
+        }).valueOrNull ??
+        false;
 
     return RefreshIndicator(
       onRefresh: _onRefresh,
@@ -424,14 +480,19 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
             ? _OfflineEmptyTimelineMessage(
                 onCaptureTap: () {
                   // Switch to capture tab in main navigation
-                  ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
+                  ref
+                      .read(mainNavigationTabNotifierProvider.notifier)
+                      .switchToCapture();
                 },
               )
             : UnifiedFeedEmptyState(
-                currentFilter: currentFilters.length == 1 ? currentFilters.first : null,
+                currentFilter:
+                    currentFilters.length == 1 ? currentFilters.first : null,
                 onCaptureTap: () {
                   // Switch to capture tab in main navigation
-                  ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
+                  ref
+                      .read(mainNavigationTabNotifierProvider.notifier)
+                      .switchToCapture();
                 },
               ),
       ),
@@ -495,7 +556,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                         final tabState =
                             ref.read(unifiedFeedTabNotifierProvider);
                         tabState.whenData((selectedTypes) {
-                          final controller = unifiedFeedControllerProvider(selectedTypes);
+                          final controller =
+                              unifiedFeedControllerProvider(selectedTypes);
                           ref.read(controller.notifier).loadInitial();
                         });
                       },
@@ -570,14 +632,15 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                 ...groupedMemories.entries.expand((entry) {
                   final year = entry.key;
                   final monthMap = entry.value;
-                  
+
                   return monthMap.entries.expand((monthEntry) {
                     final month = monthEntry.key;
                     final monthMemories = monthEntry.value;
-                    final sortedMonths = monthMap.keys.toList()..sort((a, b) => b.compareTo(a));
+                    final sortedMonths = monthMap.keys.toList()
+                      ..sort((a, b) => b.compareTo(a));
                     final monthIndex = sortedMonths.indexOf(month);
                     final isFirstMonth = monthIndex == 0;
-                    
+
                     return [
                       // Add invisible marker for year start (first month of each year)
                       if (isFirstMonth)
@@ -606,100 +669,107 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                     ];
                   });
                 }),
-          // Loading more indicator
-          if (isLoadingMore)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-            ),
-          // Pagination error with retry
-          if (isPaginationError && memories.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Card(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Failed to load more memories',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onErrorContainer,
+                // Loading more indicator
+                if (isLoadingMore)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  ),
+                // Pagination error with retry
+                if (isPaginationError && memories.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onErrorContainer,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Failed to load more memories',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onErrorContainer,
+                                          ),
                                     ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: () {
+                                  final tabState =
+                                      ref.read(unifiedFeedTabNotifierProvider);
+                                  tabState.whenData((selectedTypes) {
+                                    final controller =
+                                        unifiedFeedControllerProvider(
+                                            selectedTypes);
+                                    ref.read(controller.notifier).loadMore();
+                                  });
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                // End of list message
+                if (!state.hasMore && memories.isNotEmpty && !isPaginationError)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Text(
+                              "You've reached the beginning",
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                // Switch to capture tab in main navigation
+                                ref
+                                    .read(mainNavigationTabNotifierProvider
+                                        .notifier)
+                                    .switchToCapture();
+                              },
+                              child: const Text('Capture a new memory'),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: () {
-                            final tabState =
-                                ref.read(unifiedFeedTabNotifierProvider);
-                            tabState.whenData((selectedTypes) {
-                              final controller =
-                                  unifiedFeedControllerProvider(selectedTypes);
-                              ref.read(controller.notifier).loadMore();
-                            });
-                          },
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-          // End of list message
-          if (!state.hasMore && memories.isNotEmpty && !isPaginationError)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Text(
-                        "You've reached the beginning",
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Switch to capture tab in main navigation
-                          ref.read(mainNavigationTabNotifierProvider.notifier).switchToCapture();
-                        },
-                        child: const Text('Capture a new memory'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
               ],
             ),
           ),
@@ -707,7 +777,6 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
       ],
     );
   }
-
 
   /// Group memories by Year → Month (no season grouping)
   Map<int, Map<int, List<TimelineMemory>>> _groupMemoriesByYearAndMonth(
@@ -725,7 +794,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
 
     // Sort months within each year (descending - most recent first)
     for (final yearMap in grouped.values) {
-      final sortedMonths = yearMap.keys.toList()..sort((a, b) => b.compareTo(a));
+      final sortedMonths = yearMap.keys.toList()
+        ..sort((a, b) => b.compareTo(a));
       final sortedMap = <int, List<TimelineMemory>>{};
       for (final month in sortedMonths) {
         sortedMap[month] = yearMap[month]!;

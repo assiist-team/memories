@@ -12,7 +12,7 @@ import 'package:memories/models/memory_detail.dart';
 /// - Avoid full-media caching logic: we only surface whatever local paths exist
 class OfflineQueueToTimelineAdapter {
   /// Convert a QueuedMemory to a TimelineMemory
-  /// 
+  ///
   /// Unified method that handles all memory types (moments, mementos, stories).
   /// For stories, considers audioPath as potential primary media.
   static TimelineMemory fromQueuedMemory(QueuedMemory queued) {
@@ -20,11 +20,13 @@ class OfflineQueueToTimelineAdapter {
     final offlineSyncStatus = _mapStatusToOfflineSyncStatus(queued.status);
 
     // Generate title/snippet from inputText
-    final title = _generateTitleFromInputText(queued.inputText, queued.memoryType);
+    final title =
+        _generateTitleFromInputText(queued.inputText, queued.memoryType);
     final snippet = _generateSnippetFromInputText(queued.inputText);
 
     // Use memoryDate if available, otherwise fall back to capturedAt
-    final effectiveDate = queued.memoryDate ?? queued.capturedAt ?? queued.createdAt;
+    final effectiveDate =
+        queued.memoryDate ?? queued.capturedAt ?? queued.createdAt;
     final year = effectiveDate.year;
     final season = _getSeason(effectiveDate.month);
     final month = effectiveDate.month;
@@ -49,7 +51,8 @@ class OfflineQueueToTimelineAdapter {
     } else if (queued.memoryType == 'story' && queued.audioPath != null) {
       // For stories, audio can be considered primary media
       primaryMedia = PrimaryMedia(
-        type: 'video', // Use video type for audio (or create audio type if needed)
+        type:
+            'video', // Use video type for audio (or create audio type if needed)
         url: queued.audioPath!,
         index: 0,
         source: MediaSource.localFile,
@@ -100,15 +103,15 @@ class OfflineQueueToTimelineAdapter {
   }
 
   /// Generate a title from input text
-  static String _generateTitleFromInputText(String? inputText, String memoryType) {
+  static String _generateTitleFromInputText(
+      String? inputText, String memoryType) {
     if (inputText != null && inputText.trim().isNotEmpty) {
-      // Use first line or first 50 chars as title
-      final lines = inputText.trim().split('\n');
-      final firstLine = lines.first.trim();
-      if (firstLine.length > 50) {
-        return '${firstLine.substring(0, 50)}...';
+      // Use first 60 characters of text
+      final trimmed = inputText.trim();
+      if (trimmed.length <= 60) {
+        return trimmed;
       }
-      return firstLine;
+      return '${trimmed.substring(0, 60)}...';
     }
     // Fallback to untitled based on memory type
     switch (memoryType.toLowerCase()) {
@@ -158,4 +161,3 @@ class OfflineQueueToTimelineAdapter {
     }
   }
 }
-

@@ -88,7 +88,8 @@ class UnifiedFeedRepository {
       // This is a workaround since there's no direct "get by ID" endpoint
       // In the future, we could add a dedicated RPC for this
       final params = <String, dynamic>{
-        'p_batch_size': 100, // Large batch to increase chance of finding the memory
+        'p_batch_size':
+            100, // Large batch to increase chance of finding the memory
         'p_memory_type': 'all',
       };
 
@@ -255,13 +256,14 @@ class UnifiedFeedRepository {
     final queued = await _offlineQueueService.getAllQueued();
     for (final item in queued) {
       final type = MemoryTypeExtension.fromApiValue(item.memoryType);
-      if (effectiveFilters.contains(type)) {
+      // Filter by memory type and exclude completed entries (they should be removed from queue)
+      // This allows offline edits (which have serverId but status != 'completed') to appear
+      if (effectiveFilters.contains(type) && item.status != 'completed') {
         results.add(OfflineQueueToTimelineAdapter.fromQueuedMemory(item));
       }
     }
 
-    // Phase 1: filter out already-synced queue entries (if any)
-    return results.where((m) => m.serverId == null).toList();
+    return results;
   }
 
   /// Fetch preview-index memories as timeline items
@@ -340,7 +342,7 @@ class UnifiedFeedRepository {
       // Deduplicate by serverId: if a preview entry has a serverId that matches a queued entry,
       // prefer the queued entry (it has full detail). Also ensure at most one entry per serverId.
       final deduplicated = _deduplicateByServerId([...queued, ...previews]);
-      
+
       final merged = deduplicated
         ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
 
@@ -369,7 +371,7 @@ class UnifiedFeedRepository {
     final deduplicated = _deduplicateByServerId(
       [...onlineResult.memories, ...queued],
     );
-    
+
     final merged = deduplicated
       ..sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
 
@@ -429,7 +431,7 @@ class UnifiedFeedRepository {
     if (existing.isOfflineQueued && !newEntry.isOfflineQueued) {
       return true; // Replace queued with server-backed
     }
-    
+
     // If both are queued
     if (existing.isOfflineQueued && newEntry.isOfflineQueued) {
       // Both queued - prefer the one with full detail cached locally
@@ -442,13 +444,13 @@ class UnifiedFeedRepository {
       // If both have same detail cache status, prefer newer (later in list = more recent fetch)
       return true;
     }
-    
+
     // If both are server-backed, prefer the newer entry (handles memory updates)
     // The newEntry appears later in the list, so it's from a more recent fetch
     if (!existing.isOfflineQueued && !newEntry.isOfflineQueued) {
       return true; // Always replace with newer server-backed entry
     }
-    
+
     // Fallback: prefer existing (first seen)
     return false;
   }

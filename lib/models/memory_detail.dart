@@ -62,7 +62,7 @@ class MemoryDetail {
     this.audioDuration,
   });
 
-  /// Display title - prefers generated title, falls back to title, then "Untitled Story", "Untitled Memento", or "Untitled Moment"
+  /// Display title - prefers generated title, falls back to title, then first 60 chars of memory text
   String get displayTitle {
     if (generatedTitle != null && generatedTitle!.isNotEmpty) {
       return generatedTitle!;
@@ -70,7 +70,15 @@ class MemoryDetail {
     if (title.isNotEmpty) {
       return title;
     }
-    // Use appropriate fallback based on memory type
+    // Fallback to first 60 characters of memory text
+    final text = displayText;
+    if (text != null && text.isNotEmpty) {
+      if (text.length <= 60) {
+        return text;
+      }
+      return '${text.substring(0, 60)}...';
+    }
+    // If no text available, use appropriate fallback based on memory type
     if (memoryType == 'story') {
       return 'Untitled Story';
     } else if (memoryType == 'memento') {
@@ -142,7 +150,8 @@ class MemoryDetail {
           ? LocationData.fromJson(json['location_data'] as Map<String, dynamic>)
           : null,
       memoryLocationData: json['memory_location_data'] != null
-          ? MemoryLocationData.fromJson(json['memory_location_data'] as Map<String, dynamic>)
+          ? MemoryLocationData.fromJson(
+              json['memory_location_data'] as Map<String, dynamic>)
           : null,
       photos: photos,
       videos: (json['videos'] as List<dynamic>?)
@@ -166,7 +175,7 @@ class MemoryDetail {
 }
 
 /// Location data for a Memory
-/// 
+///
 /// This represents captured location (where the phone was when capturing)
 /// For memory location (where the event happened), see MemoryLocationData
 class LocationData {
@@ -220,7 +229,8 @@ class MemoryLocationData {
   final double? latitude;
   final double? longitude;
   final String? provider;
-  final String? source; // e.g., 'gps_suggestion', 'manual_text_only', 'manual_with_suggestion'
+  final String?
+      source; // e.g., 'gps_suggestion', 'manual_text_only', 'manual_with_suggestion'
 
   MemoryLocationData({
     this.displayName,

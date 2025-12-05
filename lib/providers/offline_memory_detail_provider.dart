@@ -123,14 +123,12 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
   /// Falls back to appropriate "Untitled" text based on memory type
   String _generateTitleFromInputText(String? inputText, String memoryType) {
     if (inputText != null && inputText.trim().isNotEmpty) {
-      // Use first line or first 50 characters as title
-      final lines = inputText.trim().split('\n');
-      final firstLine = lines.first.trim();
-      if (firstLine.isNotEmpty) {
-        return firstLine.length > 50
-            ? '${firstLine.substring(0, 50)}...'
-            : firstLine;
+      // Use first 60 characters of text
+      final trimmed = inputText.trim();
+      if (trimmed.length <= 60) {
+        return trimmed;
       }
+      return '${trimmed.substring(0, 60)}...';
     }
 
     // Fallback to appropriate "Untitled" text

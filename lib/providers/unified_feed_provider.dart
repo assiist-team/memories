@@ -141,17 +141,19 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       try {
         final connectivityService = ref.read(connectivityServiceProvider);
         final isOnline = await connectivityService.isOnline();
-        
-        if (isOnline && (state.state == UnifiedFeedState.ready ||
-            state.state == UnifiedFeedState.empty)) {
+
+        if (isOnline &&
+            (state.state == UnifiedFeedState.ready ||
+                state.state == UnifiedFeedState.empty)) {
           final repository = ref.read(unifiedFeedRepositoryProvider);
-          final serverBackedMemory = await repository.fetchMemoryById(event.serverId);
-          
+          final serverBackedMemory =
+              await repository.fetchMemoryById(event.serverId);
+
           if (serverBackedMemory != null) {
             // Find and replace the queued entry with server-backed version
-            final memoryIndex = state.memories.indexWhere((m) =>
-                m.isOfflineQueued && m.localId == event.localId);
-            
+            final memoryIndex = state.memories.indexWhere(
+                (m) => m.isOfflineQueued && m.localId == event.localId);
+
             if (memoryIndex != -1) {
               final updatedMemories = List<TimelineMemory>.from(state.memories);
               updatedMemories[memoryIndex] = serverBackedMemory;
@@ -205,21 +207,22 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         try {
           final connectivityService = ref.read(connectivityServiceProvider);
           final isOnline = await connectivityService.isOnline();
-          
+
           if (state.state == UnifiedFeedState.ready ||
               state.state == UnifiedFeedState.empty) {
             if (isOnline) {
               // Online: Fetch the specific memory by ID and prepend to feed
               final repository = ref.read(unifiedFeedRepositoryProvider);
-              final newMemory = await repository.fetchMemoryById(event.memoryId);
-              
+              final newMemory =
+                  await repository.fetchMemoryById(event.memoryId);
+
               if (newMemory != null) {
                 // Check if memory already exists in feed (dedupe)
                 final existingIndex = state.memories.indexWhere((m) =>
                     m.id == event.memoryId ||
                     m.serverId == event.memoryId ||
                     m.localId == event.memoryId);
-                
+
                 if (existingIndex == -1) {
                   // Prepend new memory to the top of the feed
                   final updatedMemories = [newMemory, ...state.memories];
@@ -228,7 +231,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
                       '[UnifiedFeedController] Prepended new memory ${event.memoryId} to feed');
                 } else {
                   // Memory already exists, update it in-place
-                  final updatedMemories = List<TimelineMemory>.from(state.memories);
+                  final updatedMemories =
+                      List<TimelineMemory>.from(state.memories);
                   updatedMemories[existingIndex] = newMemory;
                   state = state.copyWith(memories: updatedMemories);
                   debugPrint(
@@ -253,24 +257,26 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         try {
           final connectivityService = ref.read(connectivityServiceProvider);
           final isOnline = await connectivityService.isOnline();
-          
+
           if (state.state == UnifiedFeedState.ready ||
               state.state == UnifiedFeedState.empty) {
             if (isOnline) {
               // Online: Fetch the specific memory by ID for deterministic update
               final repository = ref.read(unifiedFeedRepositoryProvider);
-              final updatedMemory = await repository.fetchMemoryById(event.memoryId);
-              
+              final updatedMemory =
+                  await repository.fetchMemoryById(event.memoryId);
+
               if (updatedMemory != null) {
                 // Update the memory in-place if it exists in the current feed
                 final memoryIndex = state.memories.indexWhere((m) =>
                     m.id == event.memoryId ||
                     m.serverId == event.memoryId ||
                     m.localId == event.memoryId);
-                
+
                 if (memoryIndex != -1) {
                   // Replace the existing memory with the updated one
-                  final updatedMemories = List<TimelineMemory>.from(state.memories);
+                  final updatedMemories =
+                      List<TimelineMemory>.from(state.memories);
                   updatedMemories[memoryIndex] = updatedMemory;
                   state = state.copyWith(memories: updatedMemories);
                   debugPrint(
@@ -320,7 +326,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     final userId = supabase.auth.currentUser?.id;
 
     if (userId == null) {
-      debugPrint('[UnifiedFeedController] No user ID, skipping realtime subscription');
+      debugPrint(
+          '[UnifiedFeedController] No user ID, skipping realtime subscription');
       return;
     }
 
@@ -358,7 +365,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         )
         .subscribe();
 
-    debugPrint('[UnifiedFeedController] Realtime subscription set up for user $userId');
+    debugPrint(
+        '[UnifiedFeedController] Realtime subscription set up for user $userId');
   }
 
   Future<void> _handleMemoryUpdate(PostgresChangePayload payload) async {
@@ -385,25 +393,27 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         }
       }
 
-      debugPrint('[UnifiedFeedController] Memory updated via realtime: $memoryId');
+      debugPrint(
+          '[UnifiedFeedController] Memory updated via realtime: $memoryId');
 
       // Fetch the updated memory and update it in-place for immediate refresh
       try {
         final connectivityService = ref.read(connectivityServiceProvider);
         final isOnline = await connectivityService.isOnline();
-        
-        if (isOnline && (state.state == UnifiedFeedState.ready ||
-            state.state == UnifiedFeedState.empty)) {
+
+        if (isOnline &&
+            (state.state == UnifiedFeedState.ready ||
+                state.state == UnifiedFeedState.empty)) {
           final repository = ref.read(unifiedFeedRepositoryProvider);
           final updatedMemory = await repository.fetchMemoryById(memoryId);
-          
+
           if (updatedMemory != null) {
             // Update the memory in-place if it exists in the current feed
             final memoryIndex = state.memories.indexWhere((m) =>
                 m.id == memoryId ||
                 m.serverId == memoryId ||
                 m.localId == memoryId);
-            
+
             if (memoryIndex != -1) {
               // Replace the existing memory with the updated one
               final updatedMemories = List<TimelineMemory>.from(state.memories);
@@ -428,7 +438,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
           removeMemory(memoryId);
         }
       } catch (e) {
-        debugPrint('[UnifiedFeedController] Error handling realtime memory update: $e');
+        debugPrint(
+            '[UnifiedFeedController] Error handling realtime memory update: $e');
         // Fallback: remove the old entry
         removeMemory(memoryId);
       }
@@ -449,7 +460,8 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         return;
       }
 
-      debugPrint('[UnifiedFeedController] Memory deleted via realtime: $memoryId');
+      debugPrint(
+          '[UnifiedFeedController] Memory deleted via realtime: $memoryId');
 
       // Remove from feed immediately
       removeMemory(memoryId);
@@ -668,11 +680,26 @@ class UnifiedFeedController extends _$UnifiedFeedController {
         ? _deduplicateMemories([...state.memories, ...result.memories])
         : result.memories;
 
+    // Validate queue membership: filter out queued entries that were removed during fetch
+    final queueService = ref.read(offlineMemoryQueueServiceProvider);
+    final validatedMemories = <TimelineMemory>[];
+    for (final memory in finalMemories) {
+      if (memory.isOfflineQueued && memory.localId != null) {
+        // Re-check queue to ensure entry still exists
+        final queuedMemory = await queueService.getByLocalId(memory.localId!);
+        if (queuedMemory == null) {
+          // Entry was removed from queue during fetch, skip it
+          continue;
+        }
+      }
+      validatedMemories.add(memory);
+    }
+
     state = state.copyWith(
-      state: result.memories.isEmpty && !append
+      state: validatedMemories.isEmpty && !append
           ? UnifiedFeedState.empty
           : UnifiedFeedState.ready,
-      memories: finalMemories,
+      memories: validatedMemories,
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,
       errorMessage: null,
@@ -725,7 +752,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     if (existing.isOfflineQueued && !newEntry.isOfflineQueued) {
       return true; // Replace queued with server-backed
     }
-    
+
     // If both are queued
     if (existing.isOfflineQueued && newEntry.isOfflineQueued) {
       // Both queued - prefer the one with full detail cached locally
@@ -738,13 +765,13 @@ class UnifiedFeedController extends _$UnifiedFeedController {
       // If both have same detail cache status, prefer newer (later in list = more recent fetch)
       return true;
     }
-    
+
     // If both are server-backed, prefer the newer entry (handles memory updates)
     // The newEntry appears later in the list, so it's from a more recent fetch
     if (!existing.isOfflineQueued && !newEntry.isOfflineQueued) {
       return true; // Always replace with newer server-backed entry
     }
-    
+
     // Fallback: prefer existing (first seen)
     return false;
   }
