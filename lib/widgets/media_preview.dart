@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,12 +24,14 @@ class _MediaItem {
 
 /// Large media preview widget showing selected photo or video
 class MediaPreview extends ConsumerStatefulWidget {
+  final String memoryId;
   final List<PhotoMedia> photos;
   final List<VideoMedia> videos;
   final int? selectedIndex;
 
   const MediaPreview({
     super.key,
+    required this.memoryId,
     required this.photos,
     required this.videos,
     this.selectedIndex,
@@ -108,8 +111,14 @@ class _MediaPreviewState extends ConsumerState<MediaPreview> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: selectedItem.isPhoto
-              ? _PhotoPreview(photo: selectedItem.photo!)
-              : _VideoPreview(video: selectedItem.video!),
+              ? _PhotoPreview(
+                  memoryId: widget.memoryId,
+                  photo: selectedItem.photo!,
+                )
+              : _VideoPreview(
+                  memoryId: widget.memoryId,
+                  video: selectedItem.video!,
+                ),
         ),
       ),
     );
@@ -118,9 +127,13 @@ class _MediaPreviewState extends ConsumerState<MediaPreview> {
 
 /// Photo preview
 class _PhotoPreview extends ConsumerWidget {
+  final String memoryId;
   final PhotoMedia photo;
 
-  const _PhotoPreview({required this.photo});
+  const _PhotoPreview({
+    required this.memoryId,
+    required this.photo,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -179,7 +192,14 @@ class _PhotoPreview extends ConsumerWidget {
         accessToken: accessToken,
       ),
       builder: (context, snapshot) {
-        if (snapshot.hasError || !snapshot.hasData) {
+        if (snapshot.hasError) {
+          developer.log(
+            '[MediaPreview] Photo preview signed URL failed '
+            'memoryId=$memoryId path=${photo.url}',
+            name: 'MediaPreview',
+            error: snapshot.error ?? Exception('Unknown photo preview error'),
+            stackTrace: snapshot.stackTrace,
+          );
           return Container(
             color: Colors.white,
             child: const Center(
@@ -187,6 +207,19 @@ class _PhotoPreview extends ConsumerWidget {
                 Icons.broken_image,
                 color: Colors.grey,
                 size: 64,
+              ),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData) {
+          return Container(
+            color: Colors.white,
+            child: const Center(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(),
               ),
             ),
           );
@@ -218,9 +251,13 @@ class _PhotoPreview extends ConsumerWidget {
 
 /// Video preview
 class _VideoPreview extends ConsumerStatefulWidget {
+  final String memoryId;
   final VideoMedia video;
 
-  const _VideoPreview({required this.video});
+  const _VideoPreview({
+    required this.memoryId,
+    required this.video,
+  });
 
   @override
   ConsumerState<_VideoPreview> createState() => _VideoPreviewState();
@@ -301,8 +338,14 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
           _isInitialized = true;
         });
       }
-    } catch (e) {
-      // Handle error
+    } catch (e, stackTrace) {
+      developer.log(
+        '[MediaPreview] Video preview signed URL failed '
+        'memoryId=${widget.memoryId} path=${widget.video.url}',
+        name: 'MediaPreview',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         setState(() {
           _isInitialized = false;
@@ -357,6 +400,24 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
               );
             }(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                developer.log(
+                  '[MediaPreview] Video poster signed URL failed '
+                  'memoryId=${widget.memoryId} path=${widget.video.posterUrl}',
+                  name: 'MediaPreview',
+                  error: snapshot.error ??
+                      Exception('Unknown video poster preview error'),
+                  stackTrace: snapshot.stackTrace,
+                );
+                return const Center(
+                  child: Icon(
+                    Icons.videocam,
+                    color: Colors.grey,
+                    size: 64,
+                  ),
+                );
+              }
+
               if (snapshot.hasData) {
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(8),

@@ -4,7 +4,7 @@ import 'package:memories/models/memory_type.dart';
 enum InputMode {
   /// Dictation mode - voice input with microphone controls
   dictation,
-  
+
   /// Type mode - manual text input
   type,
 }
@@ -13,77 +13,81 @@ enum InputMode {
 class CaptureState {
   /// The type of memory being captured
   final MemoryType memoryType;
-  
+
   /// Input text from dictation or manual entry (canonical field)
   final String? inputText;
-  
+
+  /// Snapshot of the text before edits began.
+  /// Used to detect whether the text actually changed during an edit session.
+  final String? originalInputText;
+
   /// List of selected photo file paths (local paths before upload)
   final List<String> photoPaths;
-  
+
   /// List of selected video file paths (local paths before upload)
   final List<String> videoPaths;
-  
+
   /// List of tags (case-insensitive, trimmed)
   final List<String> tags;
-  
+
   /// Whether dictation is currently active
   final bool isDictating;
-  
+
   /// Current audio level for waveform visualization (0.0 to 1.0)
   final double audioLevel;
-  
+
   /// Timestamp when capture started
   final DateTime? captureStartTime;
-  
+
   /// Elapsed duration during dictation (updated in real-time)
   final Duration elapsedDuration;
-  
+
   /// Timestamp when capture was saved
   final DateTime? capturedAt;
-  
+
   /// User-specified date and time when the memory occurred (required)
   final DateTime? memoryDate;
-  
+
   /// Audio file path (cached audio file from dictation)
   /// Set when dictation stops and audio is persisted
   /// Used for stories - local path to audio recording
   final String? audioPath;
-  
+
   /// Audio duration in seconds (from dictation metadata)
   final double? audioDuration;
-  
+
   /// Locale used for dictation (e.g., 'en-US', 'es-ES')
   /// Tracked separately since plugin doesn't provide it
   final String? dictationLocale;
-  
+
   /// Unique session ID for this capture session
   /// Used to track and reuse audio files for retries
   final String? sessionId;
-  
+
   /// Location coordinates (latitude, longitude)
   final double? latitude;
   final double? longitude;
-  
+
   /// Location status: 'granted', 'denied', or 'unavailable'
   final String? locationStatus;
-  
+
   /// User-specified memory location label (where the event happened)
   /// This is separate from captured_location (GPS coordinates at capture time)
   final String? memoryLocationLabel;
-  
+
   /// Memory location coordinates (optional, may come from GPS suggestion or manual entry)
   final double? memoryLocationLatitude;
   final double? memoryLocationLongitude;
-  
+
   /// Whether reverse geocoding is currently in progress
   final bool isReverseGeocoding;
-  
+
   /// Whether there are unsaved changes
   final bool hasUnsavedChanges;
-  
+
   /// Error message if any
   final String? errorMessage;
-  
+
   /// Current input mode (dictation or type)
   final InputMode inputMode;
 
@@ -110,6 +114,7 @@ class CaptureState {
   const CaptureState({
     this.memoryType = MemoryType.moment,
     this.inputText,
+    this.originalInputText,
     this.photoPaths = const [],
     this.videoPaths = const [],
     this.tags = const [],
@@ -145,6 +150,7 @@ class CaptureState {
   CaptureState copyWith({
     MemoryType? memoryType,
     String? inputText,
+    String? originalInputText,
     List<String>? photoPaths,
     List<String>? videoPaths,
     List<String>? tags,
@@ -180,12 +186,14 @@ class CaptureState {
     bool clearAudio = false,
     bool clearEditingMemoryId = false,
     bool clearOriginalEditingMemoryId = false,
+    bool clearOriginalInputText = false,
   }) {
     return CaptureState(
       memoryType: memoryType ?? this.memoryType,
-      inputText: clearInputText
+      inputText: clearInputText ? null : (inputText ?? this.inputText),
+      originalInputText: clearOriginalInputText
           ? null
-          : (inputText ?? this.inputText),
+          : (originalInputText ?? this.originalInputText),
       photoPaths: photoPaths ?? this.photoPaths,
       videoPaths: videoPaths ?? this.videoPaths,
       tags: tags ?? this.tags,
@@ -201,15 +209,20 @@ class CaptureState {
       sessionId: sessionId ?? this.sessionId,
       latitude: clearLocation ? null : (latitude ?? this.latitude),
       longitude: clearLocation ? null : (longitude ?? this.longitude),
-      locationStatus: clearLocation ? null : (locationStatus ?? this.locationStatus),
+      locationStatus:
+          clearLocation ? null : (locationStatus ?? this.locationStatus),
       memoryLocationLabel: memoryLocationLabel ?? this.memoryLocationLabel,
-      memoryLocationLatitude: memoryLocationLatitude ?? this.memoryLocationLatitude,
-      memoryLocationLongitude: memoryLocationLongitude ?? this.memoryLocationLongitude,
+      memoryLocationLatitude:
+          memoryLocationLatitude ?? this.memoryLocationLatitude,
+      memoryLocationLongitude:
+          memoryLocationLongitude ?? this.memoryLocationLongitude,
       isReverseGeocoding: isReverseGeocoding ?? this.isReverseGeocoding,
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       inputMode: inputMode ?? this.inputMode,
-      editingMemoryId: clearEditingMemoryId ? null : (editingMemoryId ?? this.editingMemoryId),
+      editingMemoryId: clearEditingMemoryId
+          ? null
+          : (editingMemoryId ?? this.editingMemoryId),
       originalEditingMemoryId: clearOriginalEditingMemoryId
           ? null
           : (originalEditingMemoryId ?? this.originalEditingMemoryId),
@@ -221,12 +234,12 @@ class CaptureState {
   }
 
   /// Determines if the current capture state can be saved.
-  /// 
+  ///
   /// Validation rules:
   /// - Stories: require audio (audioPath must be set)
   /// - Moments: require at least one of {inputText, photo, video}
   /// - Mementos: require at least one of {inputText, photo, video}
-  /// 
+  ///
   /// When editing, existing media counts toward the requirement.
   /// Tags alone are never sufficient to unlock save.
   bool get canSave {
@@ -235,18 +248,20 @@ class CaptureState {
       return (audioPath != null && audioPath!.isNotEmpty) ||
           (inputText?.trim().isNotEmpty ?? false);
     }
-    
+
     // Calculate total media count (existing + new - deleted)
-    final totalPhotos = existingPhotoUrls.length + photoPaths.length - deletedPhotoUrls.length;
-    final totalVideos = existingVideoUrls.length + videoPaths.length - deletedVideoUrls.length;
-    
+    final totalPhotos =
+        existingPhotoUrls.length + photoPaths.length - deletedPhotoUrls.length;
+    final totalVideos =
+        existingVideoUrls.length + videoPaths.length - deletedVideoUrls.length;
+
     // Mementos: require at least one of inputText, photo, or video
     if (memoryType == MemoryType.memento) {
       return (inputText?.trim().isNotEmpty ?? false) ||
           totalPhotos > 0 ||
           totalVideos > 0;
     }
-    
+
     // Moments: require at least one of inputText, photo, or video
     // Tags alone are NOT sufficient
     return (inputText?.trim().isNotEmpty ?? false) ||
@@ -256,13 +271,23 @@ class CaptureState {
 
   /// Check if photo limit has been reached (10 photos max)
   /// Includes both new photos and existing photos
-  bool get canAddPhoto => (photoPaths.length + existingPhotoUrls.length - deletedPhotoUrls.length) < 10;
+  bool get canAddPhoto =>
+      (photoPaths.length + existingPhotoUrls.length - deletedPhotoUrls.length) <
+      10;
 
   /// Check if video limit has been reached (3 videos max)
   /// Includes both new videos and existing videos
-  bool get canAddVideo => (videoPaths.length + existingVideoUrls.length - deletedVideoUrls.length) < 3;
+  bool get canAddVideo =>
+      (videoPaths.length + existingVideoUrls.length - deletedVideoUrls.length) <
+      3;
 
   /// Whether we're currently editing an existing memory
   bool get isEditing => editingMemoryId != null;
-}
 
+  /// Whether the canonical input text changed compared to the original snapshot.
+  bool get hasInputTextChanged {
+    final current = inputText?.trim();
+    final original = originalInputText?.trim();
+    return current != original;
+  }
+}

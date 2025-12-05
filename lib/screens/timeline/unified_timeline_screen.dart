@@ -268,6 +268,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
                     ? 'memory_thumbnail_${memory.id}'
                     : null,
                 isOfflineQueued: false,
+                fallbackServerId: memory.serverId,
               ),
             ),
           );
@@ -305,6 +306,7 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
               ? 'memory_thumbnail_${memory.id}'
               : null,
           isOfflineQueued: isOfflineQueued,
+          fallbackServerId: memory.serverId,
         ),
       ),
     );

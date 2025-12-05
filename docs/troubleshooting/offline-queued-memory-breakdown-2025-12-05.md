@@ -39,6 +39,16 @@
    - When `offlineMemoryDetailNotifier` throws `Offline queued memory not found`, show inline guidance (“This memory already synced. Refresh the timeline.”) with a primary button that pops the route.  
    - The Retry button should invoke the offline provider again or, if connectivity is available and the server id is known, switch to the online provider.
 
+## Current implementation status (Dec 5, 2025)
+- ✅ Queue validation landed: `UnifiedFeedController._fetchPage` now re-reads the queue for every `isOfflineQueued` entry before updating state, so items removed mid-fetch stay gone.  
+- ✅ Timeline navigation guards exist: `_navigateToDetail` checks `offlineMemoryQueueService.getByLocalId` before routing and refreshes or falls back to the online detail screen when a matching `serverId` is present.  
+- ✅ Queued edits remain visible: `UnifiedFeedRepository.fetchQueuedMemories` no longer discards rows with a `serverId`, allowing offline edits/failed retries to surface in the merged feed.
+
+Remaining gaps:
+- Offline error handling still shortcuts through the online provider. `_buildOfflineErrorState` only customizes the “not found” copy; any other failure immediately calls `_buildErrorState`, whose Retry button refreshes `memoryDetailNotifierProvider` (online). That recreates the infinite retry loop we set out to fix. We need an offline-specific retry that re-invokes `offlineMemoryDetailNotifierProvider` and offers a guaranteed escape hatch.  
+- The “Try Loading from Server” action cannot succeed because we never pass a real server id into `MemoryDetailScreen` on the offline path. `_navigateToDetail` always constructs the screen with the queued memory’s `localId`, so pushing an online screen with that same id just fails again. We have to capture and forward the `serverId` (when present) along with the local id so the fallback button can point at the actual server record.  
+- Tests are still missing. There is no regression coverage for the queue-removal race or for ensuring queued updates (with `serverId`) stay visible, even though the plan explicitly called for both.
+
 ## Verification
 1. Queue a memory, force removal (by syncing) while the feed is loading, and confirm the card disappears without reappearing post-fetch.
 2. Attempt to open a queued card after it synced; the app should refuse navigation or fall back to the server detail without getting stuck.

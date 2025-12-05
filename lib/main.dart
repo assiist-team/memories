@@ -98,7 +98,7 @@ class MyApp extends StatelessWidget {
           onInverseSurface: Color(0xFFF5F5F5),
           inversePrimary: Color(0xFFA3A3A3),
         ),
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           color: Color(0xFFFFFFFF), // Explicitly white cards
           elevation: 1,
         ),

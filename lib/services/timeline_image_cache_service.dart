@@ -2,6 +2,9 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+typedef _SignedUrlInvoker = Future<String> Function(
+    Map<String, dynamic> payload);
+
 /// Service for caching signed URLs to reduce redundant API calls
 ///
 /// Caches signed URLs in memory for the duration of the app session.
@@ -10,6 +13,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// This service is designed to be non-blocking: Supabase RPCs are executed in a
 /// worker isolate using compute() to completely offload network I/O from the UI thread.
 class TimelineImageCacheService {
+  TimelineImageCacheService({_SignedUrlInvoker? isolateInvoker})
+      : _isolateInvoker = isolateInvoker ?? _invokeSignedUrlInBackground;
+
+  final _SignedUrlInvoker _isolateInvoker;
   final Map<String, _CachedUrl> _cache = {};
   // Cache of in-flight Future promises to avoid duplicate calls for the same image
   final Map<String, Future<String>> _pendingFutures = {};
@@ -121,11 +128,10 @@ class TimelineImageCacheService {
     // Check if cached URL is still valid (not expired)
     // Note: We check expiry based on the cached expiry time, not the requested expiry
     if (cached != null && !cached.isExpired) {
-      // debugPrint(
-      //    '[TimelineImageCacheService] Using cached signed URL for $cacheKey');
-      // developer.log('Using cached signed URL for $cacheKey',
-      //    name: 'TimelineImageCacheService');
-      // Return immediately with cached URL wrapped in a completed Future
+      developer.log(
+        '[TimelineImageCacheService] Cache hit for $cacheKey',
+        name: 'TimelineImageCacheService',
+      );
       return Future.value(cached.url);
     }
 
@@ -133,64 +139,52 @@ class TimelineImageCacheService {
     // This prevents duplicate Supabase calls when multiple widgets request the same image
     final pendingFuture = _pendingFutures[cacheKey];
     if (pendingFuture != null) {
-      // debugPrint(
-      //    '[TimelineImageCacheService] Reusing pending Future for $cacheKey');
-      // developer.log('Reusing pending Future for $cacheKey',
-      //    name: 'TimelineImageCacheService');
+      developer.log(
+        '[TimelineImageCacheService] Pending future hit for $cacheKey',
+        name: 'TimelineImageCacheService',
+      );
       return pendingFuture;
     }
 
-    // Use compute() to execute the Supabase call in a worker isolate
-    // This completely offloads network I/O from the UI thread
-    final future = compute(
-      _createSignedUrlInIsolate,
-      _SignedUrlRequest(
-        supabaseUrl: supabaseUrl,
-        supabaseAnonKey: supabaseAnonKey,
-        bucket: bucket,
-        path: normalizedPath,
-        expirySeconds: expirySeconds,
-        accessToken: accessToken,
-      ),
-    ).then((url) {
-      try {
-        // debugPrint('[TimelineImageCacheService] ✓ Generated signed URL for $cacheKey');
+    developer.log(
+      '[TimelineImageCacheService] Cache miss for $cacheKey '
+      '(expirySeconds=$expirySeconds)',
+      name: 'TimelineImageCacheService',
+    );
 
-        // Cache the URL with the expiry time we requested
-        _cache[cacheKey] = _CachedUrl(
-          url: url,
-          expiresAt: DateTime.now().add(Duration(seconds: expirySeconds)),
-        );
+    final payload = _buildPayload(
+      supabaseUrl: supabaseUrl,
+      supabaseAnonKey: supabaseAnonKey,
+      bucket: bucket,
+      path: normalizedPath,
+      expirySeconds: expirySeconds,
+      accessToken: accessToken,
+    );
 
-        return url;
-      } catch (e, stackTrace) {
-        debugPrint(
-            '[TimelineImageCacheService] ✗ Failed to cache signed URL: $e');
-        developer.log(
-          'Failed to cache signed URL for bucket=$bucket, path=$path: $e',
-          name: 'TimelineImageCacheService',
-          error: e,
-          stackTrace: stackTrace,
-        );
-        rethrow;
-      } finally {
-        // Remove from pending futures once complete (success or failure)
-        _pendingFutures.remove(cacheKey);
-      }
-    }).catchError((e, stackTrace) {
-      // Reduced logging to prevent main thread jank
-      if (!e.toString().contains('404')) {
-        debugPrint('[TimelineImageCacheService] ✗ Error: $e');
-      }
-
-      // Remove from pending futures on error
-      _pendingFutures.remove(cacheKey);
-      throw e;
+    final future = _isolateInvoker(payload).then((url) {
+      _cache[cacheKey] = _CachedUrl(
+        url: url,
+        expiresAt: DateTime.now().add(Duration(seconds: expirySeconds)),
+      );
+      developer.log(
+        '[TimelineImageCacheService] Generated signed URL for $cacheKey',
+        name: 'TimelineImageCacheService',
+      );
+      return url;
+    }).catchError((error, stackTrace) {
+      developer.log(
+        '[TimelineImageCacheService] Signed URL request failed for $cacheKey',
+        name: 'TimelineImageCacheService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      throw error;
     });
-
-    // Cache the Future so concurrent requests for the same image share it
-    _pendingFutures[cacheKey] = future;
-    return future;
+    final trackedFuture = future.whenComplete(() {
+      _pendingFutures.remove(cacheKey);
+    });
+    _pendingFutures[cacheKey] = trackedFuture;
+    return trackedFuture;
   }
 
   /// Clear expired entries from cache
@@ -208,6 +202,24 @@ class TimelineImageCacheService {
 
   /// Get cache size (for debugging)
   int get cacheSize => _cache.length;
+
+  Map<String, dynamic> _buildPayload({
+    required String supabaseUrl,
+    required String supabaseAnonKey,
+    required String bucket,
+    required String path,
+    required int expirySeconds,
+    String? accessToken,
+  }) {
+    return {
+      'supabaseUrl': supabaseUrl,
+      'supabaseAnonKey': supabaseAnonKey,
+      'bucket': bucket,
+      'path': path,
+      'expirySeconds': expirySeconds,
+      'accessToken': accessToken,
+    };
+  }
 }
 
 /// Internal class for cached URL with expiry
@@ -223,40 +235,21 @@ class _CachedUrl {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
-/// Internal class for passing parameters to the isolate function
-///
-/// This class is used to pass all parameters needed for creating a signed URL
-/// to the worker isolate via compute().
-class _SignedUrlRequest {
-  final String supabaseUrl;
-  final String supabaseAnonKey;
-  final String bucket;
-  final String path;
-  final int expirySeconds;
-  final String? accessToken;
-
-  _SignedUrlRequest({
-    required this.supabaseUrl,
-    required this.supabaseAnonKey,
-    required this.bucket,
-    required this.path,
-    required this.expirySeconds,
-    this.accessToken,
-  });
+Future<String> _invokeSignedUrlInBackground(Map<String, dynamic> payload) {
+  return compute<Map<String, dynamic>, String>(
+    _createSignedUrlInIsolate,
+    payload,
+  );
 }
 
-/// Top-level function wrapper for compute() that extracts parameters from _SignedUrlRequest
-///
-/// This function is isolate-safe and extracts the parameters from the request object
-/// to call the actual isolate function.
-Future<String> _createSignedUrlInIsolate(_SignedUrlRequest request) {
+Future<String> _createSignedUrlInIsolate(Map<String, dynamic> request) {
   return _createSignedUrlInIsolateImpl(
-    request.supabaseUrl,
-    request.supabaseAnonKey,
-    request.bucket,
-    request.path,
-    request.expirySeconds,
-    request.accessToken,
+    request['supabaseUrl'] as String,
+    request['supabaseAnonKey'] as String,
+    request['bucket'] as String,
+    request['path'] as String,
+    request['expirySeconds'] as int,
+    request['accessToken'] as String?,
   );
 }
 

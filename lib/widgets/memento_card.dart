@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -319,6 +320,13 @@ class MementoCard extends ConsumerWidget {
             ),
           );
         } else if (snapshot.hasError) {
+          developer.log(
+            '[MementoCard] Thumbnail failed '
+            'memoryId=${memento.id} path=${media.url}',
+            name: 'MementoCard',
+            error: snapshot.error,
+            stackTrace: snapshot.stackTrace,
+          );
           return Semantics(
             label: 'Error loading thumbnail',
             child: Container(

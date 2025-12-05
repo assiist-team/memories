@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:memories/models/memory_detail.dart';
@@ -25,6 +26,7 @@ class _MediaItem {
 /// Similar to MediaTray but for detail view with remote URLs.
 /// Supports thumbnail selection to show larger preview.
 class MediaStrip extends ConsumerStatefulWidget {
+  final String memoryId;
   final List<PhotoMedia> photos;
   final List<VideoMedia> videos;
   final ValueChanged<int>? onThumbnailSelected;
@@ -32,6 +34,7 @@ class MediaStrip extends ConsumerStatefulWidget {
 
   const MediaStrip({
     super.key,
+    required this.memoryId,
     required this.photos,
     required this.videos,
     this.onThumbnailSelected,
@@ -96,6 +99,7 @@ class _MediaStripState extends ConsumerState<MediaStrip> {
           final isSelected = widget.selectedIndex == index;
 
           return _MediaThumbnail(
+            memoryId: widget.memoryId,
             item: item,
             isSelected: isSelected,
             onTap: () => widget.onThumbnailSelected?.call(index),
@@ -108,11 +112,13 @@ class _MediaStripState extends ConsumerState<MediaStrip> {
 
 /// Media thumbnail for the strip
 class _MediaThumbnail extends ConsumerStatefulWidget {
+  final String memoryId;
   final _MediaItem item;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _MediaThumbnail({
+    required this.memoryId,
     required this.item,
     required this.isSelected,
     required this.onTap,
@@ -155,9 +161,30 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
           posterUrl,
         );
       }
-    } catch (e) {
-      // Handle error - show placeholder
+    } catch (e, stackTrace) {
+      _logSignedUrlFailure(
+        kind: 'video_poster_preload',
+        path:
+            widget.item.video?.posterUrl ?? widget.item.video?.url ?? 'unknown',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
+  }
+
+  void _logSignedUrlFailure({
+    required String kind,
+    required String path,
+    required Object error,
+    StackTrace? stackTrace,
+  }) {
+    developer.log(
+      '[MediaStrip] Failed to load $kind '
+      'memoryId=${widget.memoryId} path=$path',
+      name: 'MediaStrip',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   @override
@@ -203,11 +230,30 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
         widget.item.photo!.url,
       ),
       builder: (context, snapshot) {
-        if (snapshot.hasError || !snapshot.hasData) {
+        if (snapshot.hasError) {
+          _logSignedUrlFailure(
+            kind: 'photo_thumbnail',
+            path: widget.item.photo!.url,
+            error: snapshot.error ?? Exception('Unknown photo thumbnail error'),
+            stackTrace: snapshot.stackTrace,
+          );
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: const Center(
               child: Icon(Icons.broken_image, size: 32),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData) {
+          return Container(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
           );
         }
@@ -250,6 +296,22 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
               widget.item.video!.posterUrl!,
             ),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                _logSignedUrlFailure(
+                  kind: 'video_poster',
+                  path: widget.item.video!.posterUrl!,
+                  error: snapshot.error ??
+                      Exception('Unknown video poster thumbnail error'),
+                  stackTrace: snapshot.stackTrace,
+                );
+                return Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: const Center(
+                    child: Icon(Icons.videocam, size: 32),
+                  ),
+                );
+              }
+
               if (snapshot.hasData) {
                 return Image.network(
                   snapshot.data!,
@@ -269,7 +331,11 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
               return Container(
                 color: theme.colorScheme.surfaceContainerHighest,
                 child: const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               );
             },

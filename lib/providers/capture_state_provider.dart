@@ -528,6 +528,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       clearAudio: true,
       clearEditingMemoryId: true,
       clearOriginalEditingMemoryId: true,
+      clearOriginalInputText: true,
     );
   }
 
@@ -821,6 +822,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       originalEditingMemoryId: memoryId,
       memoryType: memoryType,
       inputText: inputText,
+      originalInputText: inputText,
       tags: tags ?? [],
       latitude: latitude,
       longitude: longitude,
@@ -857,6 +859,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     state = state.copyWith(
       memoryType: memoryType,
       inputText: inputText,
+      originalInputText: inputText,
       tags: tags,
       latitude: latitude,
       longitude: longitude,

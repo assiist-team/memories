@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,12 +35,14 @@ class MemoryDetailScreen extends ConsumerStatefulWidget {
   final String memoryId;
   final String? heroTag; // Optional hero tag for transition animation
   final bool isOfflineQueued; // Whether this memory is a queued offline item
+  final String? fallbackServerId; // Server ID to use when falling back online
 
   const MemoryDetailScreen({
     super.key,
     required this.memoryId,
     this.heroTag,
     this.isOfflineQueued = false,
+    this.fallbackServerId,
   });
 
   @override
@@ -48,6 +51,7 @@ class MemoryDetailScreen extends ConsumerStatefulWidget {
 
 class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   int? _selectedMediaIndex;
+  bool _loggedMissingSelection = false;
   bool _isEditingTitle = false;
   final TextEditingController _titleController = TextEditingController();
 
@@ -55,6 +59,120 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   void dispose() {
     _titleController.dispose();
     super.dispose();
+  }
+
+  void _ensureMediaSelection(MemoryDetail memory) {
+    final totalMedia = memory.photos.length + memory.videos.length;
+    final selectedIndex = _selectedMediaIndex;
+
+    if (totalMedia == 0) {
+      if (selectedIndex != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _selectedMediaIndex = null;
+          });
+        });
+      }
+      return;
+    }
+
+    if (selectedIndex == null || selectedIndex >= totalMedia) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _selectedMediaIndex = 0;
+        });
+        developer.log(
+          '[MemoryDetailScreen] Auto-selected first media '
+          'memoryId=${memory.id} totalMedia=$totalMedia previousIndex=$selectedIndex',
+          name: 'MemoryDetailScreen',
+        );
+      });
+    }
+  }
+
+  void _logMissingMediaSelection(String memoryId, int mediaCount) {
+    if (_loggedMissingSelection || mediaCount <= 0) {
+      return;
+    }
+    _loggedMissingSelection = true;
+    developer.log(
+      '[MemoryDetailScreen] Media selection missing '
+      'memoryId=$memoryId mediaCount=$mediaCount',
+      name: 'MemoryDetailScreen',
+    );
+  }
+
+  Widget _buildMediaPlaceholder({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 36,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaPreviewContent(
+    BuildContext context,
+    MemoryDetail memory,
+  ) {
+    final totalMedia = memory.photos.length + memory.videos.length;
+    if (_selectedMediaIndex == null ||
+        _selectedMediaIndex! < 0 ||
+        _selectedMediaIndex! >= totalMedia) {
+      _logMissingMediaSelection(memory.id, totalMedia);
+      return _buildMediaPlaceholder(
+        context: context,
+        icon: Icons.photo_library_outlined,
+        title: 'Select a thumbnail',
+        message: 'Choose a photo or video to preview it here.',
+      );
+    }
+
+    return MediaPreview(
+      memoryId: memory.id,
+      photos: memory.photos,
+      videos: memory.videos,
+      selectedIndex: _selectedMediaIndex,
+    );
   }
 
   @override
@@ -227,7 +345,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
         switch (status.state) {
           case MemoryProcessingState.scheduled:
-            message = 'Processing scheduled�';
+            message = 'Processing scheduled...';
             background = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
             break;
@@ -238,20 +356,21 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
               switch (phase) {
                 case 'title':
                 case 'title_generation':
-                  message = 'Generating title�';
+                  message = 'Generating title...';
                   break;
                 case 'text':
                 case 'text_processing':
-                  message = 'Processing text�';
+                  message = 'Processing text...';
                   break;
                 case 'narrative':
-                  message = 'Generating narrative�';
+                case 'narrative_generation':
+                  message = 'Generating narrative...';
                   break;
                 default:
-                  message = 'Processing memory�';
+                  message = 'Processing memory...';
               }
             } else {
-              message = 'Processing memory�';
+              message = 'Processing memory...';
             }
             background = Colors.blue.shade50;
             textColor = Colors.blue.shade900;
@@ -333,7 +452,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         textColor = Colors.orange.shade900;
         break;
       case OfflineSyncStatus.syncing:
-        title = 'Syncing�';
+        title = 'Syncing...';
         subtitle = 'We\'re uploading this memory in the background.';
         background = Colors.blue.shade50;
         textColor = Colors.blue.shade900;
@@ -610,93 +729,110 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     // Check if this is the "Offline queued memory not found" error
     final isOfflineQueuedNotFound =
         errorMessage.contains('Offline queued memory not found');
+    final hasFallbackServer = widget.fallbackServerId != null;
+    final title = isOfflineQueuedNotFound
+        ? 'Memory Already Synced'
+        : 'Offline Memory Unavailable';
+    final description = isOfflineQueuedNotFound
+        ? 'This memory has already synced to the server. Refresh the timeline to see the updated version.'
+        : 'We couldn’t load this queued memory while offline. You can retry the offline request or head back to the timeline.';
 
-    if (isOfflineQueuedNotFound) {
-      // Memory was removed from queue (likely synced or failed)
-      // Show helpful message with escape hatch
-      return CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color:
-                          Theme.of(context).colorScheme.error.withOpacity(0.3),
-                    ),
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(16),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.error.withOpacity(0.3),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Theme.of(context).colorScheme.error,
-                            size: 24,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Theme.of(context).colorScheme.error,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Memory Already Synced',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onErrorContainer,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      description,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
                           ),
-                        ],
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          if (isOfflineQueuedNotFound) {
+                            _popToTimelineAndRefresh(ref);
+                          } else {
+                            ref.invalidate(
+                              offlineMemoryDetailNotifierProvider(
+                                widget.memoryId,
+                              ),
+                            );
+                          }
+                        },
+                        icon: Icon(
+                          isOfflineQueuedNotFound
+                              ? Icons.arrow_back
+                              : Icons.refresh,
+                        ),
+                        label: Text(
+                          isOfflineQueuedNotFound
+                              ? 'Go Back to Timeline'
+                              : 'Retry Offline',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onError,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'This memory has already synced to the server. Refresh the timeline to see the updated version.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                            ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
+                    ),
+                    if (!isOfflineQueuedNotFound)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: TextButton.icon(
                           onPressed: () {
-                            // Pop back to timeline
                             if (Navigator.of(context).canPop()) {
                               Navigator.of(context).pop();
                             }
-                            // Refresh the timeline to remove stale entry
-                            final tabState =
-                                ref.read(unifiedFeedTabNotifierProvider);
-                            tabState.whenData((selectedTypes) {
-                              ref
-                                  .read(unifiedFeedControllerProvider(
-                                          selectedTypes)
-                                      .notifier)
-                                  .refresh();
-                            });
                           },
                           icon: const Icon(Icons.arrow_back),
-                          label: const Text('Go Back to Timeline'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.error,
-                            foregroundColor:
-                                Theme.of(context).colorScheme.onError,
-                          ),
+                          label: const Text('Back to Timeline'),
                         ),
                       ),
-                      // Optionally try online provider if connectivity is available
+                    if (hasFallbackServer)
                       FutureBuilder<bool>(
                         future: connectivityService.isOnline(),
                         builder: (context, snapshot) {
@@ -706,20 +842,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                               child: SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    // Try switching to online provider
-                                    // Note: This may not work if memoryId is localId, but worth trying
-                                    Navigator.of(context).pushReplacement(
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            MemoryDetailScreen(
-                                          memoryId: widget.memoryId,
-                                          heroTag: widget.heroTag,
-                                          isOfflineQueued: false,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  onPressed: _openServerDetailFromOffline,
                                   icon: const Icon(Icons.cloud_download),
                                   label: const Text('Try Loading from Server'),
                                 ),
@@ -729,18 +852,46 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                           return const SizedBox.shrink();
                         },
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-              ]),
-            ),
+              ),
+            ]),
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
+
+  void _popToTimelineAndRefresh(WidgetRef ref) {
+    if (!mounted) {
+      return;
     }
 
-    // For other errors, fall back to standard error handling
-    return _buildErrorState(context, errorMessage, ref);
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    final tabState = ref.read(unifiedFeedTabNotifierProvider);
+    tabState.whenData((selectedTypes) {
+      ref.read(unifiedFeedControllerProvider(selectedTypes).notifier).refresh();
+    });
+  }
+
+  void _openServerDetailFromOffline() {
+    final serverId = widget.fallbackServerId;
+    if (serverId == null || !mounted) {
+      return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => MemoryDetailScreen(
+          memoryId: serverId,
+          heroTag: widget.heroTag,
+          isOfflineQueued: false,
+        ),
+      ),
+    );
   }
 
   Widget _buildErrorState(
@@ -861,6 +1012,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       (state) =>
           state.editingMemoryId == memory.id ? state.memoryLocationLabel : null,
     ));
+    _ensureMediaSelection(memory);
 
     return CustomScrollView(
       slivers: [
@@ -941,9 +1093,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                   ),
                 ],
                 // Media strip - horizontally scrolling thumbnails
+                const SizedBox(height: 24),
                 if (hasMedia) ...[
-                  const SizedBox(height: 24),
                   MediaStrip(
+                    memoryId: memory.id,
                     photos: memory.photos,
                     videos: memory.videos,
                     selectedIndex: _selectedMediaIndex,
@@ -953,17 +1106,16 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                       });
                     },
                   ),
-                  // Media preview - larger preview of selected thumbnail
-                  if (_selectedMediaIndex != null) ...[
-                    const SizedBox(height: 16),
-                    MediaPreview(
-                      photos: memory.photos,
-                      videos: memory.videos,
-                      selectedIndex: _selectedMediaIndex,
-                    ),
-                  ],
+                  const SizedBox(height: 16),
+                  _buildMediaPreviewContent(context, memory),
                   const SizedBox(height: 24),
                 ] else ...[
+                  _buildMediaPlaceholder(
+                    context: context,
+                    icon: Icons.burst_mode_outlined,
+                    title: 'No photos or videos yet',
+                    message: 'Add media from the edit screen to see it here.',
+                  ),
                   const SizedBox(height: 24),
                 ],
               ],
@@ -1809,8 +1961,13 @@ class _StoryAudioPlayer extends ConsumerWidget {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           // If error fetching signed URL, show placeholder
-          debugPrint(
-              '[MemoryDetailScreen] Error fetching audio signed URL: ${snapshot.error}');
+          developer.log(
+            '[MemoryDetailScreen] Error fetching audio signed URL '
+            'storyId=$storyId path=$audioPath',
+            name: 'MemoryDetailScreen',
+            error: snapshot.error,
+            stackTrace: snapshot.stackTrace,
+          );
           return StickyAudioPlayer(
             audioUrl: null,
             duration: audioDuration,

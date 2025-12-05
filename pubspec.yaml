@@ -31,6 +31,7 @@ dependencies:
   # Media & Camera
   image_picker: ^1.0.7
   video_player: ^2.8.2
+  just_audio: ^0.9.38
   gal: ^2.0.1
   
   # Location
@@ -63,6 +64,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
+  just_audio_platform_interface: ^4.6.0
   
   # Code Generation
   build_runner: ^2.4.8

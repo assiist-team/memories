@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/providers/supabase_provider.dart';
@@ -319,6 +320,7 @@ class MemorySaveService {
         await _supabase.from('story_fields').insert({
           'memory_id': memoryId,
           'audio_path': audioPath,
+          'audio_duration': state.audioDuration,
         });
       }
 
@@ -412,6 +414,7 @@ class MemorySaveService {
   Future<MemorySaveResult> updateMemory({
     required String memoryId,
     required CaptureState state,
+    bool inputTextChanged = false,
     SaveProgressCallback? onProgress,
     Map<String, dynamic>? memoryLocationDataMap,
   }) async {
@@ -427,12 +430,15 @@ class MemorySaveService {
       onProgress?.call(message: 'Uploading new media...', progress: 0.1);
       final newPhotoUrls = <String>[];
       final newVideoUrls = <String>[];
+      int skippedPhotoUploads = 0;
+      int skippedVideoUploads = 0;
 
       // Upload new photos with retry logic
       for (int i = 0; i < state.photoPaths.length; i++) {
         final photoPath = state.photoPaths[i];
         final file = File(photoPath);
         if (!await file.exists()) {
+          skippedPhotoUploads++;
           continue;
         }
 
@@ -491,6 +497,7 @@ class MemorySaveService {
         final videoPath = state.videoPaths[i];
         final file = File(videoPath);
         if (!await file.exists()) {
+          skippedVideoUploads++;
           continue;
         }
 
@@ -585,6 +592,13 @@ class MemorySaveService {
       // Step 3: Combine existing and new media URLs
       final allPhotoUrls = [...state.existingPhotoUrls, ...newPhotoUrls];
       final allVideoUrls = [...state.existingVideoUrls, ...newVideoUrls];
+      developer.log(
+        '[MemorySaveService] updateMemory media summary '
+        'memoryId=$memoryId '
+        'photoUrls=${allPhotoUrls.length} (uploaded=${newPhotoUrls.length}, skippedLocal=$skippedPhotoUploads) '
+        'videoUrls=${allVideoUrls.length} (uploaded=${newVideoUrls.length}, skippedLocal=$skippedVideoUploads)',
+        name: 'MemorySaveService',
+      );
 
       // Step 4: Prepare location data
       String? locationWkt;
@@ -598,13 +612,15 @@ class MemorySaveService {
 
       final updateData = <String, dynamic>{
         'input_text': state.inputText,
-        'processed_text': null, // Clear processed text - will be regenerated
         'photo_urls': allPhotoUrls,
         'video_urls': allVideoUrls,
         'tags': state.tags,
         'location_status': state.locationStatus,
         'updated_at': now.toIso8601String(),
       };
+      if (inputTextChanged) {
+        updateData['processed_text'] = null;
+      }
 
       // Add memory_date (required - use user-specified or fall back to now)
       final memoryDate = state.memoryDate ?? now;
@@ -648,7 +664,12 @@ class MemorySaveService {
       final hasInputText = state.inputText?.trim().isNotEmpty == true;
       String? generatedTitle;
 
-      if (hasInputText) {
+      if (inputTextChanged && hasInputText) {
+        developer.log(
+          '[MemorySaveService] Queuing NLP reprocessing '
+          'memoryId=$memoryId reason=input_text_changed',
+          name: 'MemorySaveService',
+        );
         // Insert or update processing status row - dispatcher will pick this up
         try {
           // Check if processing status already exists
@@ -684,6 +705,12 @@ class MemorySaveService {
           // Log but don't fail - processing status insert is best-effort
           print('Warning: Failed to update memory_processing_status: $e');
         }
+      } else {
+        developer.log(
+          '[MemorySaveService] Skipping NLP reprocessing '
+          'memoryId=$memoryId inputTextChanged=$inputTextChanged hasInputText=$hasInputText',
+          name: 'MemorySaveService',
+        );
       }
 
       // Step 7: Preserve curated titles during edits
@@ -695,21 +722,28 @@ class MemorySaveService {
           .maybeSingle();
 
       final existingTitle = existingMemory?['title'] as String?;
-      final fallbackTitle =
-          _getFallbackTitle(state.memoryType, state.inputText);
-      final hasCuratedTitle = existingTitle != null &&
-          existingTitle.isNotEmpty &&
-          existingTitle != fallbackTitle;
+      generatedTitle = existingTitle;
 
-      // Only update title if memory doesn't have a curated title
-      if (!hasCuratedTitle) {
-        generatedTitle = fallbackTitle;
-        await _supabase.from('memories').update({
-          'title': generatedTitle,
-        }).eq('id', memoryId);
+      if (inputTextChanged) {
+        final fallbackTitle =
+            _getFallbackTitle(state.memoryType, state.inputText);
+        final hasCuratedTitle = existingTitle != null &&
+            existingTitle.isNotEmpty &&
+            existingTitle != fallbackTitle;
+
+        // Only update title if memory doesn't have a curated title
+        if (!hasCuratedTitle) {
+          generatedTitle = fallbackTitle;
+          await _supabase.from('memories').update({
+            'title': generatedTitle,
+          }).eq('id', memoryId);
+        }
       } else {
-        // Preserve existing curated title
-        generatedTitle = existingTitle;
+        developer.log(
+          '[MemorySaveService] Skipping fallback title rewrite '
+          'memoryId=$memoryId inputTextChanged=$inputTextChanged',
+          name: 'MemorySaveService',
+        );
       }
 
       onProgress?.call(message: 'Complete!', progress: 1.0);

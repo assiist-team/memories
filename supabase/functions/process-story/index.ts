@@ -20,6 +20,82 @@ interface ErrorResponse {
 
 const MAX_TITLE_LENGTH = 60;
 
+type ProcessingPhase =
+  | "title"
+  | "title_generation"
+  | "text_processing"
+  | "narrative";
+
+type SupabaseClientInstance = ReturnType<typeof createClient>;
+
+export interface StoryProcessingOutcome {
+  narrative: string;
+  title: string;
+  titleFallbackUsed: boolean;
+  fallbackSource: "narrative" | "input_text" | null;
+}
+
+export function resolveStoryProcessingOutcome({
+  inputText,
+  narrativeResult,
+  titleResult,
+}: {
+  inputText: string;
+  narrativeResult: string | null;
+  titleResult: string | null;
+}): StoryProcessingOutcome {
+  if (!narrativeResult && !titleResult) {
+    throw new Error("Missing narrative and title results");
+  }
+
+  const narrative = narrativeResult ?? inputText;
+  let titleFallbackUsed = false;
+  let fallbackSource: "narrative" | "input_text" | null = null;
+  let title: string;
+
+  if (titleResult && titleResult.trim().length > 0) {
+    title = truncateTitle(titleResult, MAX_TITLE_LENGTH);
+  } else {
+    titleFallbackUsed = true;
+    fallbackSource = narrativeResult ? "narrative" : "input_text";
+    title = truncateTitle(narrative, MAX_TITLE_LENGTH);
+  }
+
+  return {
+    narrative,
+    title,
+    titleFallbackUsed,
+    fallbackSource,
+  };
+}
+
+async function updateProcessingPhase(
+  client: SupabaseClientInstance,
+  memoryId: string,
+  phase: ProcessingPhase,
+) {
+  const timestamp = new Date().toISOString();
+  const { error } = await client
+    .from("memory_processing_status")
+    .update({
+      last_updated_at: timestamp,
+      metadata: {
+        memory_type: "story",
+        phase,
+      },
+    })
+    .eq("memory_id", memoryId);
+
+  if (error) {
+    console.error(JSON.stringify({
+      event: "story_processing_phase_update_failed",
+      memoryId,
+      phase,
+      error: error.message,
+    }));
+  }
+}
+
 /**
  * Truncates a string to a maximum length, ensuring it doesn't break words
  */
@@ -178,7 +254,7 @@ Narrative: ${text.substring(0, 1000)}`;
         content: prompt,
       },
     ],
-    max_completion_tokens: 100, // Increased to account for reasoning tokens in gpt-5-mini
+    max_completion_tokens: 150, // Increased to account for reasoning tokens and prevent length truncation
     // temperature: 0.7, // Not supported by gpt-5-mini, defaults to 1
   };
 
@@ -474,7 +550,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         last_updated_at: now,
         metadata: {
           memory_type: "story",
-          phase: "narrative_generation",
+          phase: "title_generation",
         },
       })
       .eq("memory_id", requestBody.memoryId);
@@ -487,22 +563,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const startTime = Date.now();
 
     try {
-      // Run narrative generation and title generation in parallel
-      const [narrativeResult, titleResult] = await Promise.all([
-        generateNarrativeWithLLM(inputText),
-        generateTitleWithLLM(inputText), // Generate title from input_text in parallel
-      ]);
+      // Run title generation first so the UI banner reflects accurate phases
+      const titlePromise = generateTitleWithLLM(inputText);
+
+      // Switch phase to narrative generation while we transform the transcript
+      await updateProcessingPhase(
+        supabaseClient,
+        requestBody.memoryId,
+        "narrative",
+      );
+
+      const narrativeResult = await generateNarrativeWithLLM(inputText);
+      const titleResult = await titlePromise;
       
-      if (!narrativeResult) {
-        throw new Error("Failed to generate narrative");
+      // Only fail if both narrative and title generation fail
+      if (!narrativeResult && !titleResult) {
+        throw new Error("Failed to generate both narrative and title");
       }
 
-      if (!titleResult) {
-        throw new Error("Failed to generate title");
-      }
+      const { narrative, title, titleFallbackUsed, fallbackSource } =
+        resolveStoryProcessingOutcome({
+          inputText,
+          narrativeResult,
+          titleResult,
+        });
+      
+      await updateProcessingPhase(
+        supabaseClient,
+        requestBody.memoryId,
+        "text_processing",
+      );
 
-      const narrative = narrativeResult;
-      const title = titleResult;
+      // Log warning if title generation failed but we're continuing with fallback
+      if (titleFallbackUsed) {
+        console.warn(JSON.stringify({
+          event: "title_generation_fallback_used",
+          memoryId: requestBody.memoryId,
+          fallbackSource,
+          fallbackTitle: title,
+        }));
+      }
 
       const duration = Date.now() - startTime;
       const completedAt = new Date().toISOString();
@@ -544,6 +644,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           metadata: {
             memory_type: "story",
             duration_ms: duration,
+            ...(titleFallbackUsed && {
+              error: "title_generation_empty_response",
+              title_fallback_used: true,
+              title_fallback_source: fallbackSource,
+            }),
           },
         })
         .eq("memory_id", requestBody.memoryId);

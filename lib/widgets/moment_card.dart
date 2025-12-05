@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -457,6 +458,13 @@ class MomentCard extends ConsumerWidget {
             ),
           );
         } else if (snapshot.hasError) {
+          developer.log(
+            '[MomentCard] Thumbnail failed '
+            'memoryId=${moment.id} path=${media.url}',
+            name: 'MomentCard',
+            error: snapshot.error,
+            stackTrace: snapshot.stackTrace,
+          );
           return Semantics(
             label: 'Error loading thumbnail',
             child: Container(

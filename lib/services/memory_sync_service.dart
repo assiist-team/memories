@@ -255,6 +255,7 @@ extension on MemorySyncService {
         memoryId: targetId,
         state: state,
         memoryLocationDataMap: queuedMemory.memoryLocationData,
+        inputTextChanged: queuedMemory.inputTextChanged,
       );
     }
 

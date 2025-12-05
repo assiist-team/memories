@@ -350,6 +350,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       final effectiveEditingMemoryId =
           finalState.editingMemoryId ?? finalState.originalEditingMemoryId;
       final isEditing = effectiveEditingMemoryId != null;
+      final inputTextChanged = finalState.hasInputTextChanged;
 
       // Defensive check: If we have originalEditingMemoryId but isEditing is false,
       // this indicates a state corruption issue. Abort to prevent accidental creation.
@@ -385,6 +386,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           await saveService.updateMemory(
             memoryId: effectiveEditingMemoryId,
             state: finalState,
+            inputTextChanged: inputTextChanged,
             memoryLocationDataMap: memoryLocationDataMap,
           );
         } else {

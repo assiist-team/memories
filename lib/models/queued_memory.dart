@@ -26,6 +26,10 @@ class QueuedMemory {
   /// Input text from dictation or manual entry (canonical field)
   final String? inputText;
 
+  /// Whether the input text changed compared to the original snapshot.
+  /// Used to decide if NLP processing should be re-queued after sync.
+  final bool inputTextChanged;
+
   /// Audio file path (local path to audio recording) - for stories only
   final String? audioPath;
 
@@ -98,7 +102,7 @@ class QueuedMemory {
 
   /// Version of the serialization format
   /// Increment this when making breaking changes to the model structure
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
 
   /// Model version for this instance
   final int version;
@@ -131,6 +135,7 @@ class QueuedMemory {
     this.deletedPhotoUrls = const [],
     this.deletedVideoUrls = const [],
     this.version = currentVersion,
+    this.inputTextChanged = false,
   });
 
   bool get isUpdate => operation == operationUpdate;
@@ -172,6 +177,7 @@ class QueuedMemory {
       existingVideoUrls: List.from(state.existingVideoUrls),
       deletedPhotoUrls: List.from(state.deletedPhotoUrls),
       deletedVideoUrls: List.from(state.deletedVideoUrls),
+      inputTextChanged: state.hasInputTextChanged,
     );
   }
 
@@ -189,6 +195,7 @@ class QueuedMemory {
     return CaptureState(
       memoryType: _parseMemoryType(memoryType),
       inputText: inputText,
+      originalInputText: inputText,
       photoPaths: List.from(photoPaths),
       videoPaths: List.from(videoPaths),
       tags: List.from(tags),
@@ -291,6 +298,7 @@ class QueuedMemory {
       deletedPhotoUrls: List.from(state.deletedPhotoUrls),
       deletedVideoUrls: List.from(state.deletedVideoUrls),
       version: version,
+      inputTextChanged: state.hasInputTextChanged,
     );
   }
 
@@ -299,6 +307,7 @@ class QueuedMemory {
     String? localId,
     String? memoryType,
     String? inputText,
+    bool? inputTextChanged,
     String? audioPath,
     double? audioDuration,
     List<String>? photoPaths,
@@ -354,6 +363,7 @@ class QueuedMemory {
       existingVideoUrls: existingVideoUrls ?? this.existingVideoUrls,
       deletedPhotoUrls: deletedPhotoUrls ?? this.deletedPhotoUrls,
       deletedVideoUrls: deletedVideoUrls ?? this.deletedVideoUrls,
+      inputTextChanged: inputTextChanged ?? this.inputTextChanged,
     );
   }
 
@@ -402,6 +412,7 @@ class QueuedMemory {
       'existingVideoUrls': existingVideoUrls,
       'deletedPhotoUrls': deletedPhotoUrls,
       'deletedVideoUrls': deletedVideoUrls,
+      'inputTextChanged': inputTextChanged,
     };
   }
 
@@ -447,6 +458,7 @@ class QueuedMemory {
           List<String>.from(json['deletedPhotoUrls'] as List? ?? []),
       deletedVideoUrls:
           List<String>.from(json['deletedVideoUrls'] as List? ?? []),
+      inputTextChanged: json['inputTextChanged'] as bool? ?? false,
     );
   }
 
