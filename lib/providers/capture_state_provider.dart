@@ -25,16 +25,28 @@ part 'capture_state_provider.g.dart';
 /// The flag should only be read once when the service is first created.
 @Riverpod(keepAlive: true)
 DictationService dictationService(DictationServiceRef ref) {
+  final startTime = DateTime.now();
+  debugPrint(
+      '[dictationServiceProvider] ${startTime.toIso8601String()} START provider creation');
+
   // Read feature flag ONCE at creation (don't watch to avoid rebuilds)
   final useNewPlugin = ref.read(useNewDictationPluginSyncProvider);
   final service = DictationService(useNewPlugin: useNewPlugin);
+  debugPrint(
+      '[dictationServiceProvider] ${DateTime.now().toIso8601String()} service created (${DateTime.now().difference(startTime).inMilliseconds}ms)');
 
   // Initialize immediately in background to pre-warm native layer
-  service.ensureInitialized().catchError((e) {
+  service.ensureInitialized().then((_) {
+    debugPrint(
+      '[dictationServiceProvider] ${DateTime.now().toIso8601String()} ensureInitialized complete',
+    );
+  }).catchError((e) {
     print('[dictationServiceProvider] Failed to initialize service: $e');
   });
 
   ref.onDispose(() => service.dispose());
+  debugPrint(
+      '[dictationServiceProvider] ${DateTime.now().toIso8601String()} COMPLETE provider creation (${DateTime.now().difference(startTime).inMilliseconds}ms)');
   return service;
 }
 
@@ -68,10 +80,20 @@ GeolocationService geolocationService(GeolocationServiceRef ref) {
 class CaptureStateNotifier extends _$CaptureStateNotifier {
   @override
   CaptureState build() {
+    final buildStartTime = DateTime.now();
+    debugPrint(
+        '[CaptureStateNotifier.build] ${buildStartTime.toIso8601String()} START');
+
     // Watch dictation service to keep it alive for the notifier's lifetime
     ref.watch(dictationServiceProvider);
+    debugPrint(
+        '[CaptureStateNotifier.build] ${DateTime.now().toIso8601String()} after watch dictationServiceProvider (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
+
     // Initialize with current date/time as default memory_date
-    return CaptureState(memoryDate: DateTime.now());
+    final result = CaptureState(memoryDate: DateTime.now());
+    debugPrint(
+        '[CaptureStateNotifier.build] ${DateTime.now().toIso8601String()} COMPLETE (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
+    return result;
   }
 
   /// Set memory type
@@ -191,13 +213,13 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       // CRITICAL: Always append dictation text to preserved text, never overwrite
       // Get the text that existed before dictation started
       final preservedText = _textBeforeDictation?.trim() ?? '';
-      
+
       // Determine if this is replacing a previous partial result
       // If the new transcript is shorter or different from the last one we saw,
       // and we've already set inputText, this might be a partial replacement
       // However, the service handles partial replacements internally, so we just
       // need to combine preserved text with the current transcript
-      
+
       // CRITICAL: Always combine preserved text with dictation transcript
       // If preserved text exists, append dictation to it (with space)
       // If no preserved text, use dictation text directly
@@ -363,6 +385,15 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
 
   /// Update input text
   void updateInputText(String? inputText) {
+    // Avoid marking unsaved changes when the canonical text value
+    // hasn't actually changed. This is important when the controller
+    // is updated programmatically from state (e.g. after clear()),
+    // which triggers TextField.onChanged but shouldn't flip the
+    // "hasUnsavedChanges" flag back to true.
+    if (inputText == state.inputText) {
+      return;
+    }
+
     state = state.copyWith(
       inputText: inputText,
       hasUnsavedChanges: true,
@@ -487,11 +518,13 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
 
     // Clear offline editing state
     _editingOfflineLocalId = null;
-    
+
     // Clear memory location data map (instance variable, not part of state)
     _memoryLocationDataMap = null;
-    
-    state = const CaptureState().copyWith(
+
+    state = const CaptureState(
+      locationStatus: 'loading', // Set initial status to loading
+    ).copyWith(
       clearAudio: true,
       clearEditingMemoryId: true,
       clearOriginalEditingMemoryId: true,
@@ -512,10 +545,13 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   ///
   /// Attempts to get current position and updates state with location
   /// or location status (denied/unavailable).
-  /// 
+  ///
   /// When GPS capture succeeds, automatically populates memory location fields
   /// and triggers reverse geocoding (when online) to get human-readable location name.
   Future<void> captureLocation() async {
+    debugPrint(
+      '[CaptureStateNotifier] ${DateTime.now().toIso8601String()} captureLocation start',
+    );
     final geolocationService = ref.read(geolocationServiceProvider);
 
     try {
@@ -532,7 +568,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
 
         // Automatically populate memory location fields from GPS
         // Only set if memory location hasn't been manually set yet
-        if (state.memoryLocationLatitude == null && 
+        if (state.memoryLocationLatitude == null &&
             state.memoryLocationLongitude == null) {
           state = state.copyWith(
             memoryLocationLatitude: position.latitude,
@@ -541,7 +577,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
 
           // Trigger reverse geocoding automatically (non-blocking, when online)
           // This will update the memory location label with a human-readable name
-          reverseGeocodeMemoryLocation().catchError((e) {
+          reverseGeocodeMemoryLocation(markAsUnsaved: false).catchError((e) {
             // Silently handle errors - reverse geocoding is best-effort
             debugPrint('[CaptureStateNotifier] Reverse geocoding failed: $e');
           });
@@ -551,10 +587,20 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
           locationStatus: status,
         );
       }
+      debugPrint(
+        '[CaptureStateNotifier] ${DateTime.now().toIso8601String()} captureLocation success (status=$status, hasPosition=${position != null})',
+      );
     } catch (e) {
       // On error, mark as unavailable
       state = state.copyWith(
         locationStatus: 'unavailable',
+      );
+      debugPrint(
+        '[CaptureStateNotifier] ${DateTime.now().toIso8601String()} captureLocation error: $e',
+      );
+    } finally {
+      debugPrint(
+        '[CaptureStateNotifier] ${DateTime.now().toIso8601String()} captureLocation finish',
       );
     }
   }
@@ -573,10 +619,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }
 
   /// Set memory location label and optional coordinates
-  /// 
+  ///
   /// [label] is the user-visible location name (e.g., "Grandma's house", "Brooklyn, NY")
   /// [latitude] and [longitude] are optional coordinates
-  /// 
+  ///
   /// This is called when the user manually sets or changes the location,
   /// so it clears the reverse geocoding flag and sets source to 'manual_update'.
   void setMemoryLocationLabel({
@@ -588,7 +634,8 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       memoryLocationLabel: label,
       memoryLocationLatitude: latitude,
       memoryLocationLongitude: longitude,
-      isReverseGeocoding: false, // Clear reverse geocoding flag on manual update
+      isReverseGeocoding:
+          false, // Clear reverse geocoding flag on manual update
       hasUnsavedChanges: true,
     );
 
@@ -609,16 +656,17 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   }
 
   /// Set memory location from MemoryLocationData object
-  /// 
+  ///
   /// Updates all memory location fields from a MemoryLocationData object,
   /// typically from reverse geocoding results.
-  void setMemoryLocationFromData(MemoryLocationData? locationData) {
+  void setMemoryLocationFromData(MemoryLocationData? locationData,
+      {bool markAsUnsaved = true}) {
     if (locationData == null) {
       state = state.copyWith(
         memoryLocationLabel: null,
         memoryLocationLatitude: null,
         memoryLocationLongitude: null,
-        hasUnsavedChanges: true,
+        hasUnsavedChanges: markAsUnsaved ? true : null,
       );
       return;
     }
@@ -627,9 +675,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       memoryLocationLabel: locationData.displayName,
       memoryLocationLatitude: locationData.latitude,
       memoryLocationLongitude: locationData.longitude,
-      hasUnsavedChanges: true,
+      hasUnsavedChanges: markAsUnsaved ? true : null,
     );
-    
+
     // Store full location data in a map for saving to database
     // This includes city, state, country, provider, source
     _memoryLocationDataMap = locationData.toJson();
@@ -657,10 +705,10 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       }
       return map;
     }
-    
+
     // Fall back to constructing from basic fields
-    if (state.memoryLocationLabel != null || 
-        state.memoryLocationLatitude != null || 
+    if (state.memoryLocationLabel != null ||
+        state.memoryLocationLatitude != null ||
         state.memoryLocationLongitude != null) {
       final map = <String, dynamic>{};
       if (state.memoryLocationLabel != null) {
@@ -674,21 +722,21 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       }
       return map;
     }
-    
+
     return null;
   }
 
   /// Reverse geocode memory location coordinates
-  /// 
+  ///
   /// Calls the reverse geocoding service to get place information from coordinates.
   /// Only attempts if online and coordinates are available.
   /// Falls back gracefully if offline or the call fails.
-  /// 
+  ///
   /// Updates memory location with all fields from the geocoding result.
   /// Sets source to 'gps_auto' to indicate this was automatically detected.
-  Future<void> reverseGeocodeMemoryLocation() async {
+  Future<void> reverseGeocodeMemoryLocation({bool markAsUnsaved = true}) async {
     // Only proceed if we have coordinates
-    if (state.memoryLocationLatitude == null || 
+    if (state.memoryLocationLatitude == null ||
         state.memoryLocationLongitude == null) {
       return;
     }
@@ -713,8 +761,8 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
 
       if (result != null) {
         // Update state with full geocoded location data
-        setMemoryLocationFromData(result);
-        
+        setMemoryLocationFromData(result, markAsUnsaved: markAsUnsaved);
+
         // Ensure source is set to 'gps_auto' for auto-detected locations
         if (_memoryLocationDataMap != null) {
           _memoryLocationDataMap!['source'] = 'gps_auto';
@@ -733,6 +781,9 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   /// Set input mode (dictation or type)
   /// Automatically stops dictation when switching to type mode
   Future<void> setInputMode(InputMode mode) async {
+    debugPrint(
+      '[CaptureStateNotifier] ${DateTime.now().toIso8601String()} setInputMode -> $mode',
+    );
     // If switching to type mode and dictation is active, stop dictation first
     if (mode == InputMode.type && state.isDictating) {
       await stopDictation();
@@ -744,7 +795,7 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
   ///
   /// Preloads inputText, tags, location, memory type, existing media URLs, and memoryDate
   /// from a MemoryDetail. Sets editingMemoryId to track edit mode.
-  /// 
+  ///
   /// Note: Memory location data (where event happened) should be set separately via
   /// setMemoryLocationFromData() after calling this method.
   void loadMemoryForEdit({

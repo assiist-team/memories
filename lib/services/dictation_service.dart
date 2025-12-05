@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dictation/flutter_dictation.dart';
 
 /// Dictation status enum
@@ -26,10 +27,10 @@ class DictationStopResult {
 }
 
 /// Service for handling voice dictation
-/// 
+///
 /// Wraps the NativeDictationService from the flutter_dictation plugin
 /// and provides a stream-based interface for Riverpod state management.
-/// 
+///
 /// Provides:
 /// - Start/stop dictation with initialization
 /// - Stream of transcript updates (result stream)
@@ -40,54 +41,53 @@ class DictationStopResult {
 class DictationService {
   /// Native dictation service instance
   final NativeDictationService _nativeService = NativeDictationService();
-  
+
   /// Stream controller for transcript updates (result stream)
   final _transcriptController = StreamController<String>.broadcast();
-  
+
   /// Stream controller for status updates
   final _statusController = StreamController<DictationStatus>.broadcast();
-  
+
   /// Stream controller for audio level updates (for waveform)
   final _audioLevelController = StreamController<double>.broadcast();
-  
+
   /// Stream controller for errors
   final _errorController = StreamController<String>.broadcast();
-  
+
   /// Accumulated final transcript (final results that have been committed)
   /// CRITICAL: This stores only final results - partial results are tracked separately
   String _accumulatedFinalTranscript = '';
-  
+
   /// Current partial transcript (the latest partial result from speech recognition)
   /// CRITICAL: Partial results replace the previous partial, but final results append to accumulated
   String _currentPartialTranscript = '';
-  
+
   /// Get the current full transcript (accumulated final + current partial)
-  String get _currentTranscript => 
-      _accumulatedFinalTranscript.isEmpty 
-          ? _currentPartialTranscript 
-          : _currentPartialTranscript.isEmpty
-              ? _accumulatedFinalTranscript
-              : '$_accumulatedFinalTranscript $_currentPartialTranscript';
-  
+  String get _currentTranscript => _accumulatedFinalTranscript.isEmpty
+      ? _currentPartialTranscript
+      : _currentPartialTranscript.isEmpty
+          ? _accumulatedFinalTranscript
+          : '$_accumulatedFinalTranscript $_currentPartialTranscript';
+
   /// Current status
   DictationStatus _status = DictationStatus.idle;
-  
+
   /// Whether dictation is currently active
   bool _isActive = false;
-  
+
   /// Current audio level (0.0 to 1.0)
   double _audioLevel = 0.0;
-  
+
   /// Current error message, if any
   String? _errorMessage;
-  
+
   /// Whether the service has been initialized
   bool _isInitialized = false;
-  
+
   /// Whether to use new plugin behavior (gated by feature flag)
   /// When true, enables audio preservation
   final bool useNewPlugin;
-  
+
   /// Completer for waiting on audio file when stopping
   Completer<DictationAudioFile?>? _audioFileCompleter;
 
@@ -158,7 +158,7 @@ class DictationService {
   }
 
   /// Start dictation
-  /// 
+  ///
   /// Returns true if started successfully, false otherwise
   Future<bool> start() async {
     if (_isActive) {
@@ -166,20 +166,23 @@ class DictationService {
     }
 
     try {
+      debugPrint(
+        '[DictationService] ${DateTime.now().toIso8601String()} start() invoked',
+      );
       _setStatus(DictationStatus.starting);
       _clearError();
       _resetWaveform();
-      
+
       // Ensure service is initialized
       await ensureInitialized();
-      
+
       // Reset transcript and audio file state
       // CRITICAL: Reset both accumulated final and partial transcripts
       // This ensures we start fresh, but the provider will append to existing text
       _accumulatedFinalTranscript = '';
       _currentPartialTranscript = '';
       _audioFileCompleter = Completer<DictationAudioFile?>();
-      
+
       // Configure audio preservation if new plugin is enabled
       final options = useNewPlugin
           ? const DictationSessionOptions(
@@ -189,13 +192,17 @@ class DictationService {
           : null;
 
       // Start listening with callbacks
+      debugPrint(
+        '[DictationService] ${DateTime.now().toIso8601String()} startListening begin',
+      );
       await _nativeService.startListening(
         onResult: (text, isFinal) {
           if (isFinal) {
             // Final result: append to accumulated final transcript
             // CRITICAL: Final results append to accumulated transcript, never overwrite
             // The accumulated final transcript persists across partial updates
-            _accumulatedFinalTranscript = '$_accumulatedFinalTranscript$text '.trim();
+            _accumulatedFinalTranscript =
+                '$_accumulatedFinalTranscript$text '.trim();
             // Clear partial since it's now finalized
             _currentPartialTranscript = '';
           } else {
@@ -224,13 +231,17 @@ class DictationService {
         },
         onAudioFile: (file) {
           // Audio file callback (fires after stopListening completes)
-          if (_audioFileCompleter != null && !_audioFileCompleter!.isCompleted) {
+          if (_audioFileCompleter != null &&
+              !_audioFileCompleter!.isCompleted) {
             _audioFileCompleter!.complete(file);
           }
         },
         options: options,
       );
 
+      debugPrint(
+        '[DictationService] ${DateTime.now().toIso8601String()} startListening complete',
+      );
       return true;
     } catch (e) {
       _isActive = false;
@@ -241,7 +252,7 @@ class DictationService {
   }
 
   /// Stop dictation
-  /// 
+  ///
   /// Returns a DictationStopResult containing transcript and optionally audio file reference
   Future<DictationStopResult> stop() async {
     if (!_isActive) {
@@ -250,10 +261,10 @@ class DictationService {
 
     try {
       _setStatus(DictationStatus.stopping);
-      
+
       // Stop listening (this will trigger audioFile callback if preserveAudio was enabled)
       await _nativeService.stopListening();
-      
+
       // Wait for audio file callback if we're preserving audio
       DictationAudioFile? audioFile;
       if (useNewPlugin && _audioFileCompleter != null) {
@@ -268,14 +279,14 @@ class DictationService {
           audioFile = null;
         }
       }
-      
+
       _isActive = false;
       _setStatus(DictationStatus.stopped);
-      
+
       // Build metadata from audio file if available
       Map<String, dynamic>? metadata;
       String? audioFilePath;
-      
+
       if (audioFile != null) {
         audioFilePath = audioFile.path;
         metadata = {
@@ -286,16 +297,16 @@ class DictationService {
           'wasCancelled': audioFile.wasCancelled,
         };
       }
-      
+
       final result = DictationStopResult(
         transcript: _currentTranscript,
         audioFilePath: audioFilePath,
         metadata: metadata,
       );
-      
+
       // Reset waveform state
       _resetWaveform();
-      
+
       return result;
     } catch (e) {
       _isActive = false;
@@ -342,10 +353,10 @@ class DictationService {
   void _setStatus(DictationStatus newStatus) {
     _status = newStatus;
     _statusController.add(newStatus);
-    
+
     // Update _isActive based on status
-    _isActive = newStatus == DictationStatus.listening || 
-                newStatus == DictationStatus.starting;
+    _isActive = newStatus == DictationStatus.listening ||
+        newStatus == DictationStatus.starting;
   }
 
   /// Set error and emit to stream

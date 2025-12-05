@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dictation/flutter_dictation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -44,6 +46,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   bool _isSaving = false;
   bool _showSuccessCheckmark = false;
   bool _hasInitializedDescription = false;
+  bool _isDescriptionFieldFocused = false;
   String? _previousInputText; // Track previous state to detect external changes
   String?
       _previousEditingMemoryId; // Track editing state to reset checkmark when editing starts
@@ -51,11 +54,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint(
+      '[CaptureScreen] ${DateTime.now().toIso8601String()} initState',
+    );
     // Initialize input text controller from capture state after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint(
+          '[CaptureScreen] ${DateTime.now().toIso8601String()} addPostFrameCallback executing (first frame rendered)');
       final state = ref.read(captureStateNotifierProvider);
       final notifier = ref.read(captureStateNotifierProvider.notifier);
-      
+
       if (state.inputText != null && !_hasInitializedDescription) {
         _descriptionController.text = state.inputText!;
         _hasInitializedDescription = true;
@@ -69,10 +77,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       }
       // Initialize previous editing ID
       _previousEditingMemoryId = state.editingMemoryId;
-      
+
       // Proactively capture location on screen load (if not already captured)
       // Only capture if we don't already have location status set
       if (state.locationStatus == null) {
+        debugPrint(
+          '[CaptureScreen] ${DateTime.now().toIso8601String()} requesting captureLocation from initState',
+        );
         notifier.captureLocation().catchError((e) {
           // Silently handle errors - location capture is optional
           debugPrint('[CaptureScreen] Failed to capture location on init: $e');
@@ -348,8 +359,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'Error: Edit state was lost. Please try editing again.'),
+              content:
+                  Text('Error: Edit state was lost. Please try editing again.'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 4),
             ),
@@ -420,12 +431,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             memoryLocationData: effectiveLocationDataMap,
           );
           await queueService.enqueue(queuedMemory);
-          
+
           // Emit updated event so timeline can reflect the pending edit immediately
           // The timeline will merge the queued edit with the existing server-backed entry
           final bus = ref.read(memoryTimelineUpdateBusProvider);
           bus.emitUpdated(targetMemoryId);
-          
+
           await _showOfflineQueueSuccess(
             message:
                 'Edits saved offline. We\'ll update this memory once you\'re online.',
@@ -483,7 +494,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               Navigator.of(context).pop();
             }
             // Switch to timeline tab
-            ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+            ref
+                .read(mainNavigationTabNotifierProvider.notifier)
+                .switchToTimeline();
           }
         }
       }
@@ -598,8 +611,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final buildStartTime = DateTime.now();
+    debugPrint(
+        '[CaptureScreen.build] ${buildStartTime.toIso8601String()} START');
+
     final state = ref.watch(captureStateNotifierProvider);
+    debugPrint(
+        '[CaptureScreen.build] ${DateTime.now().toIso8601String()} after watch provider (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
+
     final notifier = ref.read(captureStateNotifierProvider.notifier);
+    debugPrint(
+        '[CaptureScreen.build] ${DateTime.now().toIso8601String()} after read notifier (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
 
     // Initialize previous input text if not set
     if (_previousInputText == null) {
@@ -637,7 +659,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       _syncInputTextController(state.inputText, forceSync: shouldForceSync);
     });
 
-    return PopScope(
+    debugPrint(
+        '[CaptureScreen.build] ${DateTime.now().toIso8601String()} about to return widget (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
+    final result = PopScope(
       canPop: !state.hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) async {
         if (!didPop && state.hasUnsavedChanges) {
@@ -651,6 +675,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           centerTitle: true,
           title: _MemoryTypeToggle(
@@ -670,7 +695,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                     children: [
                       // Inspirational quote - hide when media/tags are present to make room
                       InspirationalQuote(
-                        showQuote: state.photoPaths.isEmpty &&
+                        showQuote: !_isDescriptionFieldFocused &&
+                            state.photoPaths.isEmpty &&
                             state.videoPaths.isEmpty &&
                             state.tags.isEmpty &&
                             (state.inputText == null ||
@@ -996,6 +1022,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                               elapsedDuration: state.elapsedDuration,
                               errorMessage: state.errorMessage,
                               descriptionController: _descriptionController,
+                              onTextFieldFocusChanged: (isFocused) {
+                                if (_isDescriptionFieldFocused != isFocused) {
+                                  setState(() {
+                                    _isDescriptionFieldFocused = isFocused;
+                                  });
+                                }
+                              },
                               onInputModeChanged: (mode) =>
                                   notifier.setInputMode(mode),
                               onStartDictation: () => notifier.startDictation(),
@@ -1113,6 +1146,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         ),
       ),
     );
+
+    debugPrint(
+        '[CaptureScreen.build] ${DateTime.now().toIso8601String()} COMPLETE (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
+    return result;
   }
 
   /// Show cancel confirmation dialog
@@ -1157,14 +1194,35 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     CaptureStateNotifier notifier,
   ) async {
     final state = ref.read(captureStateNotifierProvider);
+    final wasEditing = state.isEditing;
+
+    // Dismiss keyboard first - use both methods to ensure it closes
+    FocusScope.of(context).unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await SystemChannels.textInput.invokeMethod('TextInput.hide');
 
     // Clear state completely
     await notifier.clear();
     _refreshLocationAfterClear(notifier);
 
+    // Reset input mode to dictation (default)
+    notifier.setInputMode(InputMode.dictation);
+
+    // Clear the description controller text
+    _descriptionController.clear();
+
+    // Ensure keyboard is dismissed after state is cleared
+    // Use a small delay to ensure state updates complete first
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (mounted) {
+      FocusScope.of(context).unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
+
     // Navigate back if editing (to detail screen)
     // If creating, stay on capture screen (or pop if screen was pushed)
-    if (state.isEditing && Navigator.of(context).canPop()) {
+    if (!mounted) return;
+    if (wasEditing && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
   }
@@ -1384,6 +1442,7 @@ class _SwipeableInputContainer extends ConsumerStatefulWidget {
   final VoidCallback onStopDictation;
   final VoidCallback onCancelDictation;
   final ValueChanged<String> onTextChanged;
+  final ValueChanged<bool>? onTextFieldFocusChanged;
 
   const _SwipeableInputContainer({
     required this.inputMode,
@@ -1398,6 +1457,7 @@ class _SwipeableInputContainer extends ConsumerStatefulWidget {
     required this.onStopDictation,
     required this.onCancelDictation,
     required this.onTextChanged,
+    this.onTextFieldFocusChanged,
   });
 
   @override
@@ -1411,9 +1471,26 @@ class _SwipeableInputContainerState
   bool _isDragging = false;
   final FocusNode _textFieldFocusNode = FocusNode();
   final ScrollController _dictationScrollController = ScrollController();
+  final GlobalKey _textFieldKey = GlobalKey();
   double? _dragStartX;
   double? _cachedHeight; // Cache height to prevent resizing during swipe
   bool _isTextFieldFocused = false;
+
+  void _handleSwipePointerDown(PointerDownEvent event) {
+    _dragStartX = event.position.dx;
+  }
+
+  void _handleSwipePointerMove(PointerMoveEvent event) {
+    if (_dragStartX == null) return;
+    final deltaX = (event.position.dx - _dragStartX!).abs();
+    if (deltaX > 10) {
+      _textFieldFocusNode.unfocus();
+    }
+  }
+
+  void _resetSwipeTracking() {
+    _dragStartX = null;
+  }
 
   @override
   void initState() {
@@ -1426,15 +1503,42 @@ class _SwipeableInputContainerState
     // Listen to page controller position changes to detect dragging
     _pageController.addListener(_onPageControllerChanged);
 
-    // Listen to focus changes to update text alignment
+    // Listen to focus changes to update text alignment and scroll into view
     _textFieldFocusNode.addListener(_onFocusChanged);
   }
 
   void _onFocusChanged() {
-    if (_textFieldFocusNode.hasFocus != _isTextFieldFocused) {
+    final wasFocused = _isTextFieldFocused;
+    final isNowFocused = _textFieldFocusNode.hasFocus;
+
+    if (isNowFocused != wasFocused) {
+      debugPrint(
+        '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} focusChanged: $isNowFocused',
+      );
       setState(() {
-        _isTextFieldFocused = _textFieldFocusNode.hasFocus;
+        _isTextFieldFocused = isNowFocused;
       });
+      widget.onTextFieldFocusChanged?.call(isNowFocused);
+
+      // When text field gains focus, scroll it into view after keyboard appears
+      if (isNowFocused) {
+        debugPrint(
+          '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} scheduling ensureVisible for TextField',
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _textFieldKey.currentContext != null) {
+            debugPrint(
+              '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} ensureVisible executing',
+            );
+            Scrollable.ensureVisible(
+              _textFieldKey.currentContext!,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              alignment: 0.1, // Show near top of visible area
+            );
+          }
+        });
+      }
     }
   }
 
@@ -1460,6 +1564,9 @@ class _SwipeableInputContainerState
     super.didUpdateWidget(oldWidget);
     // Sync page controller if input mode changed externally
     if (oldWidget.inputMode != widget.inputMode) {
+      debugPrint(
+        '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} didUpdateWidget -> inputMode=${widget.inputMode}',
+      );
       final targetPage = widget.inputMode == InputMode.dictation ? 0 : 1;
       if (_pageController.hasClients &&
           _pageController.page?.round() != targetPage) {
@@ -1529,9 +1636,15 @@ class _SwipeableInputContainerState
 
   Future<void> _onPageChanged(int page) async {
     final newMode = page == 0 ? InputMode.dictation : InputMode.type;
+    debugPrint(
+      '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} onPageChanged -> page=$page mode=$newMode',
+    );
     if (newMode != widget.inputMode) {
       // Reset cached height when page changes to allow recalculation
       _cachedHeight = null;
+      debugPrint(
+        '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} calling onInputModeChanged($newMode)',
+      );
       await widget.onInputModeChanged(newMode);
 
       // When switching to dictation mode, scroll to the end of the text
@@ -1575,6 +1688,9 @@ class _SwipeableInputContainerState
   @override
   Widget build(BuildContext context) {
     final isIOS = defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb;
+    final keyboardInset = widget.inputMode == InputMode.type
+        ? MediaQuery.of(context).viewInsets.bottom
+        : 0.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1601,345 +1717,355 @@ class _SwipeableInputContainerState
         // Swipe hints should ALWAYS be visible - never hide them
         final shouldShowDictationHint = true;
 
-        return SizedBox(
-          height: adjustedTotalHeight,
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: _onPageChanged,
-            children: [
-              // Page 0: Dictation mode
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Simulator warning banner (if applicable)
-                  if (isIOS && PlatformUtils.isSimulator)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: SizedBox(
+            height: adjustedTotalHeight,
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: _onPageChanged,
+              children: [
+                // Page 0: Dictation mode
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Simulator warning banner (if applicable)
+                    if (isIOS && PlatformUtils.isSimulator)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 20,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Voice dictation is unavailable on iOS Simulator. Please test on a physical device.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 20,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Voice dictation is unavailable on iOS Simulator. Please test on a physical device.',
+                    // Text container - Expanded so it can grow, starts at same size as type mode
+                    Expanded(
+                      child: isIOS
+                          ? _DictationTextContainer(
+                              transcript: widget.transcript,
+                              memoryType: widget.memoryType,
+                              isDictating: widget.isDictating,
+                              showSwipeHint: shouldShowDictationHint,
+                              scrollController: _dictationScrollController,
+                              onMicPressed: widget.isDictating
+                                  ? widget.onStopDictation
+                                  : widget.onStartDictation,
+                              onCancelPressed: widget.isDictating
+                                  ? widget.onCancelDictation
+                                  : null,
+                              elapsedDuration: widget.elapsedDuration,
+                              waveformController:
+                                  ref.watch(waveformControllerProvider),
+                            )
+                          : // Platform not supported banner
+                          Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 20,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Voice dictation is currently available on iOS. Android support coming soon.',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                    // Swipe hint - ALWAYS visible, never hide
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.arrow_back,
+                              size: 14,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withOpacity(0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Swipe to type',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
                                   ?.copyWith(
                                     color: Theme.of(context)
                                         .colorScheme
-                                        .onSurfaceVariant,
+                                        .onSurfaceVariant
+                                        .withOpacity(0.6),
+                                    fontSize: 12,
                                   ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  // Text container - Expanded so it can grow, starts at same size as type mode
-                  Expanded(
-                    child: isIOS
-                        ? _DictationTextContainer(
-                            transcript: widget.transcript,
-                            memoryType: widget.memoryType,
-                            isDictating: widget.isDictating,
-                            showSwipeHint: shouldShowDictationHint,
-                            scrollController: _dictationScrollController,
-                            onMicPressed: widget.isDictating
-                                ? widget.onStopDictation
-                                : widget.onStartDictation,
-                            onCancelPressed: widget.isDictating
-                                ? widget.onCancelDictation
-                                : null,
-                            elapsedDuration: widget.elapsedDuration,
-                            waveformController:
-                                ref.watch(waveformControllerProvider),
-                          )
-                        : // Platform not supported banner
-                        Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  size: 20,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Voice dictation is currently available on iOS. Android support coming soon.',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                    // Error message display
+                    if (widget.errorMessage != null)
+                      Semantics(
+                        label: 'Error message',
+                        liveRegion: true,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                  ),
-                  // Swipe hint - ALWAYS visible, never hide
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Swipe to type',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant
-                                          .withOpacity(0.6),
-                                      fontSize: 12,
-                                    ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onErrorContainer,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.errorMessage!,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onErrorContainer,
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.arrow_forward,
-                            size: 14,
+                        ),
+                      ),
+                  ],
+                ),
+
+                // Page 1: Type mode
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Text container - Expanded so it can grow, starts at same size as dictation mode
+                    Expanded(
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerDown: _handleSwipePointerDown,
+                        onPointerMove: _handleSwipePointerMove,
+                        onPointerUp: (_) => _resetSwipeTracking(),
+                        onPointerCancel: (_) => _resetSwipeTracking(),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 5),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .colorScheme
-                                .onSurfaceVariant
-                                .withOpacity(0.6),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Error message display
-                  if (widget.errorMessage != null)
-                    Semantics(
-                      label: 'Error message',
-                      liveRegion: true,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(top: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 20,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                widget.errorMessage!,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onErrorContainer,
-                                    ),
+                                .surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-
-              // Page 1: Type mode
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Text container - Expanded so it can grow, starts at same size as dictation mode
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onHorizontalDragStart: (details) {
-                        // Unfocus text field when horizontal drag starts to allow PageView swipe
-                        _textFieldFocusNode.unfocus();
-                        _dragStartX = details.globalPosition.dx;
-                      },
-                      onHorizontalDragUpdate: (details) {
-                        // If horizontal drag is significant, ensure text field stays unfocused
-                        if (_dragStartX != null) {
-                          final deltaX =
-                              (details.globalPosition.dx - _dragStartX!).abs();
-                          if (deltaX > 10) {
-                            _textFieldFocusNode.unfocus();
-                          }
-                        }
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 5),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Semantics(
-                          label: 'Input text',
-                          textField: true,
-                          hint: _getPlaceholderText(widget.memoryType),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final shouldShowPlaceholder =
-                                  widget.descriptionController.text.isEmpty &&
-                                      !_isTextFieldFocused;
-                              return ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: constraints.maxHeight,
-                                  maxHeight: constraints.maxHeight.isInfinite
-                                      ? double.infinity
-                                      : constraints.maxHeight,
-                                ),
-                                child: Stack(
-                                  children: [
-                                    TextField(
-                                      controller: widget.descriptionController,
-                                      focusNode: _textFieldFocusNode,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyLarge
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface,
-                                          ),
-                                      decoration: const InputDecoration(
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.zero,
+                            ],
+                          ),
+                          child: Semantics(
+                            label: 'Input text',
+                            textField: true,
+                            hint: _getPlaceholderText(widget.memoryType),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final shouldShowPlaceholder =
+                                    widget.descriptionController.text.isEmpty &&
+                                        !_isTextFieldFocused;
+                                return ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: constraints.maxHeight,
+                                    maxHeight: constraints.maxHeight.isInfinite
+                                        ? double.infinity
+                                        : constraints.maxHeight,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      TextField(
+                                        key: _textFieldKey,
+                                        controller:
+                                            widget.descriptionController,
+                                        focusNode: _textFieldFocusNode,
+                                        onTap: () {
+                                          debugPrint(
+                                            '[SwipeableInputContainer] ${DateTime.now().toIso8601String()} textField onTap',
+                                          );
+                                        },
+                                        onTapOutside: (_) {
+                                          FocusScope.of(context).unfocus();
+                                          FocusManager.instance.primaryFocus
+                                              ?.unfocus();
+                                        },
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyLarge
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                        maxLines: null,
+                                        expands: true,
+                                        textAlign: TextAlign.start,
+                                        textAlignVertical:
+                                            TextAlignVertical.top,
+                                        keyboardType: TextInputType.multiline,
+                                        onChanged: (value) {
+                                          widget.onTextChanged(value);
+                                          // Update placeholder visibility when text changes
+                                          setState(() {});
+                                        },
                                       ),
-                                      maxLines: null,
-                                      expands: true,
-                                      textAlign: TextAlign.start,
-                                      textAlignVertical: TextAlignVertical.top,
-                                      keyboardType: TextInputType.multiline,
-                                      onChanged: (value) {
-                                        widget.onTextChanged(value);
-                                        // Update placeholder visibility when text changes
-                                        setState(() {});
-                                      },
-                                    ),
-                                    if (shouldShowPlaceholder)
-                                      IgnorePointer(
-                                        child: SizedBox.expand(
-                                          child: Transform.translate(
-                                            offset: const Offset(0, -40),
-                                            child: Center(
-                                              child: Text(
-                                                _getPlaceholderText(
-                                                    widget.memoryType),
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodyLarge
-                                                    ?.copyWith(
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                textAlign: TextAlign.center,
+                                      if (shouldShowPlaceholder)
+                                        IgnorePointer(
+                                          child: SizedBox.expand(
+                                            child: Transform.translate(
+                                              offset: const Offset(0, -40),
+                                              child: Center(
+                                                child: Text(
+                                                  _getPlaceholderText(
+                                                      widget.memoryType),
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .bodyLarge
+                                                      ?.copyWith(
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurfaceVariant,
+                                                      ),
+                                                  textAlign: TextAlign.center,
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                  ],
-                                ),
-                              );
-                            },
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  // Swipe hint - ALWAYS visible, never hide
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: _SwipeHint(
-                      currentMode: InputMode.type,
-                      isVisible: true,
-                    ),
-                  ),
-                  // Error message display (matches dictation mode layout)
-                  if (widget.errorMessage != null)
-                    Semantics(
-                      label: 'Error message',
-                      liveRegion: true,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(top: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 20,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                widget.errorMessage!,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onErrorContainer,
-                                    ),
-                              ),
-                            ),
-                          ],
-                        ),
+                    // Swipe hint - ALWAYS visible, never hide
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: _SwipeHint(
+                        currentMode: InputMode.type,
+                        isVisible: true,
                       ),
                     ),
-                ],
-              ),
-            ],
+                    // Error message display (matches dictation mode layout)
+                    if (widget.errorMessage != null)
+                      Semantics(
+                        label: 'Error message',
+                        liveRegion: true,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onErrorContainer,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  widget.errorMessage!,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onErrorContainer,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1961,7 +2087,9 @@ class _SwipeHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDictationMode = currentMode == InputMode.dictation;
     final hintText = isDictationMode ? 'Swipe to type' : 'Swipe to talk';
-    final arrowIcon = isDictationMode ? Icons.arrow_forward : Icons.arrow_back;
+    // "Swipe to type" shows a left arrow (on the left)
+    // "Swipe to talk" shows a right arrow (on the right)
+    final arrowIcon = isDictationMode ? Icons.arrow_back : Icons.arrow_forward;
 
     // Always render but control visibility with opacity to prevent layout shifts
     return Opacity(
@@ -1970,7 +2098,7 @@ class _SwipeHint extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!isDictationMode) ...[
+            if (isDictationMode) ...[
               Icon(
                 arrowIcon,
                 size: 14,
@@ -1991,7 +2119,7 @@ class _SwipeHint extends StatelessWidget {
                     fontSize: 12,
                   ),
             ),
-            if (isDictationMode) ...[
+            if (!isDictationMode) ...[
               const SizedBox(width: 4),
               Icon(
                 arrowIcon,
@@ -2675,7 +2803,9 @@ class _LocationPickerBottomSheetState
                                   ),
                             ),
                             Text(
-                              _isOffline ? 'Coordinates only' : 'From current position',
+                              _isOffline
+                                  ? 'Coordinates only'
+                                  : 'From current position',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall

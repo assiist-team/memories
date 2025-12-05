@@ -21,7 +21,7 @@ class _MediaItem {
 }
 
 /// Media strip widget displaying photos and videos in a horizontally scrolling list
-/// 
+///
 /// Similar to MediaTray but for detail view with remote URLs.
 /// Supports thumbnail selection to show larger preview.
 class MediaStrip extends ConsumerStatefulWidget {
@@ -48,14 +48,17 @@ class _MediaStripState extends ConsumerState<MediaStrip> {
     int index = 0;
 
     // Combine photos and videos, sorted by their index
-    final allMedia = <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
+    final allMedia =
+        <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
 
     for (final photo in widget.photos) {
-      allMedia.add((isPhoto: true, index: photo.index, photo: photo, video: null));
+      allMedia
+          .add((isPhoto: true, index: photo.index, photo: photo, video: null));
     }
 
     for (final video in widget.videos) {
-      allMedia.add((isPhoto: false, index: video.index, photo: null, video: video));
+      allMedia
+          .add((isPhoto: false, index: video.index, photo: null, video: video));
     }
 
     // Sort by index to maintain capture order
@@ -91,7 +94,7 @@ class _MediaStripState extends ConsumerState<MediaStrip> {
         itemBuilder: (context, index) {
           final item = mediaItems[index];
           final isSelected = widget.selectedIndex == index;
-          
+
           return _MediaThumbnail(
             item: item,
             isSelected: isSelected,
@@ -137,7 +140,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Future<void> _initializeVideo() async {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     try {
@@ -145,7 +149,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
       if (posterUrl != null) {
         // Just load the poster for thumbnail - don't initialize video player
         await imageCache.getSignedUrlForDetailView(
-          supabase,
+          supabaseUrl,
+          supabaseAnonKey,
           'memories-photos',
           posterUrl,
         );
@@ -158,7 +163,7 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
@@ -186,12 +191,14 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Widget _buildPhotoThumbnail() {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     return FutureBuilder<String>(
       future: imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-photos',
         widget.item.photo!.url,
       ),
@@ -224,7 +231,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Widget _buildVideoThumbnail() {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
     final theme = Theme.of(context);
     final overlayColor = theme.colorScheme.onSurface.withOpacity(0.7);
@@ -236,7 +244,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
         if (widget.item.video!.posterUrl != null)
           FutureBuilder<String>(
             future: imageCache.getSignedUrlForDetailView(
-              supabase,
+              supabaseUrl,
+              supabaseAnonKey,
               'memories-photos',
               widget.item.video!.posterUrl!,
             ),
@@ -293,4 +302,3 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
     );
   }
 }
-

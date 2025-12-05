@@ -86,6 +86,9 @@ post_install do |installer|
       target.build_configurations.each do |config|
         config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'YES'
         config.build_settings['SWIFT_VERSION'] = '5.0'
+        # Relax Swift 6 strict concurrency so older plugins still compile
+        # This downgrades many Swift 6-only concurrency errors to warnings.
+        config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
       end
     end
   end

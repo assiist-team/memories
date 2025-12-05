@@ -94,8 +94,12 @@ class MediaTray extends ConsumerWidget {
             );
           }
           // Existing videos come next
-          else if (index < existingPhotoUrls.length + photoPaths.length + existingVideoUrls.length) {
-            final existingVideoIndex = index - existingPhotoUrls.length - photoPaths.length;
+          else if (index <
+              existingPhotoUrls.length +
+                  photoPaths.length +
+                  existingVideoUrls.length) {
+            final existingVideoIndex =
+                index - existingPhotoUrls.length - photoPaths.length;
             return _MediaThumbnail(
               url: existingVideoUrls[existingVideoIndex],
               isVideo: true,
@@ -107,7 +111,10 @@ class MediaTray extends ConsumerWidget {
           }
           // New videos come last
           else {
-            final videoIndex = index - existingPhotoUrls.length - photoPaths.length - existingVideoUrls.length;
+            final videoIndex = index -
+                existingPhotoUrls.length -
+                photoPaths.length -
+                existingVideoUrls.length;
             return _MediaThumbnail(
               filePath: videoPaths[videoIndex],
               isVideo: true,
@@ -125,7 +132,8 @@ class _MediaThumbnail extends ConsumerStatefulWidget {
   final String? filePath; // Local file path (for new media)
   final String? url; // Storage path from Supabase Storage (for existing media)
   final bool isVideo;
-  final bool isExisting; // Whether this is existing media (URL) or new media (file path)
+  final bool
+      isExisting; // Whether this is existing media (URL) or new media (file path)
   final VoidCallback? onRemoved;
 
   const _MediaThumbnail({
@@ -135,7 +143,8 @@ class _MediaThumbnail extends ConsumerStatefulWidget {
     required this.isExisting,
     this.onRemoved,
   }) : assert(
-          (filePath != null && url == null) || (filePath == null && url != null),
+          (filePath != null && url == null) ||
+              (filePath == null && url != null),
           'Either filePath or url must be provided, but not both',
         );
 
@@ -158,14 +167,17 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
     try {
       if (widget.isExisting && widget.url != null) {
         // Existing video from storage path - need to get signed URL
-        final supabase = ref.read(supabaseClientProvider);
+        final supabaseUrl = ref.read(supabaseUrlProvider);
+        final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
         final imageCache = ref.read(timelineImageCacheServiceProvider);
         final signedUrl = await imageCache.getSignedUrlForDetailView(
-          supabase,
+          supabaseUrl,
+          supabaseAnonKey,
           'memories-videos', // Videos are stored in memories-videos bucket
           widget.url!,
         );
-        _videoController = VideoPlayerController.networkUrl(Uri.parse(signedUrl));
+        _videoController =
+            VideoPlayerController.networkUrl(Uri.parse(signedUrl));
       } else if (!widget.isExisting && widget.filePath != null) {
         // New video from file path
         _videoController = VideoPlayerController.file(File(widget.filePath!));
@@ -258,12 +270,14 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
     try {
       if (widget.isExisting && widget.url != null) {
         // Existing photo from storage path - need to get signed URL
-        final supabase = ref.read(supabaseClientProvider);
+        final supabaseUrl = ref.read(supabaseUrlProvider);
+        final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
         final imageCache = ref.read(timelineImageCacheServiceProvider);
-        
+
         return FutureBuilder<String>(
           future: imageCache.getSignedUrlForDetailView(
-            supabase,
+            supabaseUrl,
+            supabaseAnonKey,
             'memories-photos',
             widget.url!,
           ),
@@ -273,7 +287,7 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
                 child: Icon(Icons.broken_image),
               );
             }
-            
+
             return Image.network(
               snapshot.data!,
               fit: BoxFit.cover,

@@ -14,13 +14,13 @@ part 'auth_state_provider.g.dart';
 enum AuthRouteState {
   /// User is not authenticated - show auth stack (login/signup)
   unauthenticated,
-  
+
   /// User is authenticated but email not verified - show verification wait screen
   unverified,
-  
+
   /// User is authenticated and verified but onboarding not completed - show onboarding
   onboarding,
-  
+
   /// User is fully authenticated, verified, and onboarded - show main shell
   authenticated,
 }
@@ -61,7 +61,7 @@ SecureStorageService secureStorageService(SecureStorageServiceRef ref) {
 }
 
 /// Provider that listens to Supabase auth state changes and determines routing
-/// 
+///
 /// This provider:
 /// - Listens to auth state changes from Supabase
 /// - Determines the appropriate route state based on user authentication,
@@ -87,25 +87,27 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
     // Get initial auth state immediately (before waiting for stream)
     final initialSession = supabase.auth.currentSession;
     final initialUser = supabase.auth.currentUser;
-    
+
     debugPrint('Initial auth state:');
-    debugPrint('  User: ${initialUser?.id ?? "null"} (${initialUser?.email ?? "no email"})');
+    debugPrint(
+        '  User: ${initialUser?.id ?? "null"} (${initialUser?.email ?? "no email"})');
     debugPrint('  Session: ${initialSession != null ? "exists" : "null"}');
     if (initialSession != null) {
-      debugPrint('  Access token: ${initialSession.accessToken.substring(0, 20)}...');
+      debugPrint(
+          '  Access token: ${initialSession.accessToken.substring(0, 20)}...');
     }
-    
+
     // Emit initial state right away
     final initialRouteState = await _determineRouteState(
       supabase,
       initialUser,
       initialSession,
     );
-    
+
     debugPrint('  Route state: $initialRouteState');
     debugPrint('═══════════════════════════════════════════════════════');
     debugPrint('');
-    
+
     yield AuthRoutingState(
       routeState: initialRouteState,
       user: initialUser,
@@ -121,7 +123,7 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
         debugPrint('═══════════════════════════════════════════════════════');
         final session = authState.session;
         final user = authState.session?.user;
-        
+
         if (authState.event == AuthChangeEvent.signedIn) {
           debugPrint('✓ User signed in via OAuth');
           debugPrint('  User ID: ${user?.id}');
@@ -141,7 +143,7 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
           final expiresAt = session.expiresIn != null
               ? DateTime.now().add(Duration(seconds: session.expiresIn!))
               : DateTime.now().add(const Duration(hours: 1));
-          
+
           // Store session data in custom storage (for biometrics and compatibility)
           await secureStorage.storeSession(
             accessToken: session.accessToken,
@@ -175,12 +177,12 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
       } catch (e, stackTrace) {
         // Handle errors gracefully
         final errorMessage = errorHandler.handleAuthError(e);
-        
+
         yield AuthRoutingState(
           routeState: AuthRouteState.unauthenticated,
           errorMessage: errorMessage,
         );
-        
+
         // Log error for debugging
         errorHandler.logError(e, stackTrace);
       }
@@ -189,7 +191,7 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
     // Handle initialization errors
     debugPrint('ERROR in authStateProvider initialization: $e');
     errorHandler.logError(e, stackTrace);
-    
+
     yield AuthRoutingState(
       routeState: AuthRouteState.unauthenticated,
       errorMessage: errorHandler.handleAuthError(e),
@@ -198,7 +200,7 @@ Stream<AuthRoutingState> authState(AuthStateRef ref) async* {
 }
 
 /// Hydrate session from secure storage on app start
-/// 
+///
 /// This function:
 /// - First checks if Supabase has already auto-hydrated the session
 /// - Uses recoverSession() to let Supabase read its own persisted session
@@ -214,21 +216,23 @@ Future<void> _hydrateSession(
     // First, check if Supabase already has a hydrated session
     final currentSession = supabase.auth.currentSession;
     if (currentSession != null) {
-      debugPrint('  ✓ Supabase already has a hydrated session - skipping manual hydration');
+      debugPrint(
+          '  ✓ Supabase already has a hydrated session - skipping manual hydration');
       return;
     }
 
     // Check if Supabase has a persisted session in its storage
     final supabaseStorage = SupabaseSecureStorage();
     final hasSupabaseSession = await supabaseStorage.hasSessionJson();
-    
+
     if (!hasSupabaseSession) {
-      debugPrint('  No stored session found in Supabase storage - user needs to sign in');
+      debugPrint(
+          '  No stored session found in Supabase storage - user needs to sign in');
       // Also clear any custom storage to keep them in sync
       await secureStorage.clearSession();
       return;
     }
-    
+
     debugPrint('  ✓ Stored session found in Supabase storage - recovering...');
 
     // Check if biometric authentication is enabled
@@ -238,9 +242,11 @@ Future<void> _hydrateSession(
       final isAvailable = await biometricService.isAvailable();
       if (isAvailable) {
         // Prompt for biometric authentication
-        final biometricTypeName = await biometricService.getAvailableBiometricTypeName();
+        final biometricTypeName =
+            await biometricService.getAvailableBiometricTypeName();
         final authenticated = await biometricService.authenticate(
-          reason: 'Authenticate with ${biometricTypeName ?? 'biometrics'} to access your account',
+          reason:
+              'Authenticate with ${biometricTypeName ?? 'biometrics'} to access your account',
         );
 
         if (!authenticated) {
@@ -255,8 +261,7 @@ Future<void> _hydrateSession(
             if (user != null) {
               await supabase
                   .from('profiles')
-                  .update({'biometric_enabled': false})
-                  .eq('id', user.id);
+                  .update({'biometric_enabled': false}).eq('id', user.id);
             }
           } catch (e) {
             // Ignore errors updating profile - user will need to login with password
@@ -268,7 +273,8 @@ Future<void> _hydrateSession(
         // Read from SupabaseSecureStorage (where Supabase persists it) for the most up-to-date version
         final sessionJson = await supabaseStorage.getSessionJson();
         if (sessionJson != null && sessionJson.isNotEmpty) {
-          debugPrint('  Setting session from stored JSON (biometric authenticated)...');
+          debugPrint(
+              '  Setting session from stored JSON (biometric authenticated)...');
           try {
             await supabase.auth.setSession(sessionJson);
             debugPrint('  ✓ Session set successfully from stored JSON');
@@ -288,8 +294,7 @@ Future<void> _hydrateSession(
           if (user != null) {
             await supabase
                 .from('profiles')
-                .update({'biometric_enabled': false})
-                .eq('id', user.id);
+                .update({'biometric_enabled': false}).eq('id', user.id);
           }
         } catch (e) {
           // Ignore errors updating profile
@@ -306,7 +311,7 @@ Future<void> _hydrateSession(
         debugPrint('  Setting session from Supabase storage...');
         await supabase.auth.setSession(sessionJson);
         debugPrint('  ✓ Session set successfully');
-        
+
         // Verify session was set
         final recoveredSession = supabase.auth.currentSession;
         if (recoveredSession != null) {
@@ -318,10 +323,11 @@ Future<void> _hydrateSession(
         return;
       } on AuthException catch (e) {
         // Handle refresh_token_not_found as expected expiration
-        if (e.statusCode == 'refresh_token_not_found' || 
+        if (e.statusCode == 'refresh_token_not_found' ||
             e.message.contains('Refresh Token Not Found') ||
             e.message.contains('refresh_token_not_found')) {
-          debugPrint('  Refresh token not found (expected expiration) - clearing storage');
+          debugPrint(
+              '  Refresh token not found (expected expiration) - clearing storage');
           await secureStorage.clearSession();
           await supabaseStorage.removePersistedSession();
           // Don't surface error - this is expected when token expires
@@ -358,38 +364,40 @@ Future<AuthRouteState> _determineRouteState(
     return AuthRouteState.unverified;
   }
 
+  // ONBOARDING BYPASSED - Commented out to skip onboarding flow
   // Check if onboarding is completed
   // Query profiles table to check onboarding_completed_at
-  try {
-    final profileResponse = await supabase
-        .from('profiles')
-        .select('onboarding_completed_at')
-        .eq('id', user.id)
-        .maybeSingle();
+  // try {
+  //   final profileResponse = await supabase
+  //       .from('profiles')
+  //       .select('onboarding_completed_at')
+  //       .eq('id', user.id)
+  //       .maybeSingle();
 
-    // If profile doesn't exist, assume onboarding needed
-    if (profileResponse == null) {
-      return AuthRouteState.onboarding;
-    }
+  //   // If profile doesn't exist, assume onboarding needed
+  //   if (profileResponse == null) {
+  //     return AuthRouteState.onboarding;
+  //   }
 
-    final onboardingCompletedAt = profileResponse['onboarding_completed_at'];
-    
-    if (onboardingCompletedAt == null) {
-      return AuthRouteState.onboarding;
-    }
-  } catch (e) {
-    // If query fails, assume onboarding needed
-    // This handles edge cases where profile creation might be delayed
-    // Don't log this as an error - it's an expected edge case
-    return AuthRouteState.onboarding;
-  }
+  //   final onboardingCompletedAt = profileResponse['onboarding_completed_at'];
+
+  //   if (onboardingCompletedAt == null) {
+  //     return AuthRouteState.onboarding;
+  //   }
+  // } catch (e) {
+  //   // If query fails, assume onboarding needed
+  //   // This handles edge cases where profile creation might be delayed
+  //   // Don't log this as an error - it's an expected edge case
+  //   return AuthRouteState.onboarding;
+  // }
 
   // User is authenticated, verified, and onboarded
+  // (Onboarding check bypassed - always return authenticated after verification)
   return AuthRouteState.authenticated;
 }
 
 /// Provider for current auth routing state (non-stream, synchronous access)
-/// 
+///
 /// Note: This provider watches the auth state stream. In practice, you may want
 /// to use AsyncValue or a StateNotifier to track the latest state more explicitly.
 /// For now, components should watch authStateProvider directly to get stream updates.
@@ -397,4 +405,3 @@ Future<AuthRouteState> _determineRouteState(
 Stream<AuthRoutingState> currentAuthState(CurrentAuthStateRef ref) {
   return ref.watch(authStateProvider.stream);
 }
-

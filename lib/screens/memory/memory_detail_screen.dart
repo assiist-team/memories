@@ -1649,12 +1649,14 @@ class _StoryAudioPlayer extends ConsumerWidget {
     }
 
     // Fetch signed URL for remote Supabase Storage audio
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     return FutureBuilder<String>(
       future: imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'stories-audio',
         audioPath!,
       ),

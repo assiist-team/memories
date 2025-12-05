@@ -8,7 +8,6 @@ import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_image_cache_provider.dart';
 import 'package:memories/services/timeline_image_cache_service.dart';
 import 'package:memories/widgets/memory_title_with_processing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Reusable card widget for displaying a Moment in the timeline
 class MomentCard extends ConsumerWidget {
@@ -27,8 +26,11 @@ class MomentCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context);
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     // Determine offline states
     final isPreviewOnlyOffline =
@@ -83,7 +85,8 @@ class MomentCard extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Thumbnail section
-                        _buildThumbnail(context, supabase, imageCache),
+                        _buildThumbnail(context, supabaseUrl, supabaseAnonKey,
+                            imageCache, accessToken),
                         const SizedBox(width: 16),
                         // Content section
                         Expanded(
@@ -153,7 +156,6 @@ class MomentCard extends ConsumerWidget {
     );
   }
 
-
   Widget _buildPreviewOnlyChip(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -185,8 +187,12 @@ class MomentCard extends ConsumerWidget {
     return memoryType.icon;
   }
 
-  Widget _buildThumbnail(BuildContext context, SupabaseClient supabase,
-      TimelineImageCacheService imageCache) {
+  Widget _buildThumbnail(
+      BuildContext context,
+      String supabaseUrl,
+      String supabaseAnonKey,
+      TimelineImageCacheService imageCache,
+      String? accessToken) {
     const thumbnailSize = 80.0;
     final memoryTypeIcon = _getMemoryTypeIcon();
 
@@ -358,9 +364,11 @@ class MomentCard extends ConsumerWidget {
 
     // Get signed URL from cache or generate new one
     final signedUrl = imageCache.getSignedUrl(
-      supabase,
+      supabaseUrl,
+      supabaseAnonKey,
       bucket,
       media.url,
+      accessToken: accessToken,
     );
 
     return FutureBuilder<String>(

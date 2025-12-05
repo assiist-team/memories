@@ -297,8 +297,11 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -312,9 +315,11 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
             maxScale: 3.0,
             child: FutureBuilder<String>(
               future: imageCache.getSignedUrlForDetailView(
-                supabase,
+                supabaseUrl,
+                supabaseAnonKey,
                 'memories-photos',
                 widget.photo.url,
+                accessToken: accessToken,
               ),
               builder: (context, snapshot) {
                 if (snapshot.hasError || widget.hasError) {
@@ -322,17 +327,17 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
                       ? 'Error: ${snapshot.error}, Photo URL: ${widget.photo.url}'
                       : widget.errorMessage ?? 'Failed to load image';
 
-                  debugPrint(
-                      '[MediaCarousel] ✗ Photo slide error: $errorDetails');
+                  // debugPrint(
+                  //    '[MediaCarousel] ✗ Photo slide error: $errorDetails');
                   if (snapshot.hasError) {
-                    debugPrint(
-                        '[MediaCarousel]   Error object: ${snapshot.error}');
+                    // debugPrint(
+                    //    '[MediaCarousel]   Error object: ${snapshot.error}');
                   }
-                  developer.log(
-                    'Photo slide error: $errorDetails',
-                    name: 'MediaCarousel',
-                    error: snapshot.error,
-                  );
+                  // developer.log(
+                  //   'Photo slide error: $errorDetails',
+                  //   name: 'MediaCarousel',
+                  //   error: snapshot.error,
+                  // );
 
                   return _ErrorPlaceholder(
                     message: widget.errorMessage ?? 'Failed to load image',
@@ -350,30 +355,30 @@ class _PhotoSlideState extends ConsumerState<_PhotoSlide> {
                 }
 
                 final signedUrl = snapshot.data!;
-                debugPrint('[MediaCarousel] Loading image from signed URL');
-                debugPrint('[MediaCarousel]   Photo URL: ${widget.photo.url}');
-                debugPrint(
-                    '[MediaCarousel]   Signed URL: ${signedUrl.substring(0, 80)}...');
-                developer.log(
-                  'Loading image from signed URL for photo: ${widget.photo.url}',
-                  name: 'MediaCarousel',
-                );
+                // debugPrint('[MediaCarousel] Loading image from signed URL');
+                // debugPrint('[MediaCarousel]   Photo URL: ${widget.photo.url}');
+                // debugPrint(
+                //    '[MediaCarousel]   Signed URL: ${signedUrl.substring(0, 80)}...');
+                // developer.log(
+                //   'Loading image from signed URL for photo: ${widget.photo.url}',
+                //   name: 'MediaCarousel',
+                // );
 
                 final imageWidget = Image.network(
                   signedUrl,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
-                    debugPrint('[MediaCarousel] ✗ Image.network error');
-                    debugPrint(
-                        '[MediaCarousel]   Photo URL: ${widget.photo.url}');
-                    debugPrint('[MediaCarousel]   Signed URL: $signedUrl');
-                    debugPrint('[MediaCarousel]   Error: $error');
-                    developer.log(
-                      'Image.network error for photo URL: ${widget.photo.url}, signed URL: $signedUrl, error: $error',
-                      name: 'MediaCarousel',
-                      error: error,
-                      stackTrace: stackTrace,
-                    );
+                    // debugPrint('[MediaCarousel] ✗ Image.network error');
+                    // debugPrint(
+                    //    '[MediaCarousel]   Photo URL: ${widget.photo.url}');
+                    // debugPrint('[MediaCarousel]   Signed URL: $signedUrl');
+                    // debugPrint('[MediaCarousel]   Error: $error');
+                    // developer.log(
+                    //   'Image.network error for photo URL: ${widget.photo.url}, signed URL: $signedUrl, error: $error',
+                    //   name: 'MediaCarousel',
+                    //   error: error,
+                    //   stackTrace: stackTrace,
+                    // );
 
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       widget.onError('Failed to load image: $error');
@@ -446,15 +451,20 @@ class _VideoSlideState extends ConsumerState<_VideoSlide> {
   }
 
   Future<void> _initializeVideo() async {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     try {
       // Get signed URL for video
       final videoUrl = await imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-videos',
         widget.video.url,
+        accessToken: accessToken,
       );
 
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
@@ -503,7 +513,8 @@ class _VideoSlideState extends ConsumerState<_VideoSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     if (widget.hasError || _hasError) {
@@ -538,9 +549,15 @@ class _VideoSlideState extends ConsumerState<_VideoSlide> {
               FutureBuilder<String?>(
                 future: widget.video.posterUrl != null
                     ? imageCache.getSignedUrlForDetailView(
-                        supabase,
+                        supabaseUrl,
+                        supabaseAnonKey,
                         'memories-photos',
                         widget.video.posterUrl!,
+                        accessToken: ref
+                            .read(supabaseClientProvider)
+                            .auth
+                            .currentSession
+                            ?.accessToken,
                       )
                     : Future.value(null),
                 builder: (context, snapshot) {
@@ -845,14 +862,19 @@ class _LightboxMediaSlideState extends ConsumerState<_LightboxMediaSlide> {
   }
 
   Future<void> _initializeVideo() async {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     try {
       final videoUrl = await imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-videos',
         widget.item.video!.url,
+        accessToken: accessToken,
       );
 
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
@@ -941,8 +963,11 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     return GestureDetector(
       onDoubleTap: _handleDoubleTap,
@@ -953,9 +978,11 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
         child: Center(
           child: FutureBuilder<String>(
             future: imageCache.getSignedUrlForDetailView(
-              supabase,
+              supabaseUrl,
+              supabaseAnonKey,
               'memories-photos',
               widget.photo.url,
+              accessToken: accessToken,
             ),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
@@ -1003,7 +1030,8 @@ class _LightboxVideoSlide extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
 
     return Stack(
@@ -1020,9 +1048,15 @@ class _LightboxVideoSlide extends ConsumerWidget {
           FutureBuilder<String?>(
             future: video.posterUrl != null
                 ? imageCache.getSignedUrlForDetailView(
-                    supabase,
+                    supabaseUrl,
+                    supabaseAnonKey,
                     'memories-photos',
                     video.posterUrl!,
+                    accessToken: ref
+                        .read(supabaseClientProvider)
+                        .auth
+                        .currentSession
+                        ?.accessToken,
                   )
                 : Future.value(null),
             builder: (context, snapshot) {

@@ -44,14 +44,17 @@ class _MediaPreviewState extends ConsumerState<MediaPreview> {
     int index = 0;
 
     // Combine photos and videos, sorted by their index
-    final allMedia = <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
+    final allMedia =
+        <({bool isPhoto, int index, PhotoMedia? photo, VideoMedia? video})>[];
 
     for (final photo in widget.photos) {
-      allMedia.add((isPhoto: true, index: photo.index, photo: photo, video: null));
+      allMedia
+          .add((isPhoto: true, index: photo.index, photo: photo, video: null));
     }
 
     for (final video in widget.videos) {
-      allMedia.add((isPhoto: false, index: video.index, photo: null, video: video));
+      allMedia
+          .add((isPhoto: false, index: video.index, photo: null, video: video));
     }
 
     // Sort by index to maintain capture order
@@ -70,7 +73,8 @@ class _MediaPreviewState extends ConsumerState<MediaPreview> {
     return items;
   }
 
-  void _openLightbox(BuildContext context, List<_MediaItem> mediaItems, int initialIndex) {
+  void _openLightbox(
+      BuildContext context, List<_MediaItem> mediaItems, int initialIndex) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => _MediaLightbox(
@@ -86,7 +90,9 @@ class _MediaPreviewState extends ConsumerState<MediaPreview> {
   Widget build(BuildContext context) {
     final mediaItems = _buildMediaList();
 
-    if (widget.selectedIndex == null || widget.selectedIndex! < 0 || widget.selectedIndex! >= mediaItems.length) {
+    if (widget.selectedIndex == null ||
+        widget.selectedIndex! < 0 ||
+        widget.selectedIndex! >= mediaItems.length) {
       return const SizedBox.shrink();
     }
 
@@ -122,7 +128,7 @@ class _PhotoPreview extends ConsumerWidget {
     if (photo.isLocal) {
       final path = photo.url.replaceFirst('file://', '');
       final file = File(path);
-      
+
       if (!file.existsSync()) {
         return Container(
           color: Colors.white,
@@ -135,7 +141,7 @@ class _PhotoPreview extends ConsumerWidget {
           ),
         );
       }
-      
+
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.file(
@@ -156,16 +162,21 @@ class _PhotoPreview extends ConsumerWidget {
         ),
       );
     }
-    
+
     // Remote Supabase media
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     return FutureBuilder<String>(
       future: imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-photos',
         photo.url,
+        accessToken: accessToken,
       ),
       builder: (context, snapshot) {
         if (snapshot.hasError || !snapshot.hasData) {
@@ -237,7 +248,7 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
     if (widget.video.isLocal) {
       final path = widget.video.url.replaceFirst('file://', '');
       final file = File(path);
-      
+
       if (!file.existsSync()) {
         if (mounted) {
           setState(() {
@@ -246,11 +257,11 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
         }
         return;
       }
-      
+
       try {
         _controller = VideoPlayerController.file(file);
         await _controller!.initialize();
-        
+
         if (mounted) {
           setState(() {
             _isInitialized = true;
@@ -265,16 +276,21 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
       }
       return;
     }
-    
+
     // Remote Supabase media
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     try {
       final videoUrl = await imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-videos',
         widget.video.url,
+        accessToken: accessToken,
       );
 
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
@@ -324,12 +340,20 @@ class _VideoPreviewState extends ConsumerState<_VideoPreview> {
         else if (!widget.video.isLocal && widget.video.posterUrl != null)
           FutureBuilder<String?>(
             future: () {
-              final supabase = ref.read(supabaseClientProvider);
+              final supabaseUrl = ref.read(supabaseUrlProvider);
+              final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
               final imageCache = ref.read(timelineImageCacheServiceProvider);
+              final accessToken = ref
+                  .read(supabaseClientProvider)
+                  .auth
+                  .currentSession
+                  ?.accessToken;
               return imageCache.getSignedUrlForDetailView(
-                supabase,
+                supabaseUrl,
+                supabaseAnonKey,
                 'memories-photos',
                 widget.video.posterUrl!,
+                accessToken: accessToken,
               );
             }(),
             builder: (context, snapshot) {
@@ -544,11 +568,13 @@ class _LightboxPhotoSlide extends ConsumerStatefulWidget {
   const _LightboxPhotoSlide({required this.photo});
 
   @override
-  ConsumerState<_LightboxPhotoSlide> createState() => _LightboxPhotoSlideState();
+  ConsumerState<_LightboxPhotoSlide> createState() =>
+      _LightboxPhotoSlideState();
 }
 
 class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
-  final TransformationController _transformationController = TransformationController();
+  final TransformationController _transformationController =
+      TransformationController();
   bool _isZoomed = false;
 
   @override
@@ -585,7 +611,7 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
             if (widget.photo.isLocal) {
               final path = widget.photo.url.replaceFirst('file://', '');
               final file = File(path);
-              
+
               if (!file.existsSync()) {
                 return const Center(
                   child: Icon(
@@ -595,7 +621,7 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
                   ),
                 );
               }
-              
+
               return Image.file(
                 file,
                 fit: BoxFit.contain,
@@ -610,16 +636,24 @@ class _LightboxPhotoSlideState extends ConsumerState<_LightboxPhotoSlide> {
                 },
               );
             }
-            
+
             // Remote Supabase media
-            final supabase = ref.read(supabaseClientProvider);
+            final supabaseUrl = ref.read(supabaseUrlProvider);
+            final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
             final imageCache = ref.read(timelineImageCacheServiceProvider);
-            
+            final accessToken = ref
+                .read(supabaseClientProvider)
+                .auth
+                .currentSession
+                ?.accessToken;
+
             return FutureBuilder<String>(
               future: imageCache.getSignedUrlForDetailView(
-                supabase,
+                supabaseUrl,
+                supabaseAnonKey,
                 'memories-photos',
                 widget.photo.url,
+                accessToken: accessToken,
               ),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
@@ -657,7 +691,8 @@ class _LightboxVideoSlide extends ConsumerStatefulWidget {
   const _LightboxVideoSlide({required this.video});
 
   @override
-  ConsumerState<_LightboxVideoSlide> createState() => _LightboxVideoSlideState();
+  ConsumerState<_LightboxVideoSlide> createState() =>
+      _LightboxVideoSlideState();
 }
 
 class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
@@ -684,7 +719,7 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
     if (widget.video.isLocal) {
       final path = widget.video.url.replaceFirst('file://', '');
       final file = File(path);
-      
+
       if (!file.existsSync()) {
         if (mounted) {
           setState(() {
@@ -693,11 +728,11 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
         }
         return;
       }
-      
+
       try {
         _controller = VideoPlayerController.file(file);
         await _controller!.initialize();
-        
+
         if (mounted) {
           setState(() {
             _isInitialized = true;
@@ -712,16 +747,21 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
       }
       return;
     }
-    
+
     // Remote Supabase media
-    final supabase = ref.read(supabaseClientProvider);
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     try {
       final videoUrl = await imageCache.getSignedUrlForDetailView(
-        supabase,
+        supabaseUrl,
+        supabaseAnonKey,
         'memories-videos',
         widget.video.url,
+        accessToken: accessToken,
       );
 
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
@@ -770,12 +810,20 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
         else if (!widget.video.isLocal && widget.video.posterUrl != null)
           FutureBuilder<String?>(
             future: () {
-              final supabase = ref.read(supabaseClientProvider);
+              final supabaseUrl = ref.read(supabaseUrlProvider);
+              final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
               final imageCache = ref.read(timelineImageCacheServiceProvider);
+              final accessToken = ref
+                  .read(supabaseClientProvider)
+                  .auth
+                  .currentSession
+                  ?.accessToken;
               return imageCache.getSignedUrlForDetailView(
-                supabase,
+                supabaseUrl,
+                supabaseAnonKey,
                 'memories-photos',
                 widget.video.posterUrl!,
+                accessToken: accessToken,
               );
             }(),
             builder: (context, snapshot) {
@@ -861,4 +909,3 @@ class _LightboxVideoSlideState extends ConsumerState<_LightboxVideoSlide> {
     return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 }
-
