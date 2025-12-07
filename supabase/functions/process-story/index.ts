@@ -19,6 +19,9 @@ interface ErrorResponse {
 }
 
 const MAX_TITLE_LENGTH = 60;
+const TITLE_COMPLETION_TOKENS_INITIAL = 220;
+const TITLE_COMPLETION_TOKENS_MAX = 2000;
+const TITLE_COMPLETION_TOKEN_SCALE_FACTOR = 2;
 
 type ProcessingPhase =
   | "title"
@@ -242,8 +245,14 @@ async function generateTitleWithLLM(
 
 Narrative: ${text.substring(0, 1000)}`;
 
+  const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+
+  const requestTitle = async (
+    maxTokens: number,
+    attempt: number,
+  ): Promise<{ title: string | null; truncated: boolean }> => {
   const requestBody = {
-    model: Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini",
+      model,
     messages: [
       {
         role: "system",
@@ -254,18 +263,17 @@ Narrative: ${text.substring(0, 1000)}`;
         content: prompt,
       },
     ],
-    max_completion_tokens: 150, // Increased to account for reasoning tokens and prevent length truncation
+      max_completion_tokens: maxTokens,
     // temperature: 0.7, // Not supported by gpt-5-mini, defaults to 1
   };
 
   try {
-    // Log request details
     console.log(JSON.stringify({
       event: "openai_title_generation_request",
       model: requestBody.model,
       promptLength: prompt.length,
       maxTokens: requestBody.max_completion_tokens,
-      // temperature: requestBody.temperature, // Not supported by gpt-5-mini
+        attempt,
       url: openaiUrl,
     }));
 
@@ -287,54 +295,100 @@ Narrative: ${text.substring(0, 1000)}`;
         errorBody: errorText,
         url: openaiUrl,
       }));
-      return null;
+        return { title: null, truncated: false };
     }
 
     const data = await response.json();
     
-    // Log response details
     console.log(JSON.stringify({
       event: "openai_title_generation_response",
       model: data.model,
       finishReason: data.choices?.[0]?.finish_reason,
       usage: data.usage,
       responseLength: data.choices?.[0]?.message?.content?.length ?? 0,
+        attempt,
     }));
 
     const generatedTitle = data.choices?.[0]?.message?.content?.trim();
+      const finishReason = data.choices?.[0]?.finish_reason;
+      const truncated = finishReason === "length" && (!generatedTitle || generatedTitle.length === 0);
 
-    // Handle empty response - could be due to reasoning tokens consuming all budget
     if (!generatedTitle) {
       console.warn(JSON.stringify({
         event: "openai_title_generation_empty_response",
-        finishReason: data.choices?.[0]?.finish_reason,
+          finishReason,
         usage: data.usage,
+          attempt,
         fullResponse: JSON.stringify(data),
       }));
-      
-      // If finish reason is "length", the model hit token limit without producing content
-      // Return null to trigger fallback extraction from text
-      return null;
+        return { title: null, truncated };
     }
 
     const cleanedTitle = generatedTitle
       .replace(/^["']|["']$/g, "")
       .trim();
     
-    // If cleaned title is still empty after processing, return null for fallback
     if (!cleanedTitle) {
-      return null;
+        return { title: null, truncated };
     }
     
-    return truncateTitle(cleanedTitle, MAX_TITLE_LENGTH);
+      return {
+        title: truncateTitle(cleanedTitle, MAX_TITLE_LENGTH),
+        truncated,
+      };
   } catch (error) {
     console.error(JSON.stringify({
       event: "openai_title_generation_exception",
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
+        attempt,
     }));
-    return null;
+      return { title: null, truncated: false };
   }
+  };
+
+  const initialTokens = Number(
+    Deno.env.get("TITLE_COMPLETION_TOKENS_INITIAL") ?? TITLE_COMPLETION_TOKENS_INITIAL,
+  );
+  const maxTokensCap = Number(
+    Deno.env.get("TITLE_COMPLETION_TOKENS_MAX") ?? TITLE_COMPLETION_TOKENS_MAX,
+  );
+
+  let attempt = 1;
+  let maxTokens = Math.max(initialTokens, 150);
+
+  while (maxTokens <= maxTokensCap) {
+    const { title, truncated } = await requestTitle(maxTokens, attempt);
+    if (title) {
+      return title;
+    }
+
+    if (!truncated) {
+      break;
+    }
+
+    const nextMaxTokens = Math.min(
+      maxTokens * TITLE_COMPLETION_TOKEN_SCALE_FACTOR,
+      maxTokensCap,
+    );
+
+    if (nextMaxTokens === maxTokens) {
+      break;
+    }
+
+    console.warn(JSON.stringify({
+      event: "openai_title_generation_retrying_due_to_length",
+      attempt,
+      nextAttempt: attempt + 1,
+      previousMaxTokens: maxTokens,
+      nextMaxTokens,
+    }));
+
+    maxTokens = nextMaxTokens;
+    attempt++;
+  }
+
+  return null;
 }
 
 /**
@@ -626,7 +680,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .from("story_fields")
         .update({
           narrative_generated_at: completedAt,
-          processing_error: null,
         })
         .eq("memory_id", requestBody.memoryId);
 
