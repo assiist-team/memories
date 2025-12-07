@@ -1697,8 +1697,9 @@ class _DictationTextContainer extends ConsumerWidget {
                   child: SingleChildScrollView(
                     controller: scrollController,
                     // SingleChildScrollView naturally aligns content to top-left
-                    // Add padding at the bottom to prevent text from being hidden behind mic button
-                    padding: const EdgeInsets.only(bottom: 80),
+                    // Add padding at the bottom to prevent text from being hidden behind mic button and hint text
+                    // Hint text is positioned at bottom: 8, with AudioControlsDecorator + spacing + hint row (~30px total)
+                    padding: const EdgeInsets.only(bottom: 110),
                     child: Semantics(
                       label: 'Dictation transcript',
                       liveRegion: true,
@@ -1946,10 +1947,15 @@ class _SwipeableInputContainerState
             });
           }
 
-          // When switching to type mode, move cursor to the end of the text
+          // When switching to type mode, move cursor to the end of the text and scroll to it
           if (widget.inputMode == InputMode.type &&
               widget.descriptionController.text.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Focus the text field first to ensure it can scroll
+              if (!_textFieldFocusNode.hasFocus) {
+                _textFieldFocusNode.requestFocus();
+              }
+              // Then set cursor to end, which will trigger automatic scrolling
               final text = widget.descriptionController.text;
               widget.descriptionController.selection =
                   TextSelection.fromPosition(
@@ -2013,10 +2019,15 @@ class _SwipeableInputContainerState
         });
       }
 
-      // When switching to type mode, move cursor to the end of the text
+      // When switching to type mode, move cursor to the end of the text and scroll to it
       if (newMode == InputMode.type &&
           widget.descriptionController.text.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Focus the text field first to ensure it can scroll
+          if (!_textFieldFocusNode.hasFocus) {
+            _textFieldFocusNode.requestFocus();
+          }
+          // Then set cursor to end, which will trigger automatic scrolling
           final text = widget.descriptionController.text;
           widget.descriptionController.selection = TextSelection.fromPosition(
             TextPosition(offset: text.length),
@@ -2287,9 +2298,12 @@ class _SwipeableInputContainerState
                                                   .colorScheme
                                                   .onSurface,
                                             ),
-                                        decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                                           border: InputBorder.none,
-                                          contentPadding: EdgeInsets.zero,
+                                          // Add bottom padding to prevent text from overlapping hint text
+                                          // Hint text is positioned at bottom: 4, with ~24px height
+                                          contentPadding:
+                                              const EdgeInsets.only(bottom: 30),
                                         ),
                                         maxLines: null,
                                         expands: true,

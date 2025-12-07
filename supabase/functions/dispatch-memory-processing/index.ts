@@ -119,6 +119,159 @@ async function autoCompleteJobIfPossible(
   return true;
 }
 
+async function processJobs(
+  supabaseClient: SupabaseClientInstance,
+  jobs: Array<Record<string, unknown>>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+): Promise<{ processedCount: number; total: number }> {
+  let processedCount = 0;
+
+  for (const rawJob of jobs) {
+    const job: ScheduledJob = {
+      memory_id: rawJob.memory_id as string,
+      attempts: (rawJob.attempts as number | null | undefined) ?? 0,
+      metadata: (rawJob.metadata as Record<string, unknown> | null | undefined) ??
+        null,
+    };
+
+    if (!job.memory_id) {
+      console.error("Skipping job without memory_id", rawJob);
+      continue;
+    }
+
+    try {
+      const snapshot = await fetchMemorySnapshot(
+        supabaseClient,
+        job.memory_id,
+      );
+
+      if (!snapshot) {
+        const failedAt = new Date().toISOString();
+        await supabaseClient
+          .from("memory_processing_status")
+          .update({
+            state: "failed",
+            last_error: "Memory not found when dispatching",
+            last_error_at: failedAt,
+            last_updated_at: failedAt,
+          })
+          .eq("memory_id", job.memory_id);
+        continue;
+      }
+
+      const autoCompleted = await autoCompleteJobIfPossible(
+        supabaseClient,
+        job,
+        snapshot,
+      );
+
+      if (autoCompleted) {
+        processedCount++;
+        continue;
+      }
+
+      const memoryType = (job.metadata?.memory_type as string | undefined) ??
+        snapshot.memory_type ??
+        undefined;
+
+      if (!memoryType) {
+        console.error(
+          `Unable to determine memory type for ${job.memory_id}, skipping`,
+        );
+        continue;
+      }
+
+      const nowIso = new Date().toISOString();
+      const metadata = {
+        ...(job.metadata ?? {}),
+        memory_type: memoryType,
+      };
+
+      const { error: updateError } = await supabaseClient
+        .from("memory_processing_status")
+        .update({
+          state: "processing",
+          started_at: nowIso,
+          last_updated_at: nowIso,
+          metadata,
+        })
+        .eq("memory_id", job.memory_id)
+        .eq("state", "scheduled");
+
+      if (updateError) {
+        console.error(`Failed to claim job ${job.memory_id}:`, updateError);
+        continue;
+      }
+
+      const functionName = `process-${memoryType}`;
+      const functionUrl = `${supabaseUrl}/functions/v1/${functionName}`;
+
+      const functionResponse = await fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Trigger": "true",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          memoryId: job.memory_id,
+        }),
+      });
+
+      if (!functionResponse.ok) {
+        const errorText = await functionResponse.text();
+        console.error(
+          `Processing function failed for ${job.memory_id}:`,
+          errorText,
+        );
+
+        const newAttempts = ((job.attempts as number | undefined) ?? 0) + 1;
+        if (newAttempts < MAX_ATTEMPTS) {
+          await supabaseClient
+            .from("memory_processing_status")
+            .update({
+              state: "scheduled",
+              attempts: newAttempts,
+              last_error: errorText,
+              last_error_at: new Date().toISOString(),
+              last_updated_at: new Date().toISOString(),
+            })
+            .eq("memory_id", job.memory_id);
+        } else {
+          await supabaseClient
+            .from("memory_processing_status")
+            .update({
+              state: "failed",
+              attempts: newAttempts,
+              last_error: errorText,
+              last_error_at: new Date().toISOString(),
+              last_updated_at: new Date().toISOString(),
+            })
+            .eq("memory_id", job.memory_id);
+        }
+      } else {
+        processedCount++;
+      }
+    } catch (error) {
+      console.error(`Error processing job ${job.memory_id}:`, error);
+      const newAttempts = ((job.attempts as number | undefined) ?? 0) + 1;
+      await supabaseClient
+        .from("memory_processing_status")
+        .update({
+          state: newAttempts < MAX_ATTEMPTS ? "scheduled" : "failed",
+          attempts: newAttempts,
+          last_error: error instanceof Error ? error.message : String(error),
+          last_error_at: new Date().toISOString(),
+          last_updated_at: new Date().toISOString(),
+        })
+        .eq("memory_id", job.memory_id);
+    }
+  }
+
+  return { processedCount, total: jobs.length };
+}
+
 /**
  * Dispatcher Edge Function for Memory Processing
  * 
@@ -203,148 +356,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       // Process each job
-      let processedCount = 0;
-      for (const job of jobs) {
-        try {
-          const snapshot = await fetchMemorySnapshot(
-            supabaseClient,
-            job.memory_id,
-          );
+      const result = await processJobs(
+        supabaseClient,
+        jobs,
+        supabaseUrl,
+        supabaseServiceKey,
+      );
 
-          if (!snapshot) {
-            const failedAt = new Date().toISOString();
-            await supabaseClient
-              .from("memory_processing_status")
-              .update({
-                state: "failed",
-                last_error: "Memory not found when dispatching",
-                last_error_at: failedAt,
-                last_updated_at: failedAt,
-              })
-              .eq("memory_id", job.memory_id);
-            continue;
-          }
+      return new Response(
+        JSON.stringify(result),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
 
-          const autoCompleted = await autoCompleteJobIfPossible(
-            supabaseClient,
-            job,
-            snapshot,
-          );
-
-          if (autoCompleted) {
-            processedCount++;
-            continue;
-          }
-
-          const memoryType = (job.metadata?.memory_type as string | undefined) ??
-            snapshot.memory_type ??
-            undefined;
-
-          if (!memoryType) {
-            console.error(
-              `Unable to determine memory type for ${job.memory_id}, skipping`,
-            );
-            continue;
-          }
-
-          const nowIso = new Date().toISOString();
-          const metadata = {
-            ...(job.metadata ?? {}),
-            memory_type: memoryType,
-          };
-
-          // Update state to 'processing' atomically (only if still 'scheduled')
-          const { error: updateError } = await supabaseClient
-            .from("memory_processing_status")
-            .update({
-              state: "processing",
-              started_at: nowIso,
-              last_updated_at: nowIso,
-              metadata,
-            })
-            .eq("memory_id", job.memory_id)
-            .eq("state", "scheduled"); // Only update if still scheduled (prevents race conditions)
-
-          if (updateError) {
-            console.error(`Failed to claim job ${job.memory_id}:`, updateError);
-            continue; // Skip this job, another dispatcher may have claimed it
-          }
-
-          // Call appropriate processing function
-          const functionName = `process-${memoryType}`;
-          const functionUrl = `${supabaseUrl}/functions/v1/${functionName}`;
-
-          // Call edge function (fire and forget - the function updates status itself)
-          const functionResponse = await fetch(functionUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              // Mark this as an internal invocation so workers can bypass user JWT checks
-              // while still satisfying Supabase platform auth when verify_jwt is enabled.
-              "X-Internal-Trigger": "true",
-              Authorization: `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              memoryId: job.memory_id,
-            }),
-          });
-
-          if (!functionResponse.ok) {
-            const errorText = await functionResponse.text();
-            console.error(`Processing function failed for ${job.memory_id}:`, errorText);
-            
-            // The processing function should update status to 'failed', but if it didn't,
-            // we'll handle retry logic here
-            const newAttempts = (job.attempts || 0) + 1;
-            if (newAttempts < MAX_ATTEMPTS) {
-              // Reset to scheduled for retry
-              await supabaseClient
-                .from("memory_processing_status")
-                .update({
-                  state: "scheduled",
-                  attempts: newAttempts,
-                  last_error: errorText,
-                  last_error_at: new Date().toISOString(),
-                  last_updated_at: new Date().toISOString(),
-                })
-                .eq("memory_id", job.memory_id);
-            } else {
-              // Max attempts reached, mark as failed
-              await supabaseClient
-                .from("memory_processing_status")
-                .update({
-                  state: "failed",
-                  attempts: newAttempts,
-                  last_error: errorText,
-                  last_error_at: new Date().toISOString(),
-                  last_updated_at: new Date().toISOString(),
-                })
-                .eq("memory_id", job.memory_id);
-            }
-          } else {
-            processedCount++;
-          }
-        } catch (error) {
-          console.error(`Error processing job ${job.memory_id}:`, error);
-          // Update status to failed
-          const newAttempts = (job.attempts || 0) + 1;
-          await supabaseClient
-            .from("memory_processing_status")
-            .update({
-              state: newAttempts < MAX_ATTEMPTS ? "scheduled" : "failed",
-              attempts: newAttempts,
-              last_error: error instanceof Error ? error.message : String(error),
-              last_error_at: new Date().toISOString(),
-              last_updated_at: new Date().toISOString(),
-            })
-            .eq("memory_id", job.memory_id);
-        }
-      }
+    if (scheduledJobs && scheduledJobs.length > 0) {
+      const result = await processJobs(
+        supabaseClient,
+        scheduledJobs,
+        supabaseUrl,
+        supabaseServiceKey,
+      );
 
       return new Response(
         JSON.stringify({
-          processed: processedCount,
-          total: jobs.length,
+          processed: result.processedCount,
+          total: result.total,
+          message: "Jobs processed via RPC",
         }),
         {
           status: 200,
@@ -353,11 +393,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // If RPC exists, use it (would need to be created in a migration)
+    // No jobs to process
     return new Response(
       JSON.stringify({
-        processed: scheduledJobs?.length || 0,
-        message: "Jobs processed via RPC",
+        processed: 0,
+        message: "No scheduled jobs found",
       }),
       {
         status: 200,
