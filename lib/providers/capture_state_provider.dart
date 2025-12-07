@@ -878,9 +878,8 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       existingPhotoUrls: existingPhotoPaths.map((p) => 'file://$p').toList(),
       existingVideoUrls: existingVideoPaths.map((p) => 'file://$p').toList(),
       existingVideoPosterUrls: existingVideoPosterPaths
-          .map((p) => p == null
-              ? null
-              : (p.startsWith('file://') ? p : 'file://$p'))
+          .map((p) =>
+              p == null ? null : (p.startsWith('file://') ? p : 'file://$p'))
           .toList(),
       captureStartTime: capturedAt,
       memoryDate: memoryDate,

@@ -199,6 +199,7 @@ class MemoryDetailService {
                   'status': memory.locationData!.status,
                 }
               : null,
+          'memory_location_data': memory.memoryLocationData?.toJson(),
           'photos': memory.photos
               .map((p) => {
                     'url': p.url,

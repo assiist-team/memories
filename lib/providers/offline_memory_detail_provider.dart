@@ -79,7 +79,7 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
       );
     }).toList();
 
-    // Create location data if available
+    // Create captured location data if available
     LocationData? locationData;
     if (queued.latitude != null && queued.longitude != null) {
       locationData = LocationData(
@@ -88,6 +88,14 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
         status: queued.locationStatus,
         city: null, // Not available for queued items
         state: null, // Not available for queued items
+      );
+    }
+
+    // Create memory location data (event location) if available
+    MemoryLocationData? memoryLocationData;
+    if (queued.memoryLocationData != null) {
+      memoryLocationData = MemoryLocationData.fromJson(
+        queued.memoryLocationData as Map<String, dynamic>,
       );
     }
 
@@ -118,6 +126,7 @@ class OfflineMemoryDetailNotifier extends _$OfflineMemoryDetailNotifier {
       memoryDate: memoryDate,
       publicShareToken: null, // Not available for queued items
       locationData: locationData,
+      memoryLocationData: memoryLocationData,
       photos: photos,
       videos: videos,
       relatedStories: [], // Not available for queued items

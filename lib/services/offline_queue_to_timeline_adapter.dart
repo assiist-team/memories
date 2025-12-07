@@ -47,9 +47,8 @@ class OfflineQueueToTimelineAdapter {
           queued.videoPosterPaths.first != null &&
           queued.videoPosterPaths.first!.isNotEmpty) {
         final rawPoster = queued.videoPosterPaths.first!;
-        posterUrl = rawPoster.startsWith('file://')
-            ? rawPoster
-            : 'file://$rawPoster';
+        posterUrl =
+            rawPoster.startsWith('file://') ? rawPoster : 'file://$rawPoster';
       }
       primaryMedia = PrimaryMedia(
         type: 'video',
@@ -87,6 +86,11 @@ class OfflineQueueToTimelineAdapter {
       day: day,
       primaryMedia: primaryMedia,
       snippetText: snippet,
+      memoryLocationData: queued.memoryLocationData != null
+          ? MemoryLocationData.fromJson(
+              queued.memoryLocationData as Map<String, dynamic>,
+            )
+          : null,
       isOfflineQueued: true,
       isPreviewOnly: false,
       isDetailCachedLocally: true, // Queue has full detail
