@@ -32,6 +32,7 @@ class MediaStrip extends ConsumerStatefulWidget {
   final List<VideoMedia> videos;
   final ValueChanged<int>? onThumbnailSelected;
   final int? selectedIndex;
+  final ValueChanged<({bool isPhoto, String url})>? onMediaRemoved;
 
   const MediaStrip({
     super.key,
@@ -40,6 +41,7 @@ class MediaStrip extends ConsumerStatefulWidget {
     required this.videos,
     this.onThumbnailSelected,
     this.selectedIndex,
+    this.onMediaRemoved,
   });
 
   @override
@@ -104,6 +106,14 @@ class _MediaStripState extends ConsumerState<MediaStrip> {
             item: item,
             isSelected: isSelected,
             onTap: () => widget.onThumbnailSelected?.call(index),
+            onRemoved: widget.onMediaRemoved != null
+                ? () {
+                    final media = item.isPhoto
+                        ? (isPhoto: true, url: item.photo!.url)
+                        : (isPhoto: false, url: item.video!.url);
+                    widget.onMediaRemoved!(media);
+                  }
+                : null,
           );
         },
       ),
@@ -117,12 +127,14 @@ class _MediaThumbnail extends ConsumerStatefulWidget {
   final _MediaItem item;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onRemoved;
 
   const _MediaThumbnail({
     required this.memoryId,
     required this.item,
     required this.isSelected,
     required this.onTap,
+    this.onRemoved,
   });
 
   @override
@@ -200,6 +212,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final overlayColor = theme.colorScheme.onSurface.withOpacity(0.7);
+    final overlayBackgroundColor = theme.colorScheme.surface.withOpacity(0.8);
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -217,11 +231,41 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
                 )
               : null,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: widget.item.isPhoto
-              ? _buildPhotoThumbnail()
-              : _buildVideoThumbnail(),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: widget.item.isPhoto
+                  ? _buildPhotoThumbnail()
+                  : _buildVideoThumbnail(),
+            ),
+            // Remove button (only show if onRemoved callback is provided)
+            if (widget.onRemoved != null)
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Semantics(
+                  label: 'Remove ${widget.item.isPhoto ? 'photo' : 'video'}',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: widget.onRemoved,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

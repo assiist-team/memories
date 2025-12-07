@@ -235,20 +235,10 @@ class MomentCard extends ConsumerWidget {
 
     if (moment.primaryMedia == null) {
       // Text-only badge
-      return Semantics(
-        label: 'Text-only moment, no media',
-        image: true,
-        child: Container(
-          width: thumbnailSize,
-          height: thumbnailSize,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Icon(memoryTypeIcon, size: 32),
-          ),
-        ),
+      return _buildMemoryTypeFallback(
+        context,
+        thumbnailSize,
+        memoryTypeIcon,
       );
     }
 
@@ -399,20 +389,10 @@ class MomentCard extends ConsumerWidget {
     // Remote Supabase media - use signed URL
     // If offline, show memory type icon instead of trying to load
     if (isOffline) {
-      return Semantics(
-        label: 'Text-only moment, no media',
-        image: true,
-        child: Container(
-          width: thumbnailSize,
-          height: thumbnailSize,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Icon(memoryTypeIcon, size: 32),
-          ),
-        ),
+      return _buildMemoryTypeFallback(
+        context,
+        thumbnailSize,
+        memoryTypeIcon,
       );
     }
 
@@ -449,34 +429,11 @@ class MomentCard extends ConsumerWidget {
                       fit: BoxFit.cover,
                       // Match offline decoding: no cacheWidth/height hints
                       errorBuilder: (context, error, stackTrace) {
-                        // In offline mode, show memory type icon instead of broken image icon
-                        if (isOffline) {
-                          return Semantics(
-                            label: 'Text-only moment, no media',
-                            image: true,
-                            child: Container(
-                              width: thumbnailSize,
-                              height: thumbnailSize,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .surfaceVariant,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Center(
-                                child: Icon(memoryTypeIcon, size: 32),
-                              ),
-                            ),
-                          );
-                        }
-                        return Semantics(
-                          label: 'Failed to load thumbnail',
-                          child: Container(
-                            width: thumbnailSize,
-                            height: thumbnailSize,
-                            color: Theme.of(context).colorScheme.surfaceVariant,
-                            child: const Icon(Icons.broken_image),
-                          ),
+                        return _buildMemoryTypeFallback(
+                          context,
+                          thumbnailSize,
+                          memoryTypeIcon,
+                          semanticsLabel: 'Preview unavailable',
                         );
                       },
                     ),
@@ -538,35 +495,11 @@ class MomentCard extends ConsumerWidget {
             error: snapshot.error,
             stackTrace: snapshot.stackTrace,
           );
-          // In offline mode, show memory type icon instead of error icon
-          if (isOffline) {
-            return Semantics(
-              label: 'Text-only moment, no media',
-              image: true,
-              child: Container(
-                width: thumbnailSize,
-                height: thumbnailSize,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Icon(memoryTypeIcon, size: 32),
-                ),
-              ),
-            );
-          }
-          return Semantics(
-            label: 'Error loading thumbnail',
-            child: Container(
-              width: thumbnailSize,
-              height: thumbnailSize,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.error_outline),
-            ),
+          return _buildMemoryTypeFallback(
+            context,
+            thumbnailSize,
+            memoryTypeIcon,
+            semanticsLabel: 'Preview unavailable',
           );
         } else {
           return Semantics(
@@ -590,6 +523,29 @@ class MomentCard extends ConsumerWidget {
           );
         }
       },
+    );
+  }
+
+  Widget _buildMemoryTypeFallback(
+    BuildContext context,
+    double size,
+    IconData memoryTypeIcon, {
+    String semanticsLabel = 'Text-only moment, no media',
+  }) {
+    return Semantics(
+      label: semanticsLabel,
+      image: true,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Icon(memoryTypeIcon, size: 32),
+        ),
+      ),
     );
   }
 

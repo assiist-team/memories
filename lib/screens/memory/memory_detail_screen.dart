@@ -1117,6 +1117,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                         _selectedMediaIndex = index;
                       });
                     },
+                    onMediaRemoved: (media) => _handleMediaRemoval(
+                      context,
+                      ref,
+                      memory,
+                      media.url,
+                      media.isPhoto,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _buildMediaPreviewContent(context, memory),
@@ -1987,6 +1994,112 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
       _isEditingTitle = false;
       _titleController.clear();
     });
+  }
+
+  /// Handle media removal with confirmation dialog
+  Future<void> _handleMediaRemoval(
+    BuildContext context,
+    WidgetRef ref,
+    MemoryDetail memory,
+    String mediaUrl,
+    bool isPhoto,
+  ) async {
+    // Check if online (required for media removal)
+    final connectivityService = ref.read(connectivityServiceProvider);
+    final isOnline = await connectivityService.isOnline();
+
+    if (!isOnline) {
+      _showOfflineTooltip(
+          context, 'Removing media requires internet connection');
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove ${isPhoto ? 'Photo' : 'Video'}?'),
+        content: Text(
+          'Are you sure you want to remove this ${isPhoto ? 'photo' : 'video'}? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    // Show loading indicator
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('Removing media...'),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      // Remove media via provider
+      final notifier =
+          ref.read(memoryDetailNotifierProvider(memory.id).notifier);
+      await notifier.removeMedia(mediaUrl, isPhoto);
+
+      // Update selected index if needed (if we removed the selected media)
+      final totalMedia = memory.photos.length + memory.videos.length;
+      if (_selectedMediaIndex != null &&
+          _selectedMediaIndex! >= totalMedia - 1) {
+        // If we removed the last item or beyond, adjust selection
+        setState(() {
+          final newTotal = totalMedia - 1;
+          _selectedMediaIndex = newTotal > 0 ? newTotal - 1 : null;
+        });
+      }
+
+      if (!context.mounted) return;
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('${isPhoto ? 'Photo' : 'Video'} removed'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      scaffoldMessenger.hideCurrentSnackBar();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to remove media: ${e.toString()}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 }
 

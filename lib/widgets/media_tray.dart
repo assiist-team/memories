@@ -213,21 +213,24 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
           // Remove button (only show if onRemoved callback is provided)
           if (widget.onRemoved != null)
             Positioned(
-              top: 4,
-              right: 4,
+              top: 2,
+              right: 2,
               child: Semantics(
                 label: 'Remove ${widget.isVideo ? 'video' : 'photo'}',
                 button: true,
-                child: Material(
-                  color: overlayBackgroundColor,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    icon: Icon(Icons.close, size: 18, color: overlayColor),
-                    onPressed: widget.onRemoved,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                child: GestureDetector(
+                  onTap: widget.onRemoved,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Colors.white,
                     ),
                   ),
                 ),

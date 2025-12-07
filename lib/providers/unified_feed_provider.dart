@@ -109,6 +109,7 @@ class UnifiedFeedController extends _$UnifiedFeedController {
   StreamSubscription<SyncCompleteEvent>? _syncSub;
   StreamSubscription<QueueChangeEvent>? _queueChangeSub;
   StreamSubscription<MemoryTimelineEvent>? _timelineUpdateSub;
+  StreamSubscription<bool>? _connectivitySub;
   RealtimeChannel? _realtimeChannel;
   bool _isInitialLoadInProgress = false;
   bool _shouldReplayInitialLoad = false;
@@ -126,10 +127,12 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     _setupQueueChangeListeners();
     _setupRealtimeSubscription();
     _setupTimelineUpdateBusListener();
+    _setupConnectivityListener();
     ref.onDispose(() {
       _syncSub?.cancel();
       _queueChangeSub?.cancel();
       _timelineUpdateSub?.cancel();
+      _connectivitySub?.cancel();
       _realtimeChannel?.unsubscribe();
       _realtimeChannel = null;
     });
@@ -201,6 +204,35 @@ class UnifiedFeedController extends _$UnifiedFeedController {
     _timelineUpdateSub = bus.stream.listen((event) {
       _handleTimelineUpdateEvent(event);
     });
+  }
+
+  void _setupConnectivityListener() {
+    final connectivityService = ref.read(connectivityServiceProvider);
+
+    _connectivitySub?.cancel();
+    _connectivitySub = connectivityService.connectivityStream.listen(
+      (isOnline) {
+        _updateOfflineState(!isOnline);
+      },
+      onError: (error, stackTrace) {
+        debugPrint('[UnifiedFeedController] Connectivity stream error: $error');
+      },
+    );
+
+    unawaited(
+      connectivityService.isOnline().then((isOnline) {
+        _updateOfflineState(!isOnline);
+      }).catchError((error, stackTrace) {
+        debugPrint('[UnifiedFeedController] Connectivity probe error: $error');
+      }),
+    );
+  }
+
+  void _updateOfflineState(bool isOffline) {
+    if (state.isOffline == isOffline) {
+      return;
+    }
+    state = state.copyWith(isOffline: isOffline);
   }
 
   Future<void> _handleTimelineUpdateEvent(MemoryTimelineEvent event) async {

@@ -229,4 +229,26 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       rethrow;
     }
   }
+
+  /// Remove a media item (photo or video) from the memory
+  ///
+  /// [mediaUrl] is the URL of the media to remove
+  /// [isPhoto] is true if removing a photo, false if removing a video
+  /// Refreshes the memory detail after removal
+  Future<void> removeMedia(String mediaUrl, bool isPhoto) async {
+    try {
+      debugPrint(
+          '[MemoryDetailNotifier] Removing ${isPhoto ? 'photo' : 'video'} from memory: $_memoryId');
+      final service = ref.read(memoryDetailServiceProvider);
+      await service.removeMedia(_memoryId, mediaUrl, isPhoto);
+      debugPrint('[MemoryDetailNotifier] Successfully removed media');
+
+      // Refresh memory detail to get updated data
+      await refresh();
+    } catch (e, stackTrace) {
+      debugPrint('[MemoryDetailNotifier] Error removing media: $e');
+      debugPrint('[MemoryDetailNotifier] Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
 }

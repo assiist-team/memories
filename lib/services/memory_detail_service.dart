@@ -389,4 +389,84 @@ class MemoryDetailService {
       return null;
     }
   }
+
+  /// Remove a media item (photo or video) from a memory
+  ///
+  /// [memoryId] is the UUID of the memory
+  /// [mediaUrl] is the URL of the media to remove (from photo_urls or video_urls)
+  /// [isPhoto] is true if removing a photo, false if removing a video
+  ///
+  /// Throws an exception if the memory is not found or user doesn't have permission
+  Future<void> removeMedia(
+    String memoryId,
+    String mediaUrl,
+    bool isPhoto,
+  ) async {
+    try {
+      debugPrint(
+          '[MemoryDetailService] Removing ${isPhoto ? 'photo' : 'video'} from memory: $memoryId');
+      debugPrint('[MemoryDetailService] Media URL: $mediaUrl');
+
+      // Get current memory to retrieve media arrays
+      final memoryResponse = await _supabase
+          .from('memories')
+          .select('photo_urls, video_urls')
+          .eq('id', memoryId)
+          .single();
+
+      final currentPhotoUrls = (memoryResponse['photo_urls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      final currentVideoUrls = (memoryResponse['video_urls'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+
+      // Remove the media URL from the appropriate array
+      final updatedPhotoUrls = isPhoto
+          ? currentPhotoUrls.where((url) => url != mediaUrl).toList()
+          : currentPhotoUrls;
+      final updatedVideoUrls = isPhoto
+          ? currentVideoUrls
+          : currentVideoUrls.where((url) => url != mediaUrl).toList();
+
+      // Delete the file from Supabase Storage
+      try {
+        final uri = Uri.parse(mediaUrl);
+        final pathSegments = uri.pathSegments;
+        final bucketName = isPhoto ? 'memories-photos' : 'memories-videos';
+        final bucketIndex = pathSegments.indexOf(bucketName);
+        if (bucketIndex != -1 && bucketIndex < pathSegments.length - 1) {
+          final storagePath = pathSegments.sublist(bucketIndex + 1).join('/');
+          await _supabase.storage.from(bucketName).remove([storagePath]);
+          debugPrint(
+              '[MemoryDetailService] Deleted ${isPhoto ? 'photo' : 'video'} from storage: $storagePath');
+        }
+      } catch (e) {
+        // Log error but continue - deletion failure shouldn't block update
+        debugPrint(
+            '[MemoryDetailService] Failed to delete ${isPhoto ? 'photo' : 'video'} from storage: $e');
+      }
+
+      // Update the memory record with the new media arrays
+      final updateData = <String, dynamic>{
+        'photo_urls': updatedPhotoUrls,
+        'video_urls': updatedVideoUrls,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      await _supabase.from('memories').update(updateData).eq('id', memoryId);
+
+      // Clear cache so fresh data is fetched next time
+      await _clearCache(memoryId);
+
+      debugPrint(
+          '[MemoryDetailService] Successfully removed ${isPhoto ? 'photo' : 'video'} from memory');
+    } catch (e) {
+      debugPrint(
+          '[MemoryDetailService] Error removing ${isPhoto ? 'photo' : 'video'}: $e');
+      throw Exception('Failed to remove media: $e');
+    }
+  }
 }

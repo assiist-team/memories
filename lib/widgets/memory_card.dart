@@ -9,7 +9,7 @@ import 'package:memories/widgets/moment_card.dart';
 import 'package:memories/widgets/memento_card.dart';
 
 /// Unified memory card wrapper that delegates to type-specific cards
-/// 
+///
 /// Provides consistent padding, typography, and adds a type chip to indicate
 /// the memory type (Story/Moment/Memento). Delegates actual rendering to
 /// the appropriate card component (StoryCard, MomentCard, MementoCard).
@@ -27,10 +27,11 @@ class MemoryCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Get offline state from unified feed
     final tabState = ref.watch(unifiedFeedTabNotifierProvider);
-    final isOffline = tabState.whenData((selectedTypes) {
-      final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
-      return feedState.isOffline;
-    }).valueOrNull ?? false;
+    final selectedTypes = tabState.valueOrNull;
+    final feedState = selectedTypes != null
+        ? ref.watch(unifiedFeedControllerProvider(selectedTypes))
+        : null;
+    final isOffline = feedState?.isOffline ?? false;
 
     // Determine memory type from memoryType
     final memoryType = _getMemoryType(memory.memoryType);
@@ -71,4 +72,3 @@ class MemoryCard extends ConsumerWidget {
     }
   }
 }
-
