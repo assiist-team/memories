@@ -39,5 +39,12 @@ abstract class LocalMemoryPreviewStore {
   ///
   /// Used for logout / account switch scenarios.
   Future<void> clear();
-}
 
+  /// Remove a preview entry by server ID.
+  ///
+  /// Used when deleting offline queued memories that have been synced,
+  /// to prevent ghost cards from reappearing via preview index.
+  ///
+  /// [serverId] - The server ID of the preview entry to remove
+  Future<void> removePreviewByServerId(String serverId);
+}

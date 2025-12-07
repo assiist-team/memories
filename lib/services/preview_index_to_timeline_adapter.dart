@@ -12,21 +12,34 @@ import 'package:memories/models/timeline_memory.dart';
 class PreviewIndexToTimelineAdapter {
   /// Convert a LocalMemoryPreview to a TimelineMemory
   static TimelineMemory fromPreview(LocalMemoryPreview preview) {
-    // Use capturedAt as memoryDate (preview doesn't store separate memoryDate)
-    final memoryDate = preview.capturedAt;
+    // Use memoryDate from preview (now stored), fallback to capturedAt for backward compatibility
+    final memoryDate = preview.memoryDate;
     final year = memoryDate.year;
     final season = _getSeason(memoryDate.month);
     final month = memoryDate.month;
     final day = memoryDate.day;
 
+    // Determine display title - prefer generatedTitle, then titleOrFirstLine
+    final displayTitle = preview.generatedTitle?.isNotEmpty == true
+        ? preview.generatedTitle!
+        : preview.titleOrFirstLine;
+
+    // Determine snippet text - prefer processedText, then inputText, then titleOrFirstLine
+    final snippetText = preview.processedText?.isNotEmpty == true
+        ? preview.processedText
+        : (preview.inputText?.isNotEmpty == true
+            ? preview.inputText
+            : preview.titleOrFirstLine);
+
     return TimelineMemory(
       id: preview.serverId,
       userId: '', // Not available in preview
-      title: preview.titleOrFirstLine,
-      inputText: null, // Not available in preview
-      processedText: null, // Not available in preview
-      generatedTitle: null, // Not available in preview
-      tags: const [], // Not available in preview
+      title: displayTitle,
+      // Use cached text fields if available (Phase 1: text-only caching)
+      inputText: preview.inputText,
+      processedText: preview.processedText,
+      generatedTitle: preview.generatedTitle,
+      tags: preview.tags,
       memoryType: preview.memoryType.apiValue,
       capturedAt: preview.capturedAt,
       createdAt: preview.capturedAt, // Use capturedAt as fallback
@@ -35,14 +48,18 @@ class PreviewIndexToTimelineAdapter {
       season: season,
       month: month,
       day: day,
-      primaryMedia: null, // Not available in preview
-      snippetText: preview.titleOrFirstLine, // Use title as snippet
+      primaryMedia: null, // Media not cached in Phase 1 (text-only)
+      snippetText: snippetText,
+      memoryLocationData: preview.memoryLocationData,
       isOfflineQueued: false,
+      // Phase 1: Text-cached synced memories are NOT preview-only (they have text cached)
+      // isPreviewOnly should be false when isDetailCachedLocally is true
       isPreviewOnly: !preview.isDetailCachedLocally,
       isDetailCachedLocally: preview.isDetailCachedLocally,
       localId: null, // Preview entries don't have local IDs
       serverId: preview.serverId,
-      offlineSyncStatus: OfflineSyncStatus.synced, // Preview entries are from synced memories
+      offlineSyncStatus:
+          OfflineSyncStatus.synced, // Preview entries are from synced memories
     );
   }
 
@@ -70,4 +87,3 @@ class PreviewIndexToTimelineAdapter {
     }
   }
 }
-

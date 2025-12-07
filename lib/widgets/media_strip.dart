@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -146,12 +147,21 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Future<void> _initializeVideo() async {
+    final video = widget.item.video!;
+
+    // Skip initialization for local videos (no poster URL available)
+    if (video.isLocal) {
+      return;
+    }
+
     final supabaseUrl = ref.read(supabaseUrlProvider);
     final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     try {
-      final posterUrl = widget.item.video!.posterUrl;
+      final posterUrl = video.posterUrl;
       if (posterUrl != null) {
         // Just load the poster for thumbnail - don't initialize video player
         await imageCache.getSignedUrlForDetailView(
@@ -159,13 +169,13 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
           supabaseAnonKey,
           'memories-photos',
           posterUrl,
+          accessToken: accessToken,
         );
       }
     } catch (e, stackTrace) {
       _logSignedUrlFailure(
         kind: 'video_poster_preload',
-        path:
-            widget.item.video?.posterUrl ?? widget.item.video?.url ?? 'unknown',
+        path: video.posterUrl ?? video.url,
         error: e,
         stackTrace: stackTrace,
       );
@@ -218,26 +228,66 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Widget _buildPhotoThumbnail() {
+    final photo = widget.item.photo!;
+
+    // Branch on local vs remote media
+    if (photo.isLocal) {
+      // Local file path - use Image.file
+      final path = photo.url.replaceFirst('file://', '');
+      final file = File(path);
+
+      if (!file.existsSync()) {
+        // File missing - show broken image placeholder
+        return Container(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: const Center(
+            child: Icon(Icons.broken_image, size: 32),
+          ),
+        );
+      }
+
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        width: 100,
+        height: 100,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: Icon(Icons.broken_image, size: 32),
+            ),
+          );
+        },
+      );
+    }
+
+    // Remote Supabase media - use signed URL
     final supabaseUrl = ref.read(supabaseUrlProvider);
     final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     return FutureBuilder<String>(
       future: imageCache.getSignedUrlForDetailView(
         supabaseUrl,
         supabaseAnonKey,
         'memories-photos',
-        widget.item.photo!.url,
+        photo.url,
+        accessToken: accessToken,
       ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           _logSignedUrlFailure(
             kind: 'photo_thumbnail',
-            path: widget.item.photo!.url,
+            path: photo.url,
             error: snapshot.error ?? Exception('Unknown photo thumbnail error'),
             stackTrace: snapshot.stackTrace,
           );
           return Container(
+            width: 100,
+            height: 100,
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: const Center(
               child: Icon(Icons.broken_image, size: 32),
@@ -247,6 +297,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
 
         if (!snapshot.hasData) {
           return Container(
+            width: 100,
+            height: 100,
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: const Center(
               child: SizedBox(
@@ -277,34 +329,74 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
   }
 
   Widget _buildVideoThumbnail() {
-    final supabaseUrl = ref.read(supabaseUrlProvider);
-    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
-    final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final video = widget.item.video!;
     final theme = Theme.of(context);
     final overlayColor = theme.colorScheme.onSurface.withOpacity(0.7);
     final overlayBackgroundColor = theme.colorScheme.surface.withOpacity(0.8);
 
+    // Branch on local vs remote media
+    if (video.isLocal) {
+      // Local video - show placeholder (no poster available for local videos)
+      return Stack(
+        children: [
+          Container(
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: Icon(Icons.videocam, size: 32),
+            ),
+          ),
+          // Video badge
+          Positioned(
+            bottom: 4,
+            left: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: overlayBackgroundColor,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                Icons.play_circle_outline,
+                size: 16,
+                color: overlayColor,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Remote Supabase media - use signed URL for poster
+    final supabaseUrl = ref.read(supabaseUrlProvider);
+    final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
+    final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken =
+        ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
+
     return Stack(
       children: [
         // Video poster or placeholder
-        if (widget.item.video!.posterUrl != null)
+        if (video.posterUrl != null)
           FutureBuilder<String>(
             future: imageCache.getSignedUrlForDetailView(
               supabaseUrl,
               supabaseAnonKey,
               'memories-photos',
-              widget.item.video!.posterUrl!,
+              video.posterUrl!,
+              accessToken: accessToken,
             ),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 _logSignedUrlFailure(
                   kind: 'video_poster',
-                  path: widget.item.video!.posterUrl!,
+                  path: video.posterUrl!,
                   error: snapshot.error ??
                       Exception('Unknown video poster thumbnail error'),
                   stackTrace: snapshot.stackTrace,
                 );
                 return Container(
+                  width: 100,
+                  height: 100,
                   color: theme.colorScheme.surfaceContainerHighest,
                   child: const Center(
                     child: Icon(Icons.videocam, size: 32),
@@ -320,6 +412,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
                   height: 100,
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
+                      width: 100,
+                      height: 100,
                       color: theme.colorScheme.surfaceContainerHighest,
                       child: const Center(
                         child: Icon(Icons.videocam, size: 32),
@@ -329,6 +423,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
                 );
               }
               return Container(
+                width: 100,
+                height: 100,
                 color: theme.colorScheme.surfaceContainerHighest,
                 child: const Center(
                   child: SizedBox(

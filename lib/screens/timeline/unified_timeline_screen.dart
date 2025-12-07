@@ -231,12 +231,16 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
     final feedState = ref.read(unifiedFeedControllerProvider(selectedTypes));
     final isOffline = feedState.isOffline;
 
+    // Check if we can open detail offline
+    // Phase 1: Text-cached synced memories (isDetailCachedLocally=true) can be opened offline
+    // Queued offline memories can always be opened offline
     final canOpenDetailOffline =
         memory.isOfflineQueued || memory.isDetailCachedLocally;
     final isPreviewOnlyOffline =
         isOffline && memory.isPreviewOnly && !canOpenDetailOffline;
 
     // If preview-only and offline, show message instead of navigating
+    // This should not happen after Phase 1 text caching, but kept for backward compatibility
     if (isPreviewOnlyOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -256,8 +260,8 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
       final queuedMemory = await queueService.getByLocalId(memory.localId!);
 
       if (queuedMemory == null) {
-        // Queue entry was removed (likely synced or failed)
-        // If we have a serverId, redirect to online detail screen
+        // Queue entry was removed
+        // If we have a serverId, it likely synced - redirect to online detail screen
         if (memory.serverId != null) {
           if (!mounted) return;
           Navigator.of(context).push(
@@ -275,12 +279,12 @@ class _UnifiedTimelineScreenState extends ConsumerState<UnifiedTimelineScreen> {
           return;
         }
 
-        // No serverId available, show error and refresh timeline
+        // No serverId available - memory hasn't synced, but queue entry is missing
+        // This shouldn't happen normally, but could occur due to queue corruption or other issues
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content:
-                Text('This memory has already synced. Refreshing timeline...'),
+            content: Text('Unable to load this memory. Refreshing timeline...'),
             duration: Duration(seconds: 2),
           ),
         );

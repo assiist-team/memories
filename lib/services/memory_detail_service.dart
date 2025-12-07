@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:memories/models/memory_detail.dart';
+import 'package:memories/models/memory_type.dart';
+import 'package:memories/services/local_memory_preview_store.dart';
 
 /// Result of fetching memory detail
 class MemoryDetailResult {
@@ -18,10 +20,11 @@ class MemoryDetailResult {
 /// Service for fetching memory detail data from Supabase
 class MemoryDetailService {
   final SupabaseClient _supabase;
+  final LocalMemoryPreviewStore? _previewStore;
   static const String _cachePrefix = 'memory_detail_cache_';
   static const Duration _cacheExpiry = Duration(hours: 24);
 
-  MemoryDetailService(this._supabase);
+  MemoryDetailService(this._supabase, [this._previewStore]);
 
   /// Fetch detailed memory data by ID
   ///
@@ -83,8 +86,58 @@ class MemoryDetailService {
       if (cached != null) {
         return MemoryDetailResult(memory: cached, isFromCache: true);
       }
+
+      // Phase 1: Try loading from preview store (text-only cached synced memories)
+      if (_previewStore != null) {
+        final previewDetail = await _getMemoryDetailFromPreviewStore(memoryId);
+        if (previewDetail != null) {
+          return MemoryDetailResult(memory: previewDetail, isFromCache: true);
+        }
+      }
+
       // Re-throw with more context
       throw Exception('Failed to fetch memory detail: $e');
+    }
+  }
+
+  /// Load memory detail from preview store (text-only cached synced memories)
+  /// Returns null if not found in preview store
+  Future<MemoryDetail?> _getMemoryDetailFromPreviewStore(
+      String memoryId) async {
+    if (_previewStore == null) return null;
+
+    try {
+      final previews = await _previewStore!.fetchPreviews(limit: 1000);
+      final preview = previews.firstWhere(
+        (p) => p.serverId == memoryId && p.isDetailCachedLocally,
+        orElse: () => throw StateError('Preview not found'),
+      );
+
+      // Convert preview to MemoryDetail with empty media arrays
+      // Phase 1: Text-only caching - media is not cached
+      return MemoryDetail(
+        id: preview.serverId,
+        userId: '', // Not available in preview
+        title: preview.generatedTitle ?? preview.titleOrFirstLine,
+        inputText: preview.inputText,
+        processedText: preview.processedText,
+        generatedTitle: preview.generatedTitle,
+        tags: preview.tags,
+        memoryType: preview.memoryType.apiValue,
+        capturedAt: preview.capturedAt,
+        createdAt: preview.capturedAt, // Use capturedAt as fallback
+        updatedAt: preview.capturedAt, // Use capturedAt as fallback
+        memoryDate: preview.memoryDate,
+        memoryLocationData: preview.memoryLocationData,
+        photos: const [], // Media not cached in Phase 1
+        videos: const [], // Media not cached in Phase 1
+        relatedStories: const [],
+        relatedMementos: const [],
+      );
+    } catch (e) {
+      debugPrint(
+          '[MemoryDetailService] Preview not found for memory: $memoryId');
+      return null;
     }
   }
 
@@ -243,27 +296,25 @@ class MemoryDetailService {
   /// Throws an exception if the memory is not found or user doesn't have permission
   Future<void> updateMemoryDate(String memoryId, DateTime? memoryDate) async {
     try {
-      debugPrint('[MemoryDetailService] Updating memory_date for memory: $memoryId');
-      
+      debugPrint(
+          '[MemoryDetailService] Updating memory_date for memory: $memoryId');
+
       final updateData = <String, dynamic>{
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
-      
+
       if (memoryDate != null) {
         updateData['memory_date'] = memoryDate.toUtc().toIso8601String();
       } else {
         // Set to null to clear the field
         updateData['memory_date'] = null;
       }
-      
-      await _supabase
-          .from('memories')
-          .update(updateData)
-          .eq('id', memoryId);
-      
+
+      await _supabase.from('memories').update(updateData).eq('id', memoryId);
+
       // Clear cache so fresh data is fetched next time
       await _clearCache(memoryId);
-      
+
       debugPrint('[MemoryDetailService] Successfully updated memory_date');
     } catch (e) {
       debugPrint('[MemoryDetailService] Error updating memory_date: $e');
@@ -280,26 +331,23 @@ class MemoryDetailService {
   Future<void> updateMemoryTitle(String memoryId, String? title) async {
     try {
       debugPrint('[MemoryDetailService] Updating title for memory: $memoryId');
-      
+
       final updateData = <String, dynamic>{
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
-      
+
       if (title != null && title.trim().isNotEmpty) {
         updateData['title'] = title.trim();
       } else {
         // Set to null to clear the field (will use generated_title or fallback)
         updateData['title'] = null;
       }
-      
-      await _supabase
-          .from('memories')
-          .update(updateData)
-          .eq('id', memoryId);
-      
+
+      await _supabase.from('memories').update(updateData).eq('id', memoryId);
+
       // Clear cache so fresh data is fetched next time
       await _clearCache(memoryId);
-      
+
       debugPrint('[MemoryDetailService] Successfully updated title');
     } catch (e) {
       debugPrint('[MemoryDetailService] Error updating title: $e');

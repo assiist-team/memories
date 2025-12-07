@@ -172,6 +172,15 @@ class MemoryDetail {
           : null,
     );
   }
+
+  // Debug logging for audio fields
+  void logAudioFields() {
+    developer.log(
+      '[MemoryDetail] Audio fields for memory $id: '
+      'audioPath=$audioPath audioDuration=$audioDuration memoryType=$memoryType',
+      name: 'MemoryDetail',
+    );
+  }
 }
 
 /// Location data for a Memory

@@ -297,7 +297,9 @@ class UnifiedFeedRepository {
       batchSize: batchSize,
     );
 
-    // Derive preview rows from online results.
+    // Derive preview rows from online results with full text caching.
+    // Phase 1: Cache full text (input_text, processed_text, generated_title, tags, location)
+    // for previously-synced memories, but NOT media files.
     final previews = result.memories.map((m) {
       // Use displayTitle for preview, or fallback to title
       final titleOrFirstLine = m.displayTitle.isNotEmpty
@@ -308,8 +310,15 @@ class UnifiedFeedRepository {
         memoryType: MemoryTypeExtension.fromApiValue(m.memoryType),
         titleOrFirstLine: titleOrFirstLine,
         capturedAt: m.capturedAt,
-        // In Phase 1, RPC results are not considered "locally cached details".
-        isDetailCachedLocally: false,
+        memoryDate: m.memoryDate,
+        // Phase 1: Text-only caching - mark as cached since we have full text
+        isDetailCachedLocally: true,
+        // Cache full text fields for offline viewing
+        inputText: m.inputText,
+        processedText: m.processedText,
+        generatedTitle: m.generatedTitle,
+        tags: m.tags,
+        memoryLocationData: m.memoryLocationData,
       );
     }).toList();
 

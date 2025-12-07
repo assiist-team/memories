@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:memories/models/local_memory_preview.dart';
 import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/local_memory_preview_store.dart';
@@ -10,7 +11,7 @@ part 'shared_preferences_local_memory_preview_store.g.dart';
 const String _previewIndexKey = 'local_memory_preview_index';
 
 /// SharedPreferences-based implementation of LocalMemoryPreviewStore
-/// 
+///
 /// Stores preview entries in SharedPreferences as JSON, following the same
 /// pattern as OfflineMemoryQueueService.
 @riverpod
@@ -84,6 +85,9 @@ class SharedPreferencesLocalMemoryPreviewStore
       previews = previews.take(limit).toList();
     }
 
+    debugPrint(
+        '[SharedPreferencesLocalMemoryPreviewStore] Fetched ${previews.length} preview entries (limit=$limit)');
+
     return previews;
   }
 
@@ -92,5 +96,21 @@ class SharedPreferencesLocalMemoryPreviewStore
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_previewIndexKey);
   }
-}
 
+  @override
+  Future<void> removePreviewByServerId(String serverId) async {
+    final previews = await _getAllPreviews();
+    final beforeCount = previews.length;
+    final filtered = previews.where((p) => p.serverId != serverId).toList();
+    final afterCount = filtered.length;
+
+    if (beforeCount != afterCount) {
+      debugPrint(
+          '[SharedPreferencesLocalMemoryPreviewStore] Removing preview entry: serverId=$serverId (removed ${beforeCount - afterCount} entry/entries)');
+      await _saveAllPreviews(filtered);
+    } else {
+      debugPrint(
+          '[SharedPreferencesLocalMemoryPreviewStore] No preview entry found to remove: serverId=$serverId');
+    }
+  }
+}

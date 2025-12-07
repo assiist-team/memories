@@ -55,7 +55,7 @@ void main() {
       );
 
       expect(
-          find.text('Audio playback will be available soon'), findsOneWidget);
+          find.text('Audio is not available for this story'), findsOneWidget);
       expect(find.byIcon(Icons.audio_file_outlined), findsOneWidget);
     });
 

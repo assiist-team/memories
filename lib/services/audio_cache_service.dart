@@ -1,11 +1,12 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'audio_cache_service.g.dart';
 
 /// Service for managing audio file cache and lifecycle
-/// 
+///
 /// Handles:
 /// - Storing audio files in a cache directory with durability guarantees
 /// - Cleaning up temporary files on cancel/discard flows
@@ -19,36 +20,36 @@ AudioCacheService audioCacheService(AudioCacheServiceRef ref) {
 class AudioCacheService {
   /// Cache directory for audio files
   Directory? _cacheDir;
-  
+
   /// Map of capture session IDs to audio file paths
   /// Used to track and reuse audio files for retries
   final Map<String, String> _sessionAudioPaths = {};
-  
+
   /// Initialize cache directory
   Future<Directory> _getCacheDir() async {
     if (_cacheDir != null) {
       return _cacheDir!;
     }
-    
+
     final appDir = await getApplicationDocumentsDirectory();
     _cacheDir = Directory('${appDir.path}/audio_cache');
-    
+
     // Ensure directory exists
     if (!await _cacheDir!.exists()) {
       await _cacheDir!.create(recursive: true);
     }
-    
+
     return _cacheDir!;
   }
 
   /// Store audio file from plugin-provided reference
-  /// 
+  ///
   /// [sourcePath] is the path provided by the dictation plugin
   /// [sessionId] is a unique identifier for this capture session (used for retries)
   /// [metadata] optional metadata (duration, locale, timestamp)
-  /// 
+  ///
   /// Returns the cached file path that should be used for queueing/upload
-  /// 
+  ///
   /// Throws [AudioCacheException] if storage fails
   Future<String> storeAudioFile({
     required String sourcePath,
@@ -58,14 +59,19 @@ class AudioCacheService {
     try {
       final sourceFile = File(sourcePath);
       if (!await sourceFile.exists()) {
-        throw AudioCacheException('Source audio file does not exist: $sourcePath');
+        throw AudioCacheException(
+            'Source audio file does not exist: $sourcePath');
       }
 
       final cacheDir = await _getCacheDir();
-      
-      // Generate deterministic filename based on session ID
-      // This ensures retries reuse the same file (no duplicates)
-      final fileName = '${sessionId}.m4a';
+
+      // Generate deterministic filename based on session ID and original extension
+      // Preserving the source extension ensures downstream upload code can infer the
+      // correct MIME type (e.g., WAV vs M4A) from the cached path.
+      final sourceExtension = p.extension(sourcePath);
+      final fileExtension =
+          sourceExtension.isNotEmpty ? sourceExtension : '.wav';
+      final fileName = '$sessionId$fileExtension';
       final cachedPath = '${cacheDir.path}/$fileName';
       final cachedFile = File(cachedPath);
 
@@ -77,7 +83,7 @@ class AudioCacheService {
 
       // Copy source file to cache
       await sourceFile.copy(cachedPath);
-      
+
       // Store mapping for cleanup tracking
       _sessionAudioPaths[sessionId] = cachedPath;
 
@@ -88,7 +94,7 @@ class AudioCacheService {
   }
 
   /// Get cached audio file path for a session
-  /// 
+  ///
   /// Returns null if no audio file exists for this session
   String? getAudioPath(String sessionId) {
     return _sessionAudioPaths[sessionId];
@@ -98,13 +104,13 @@ class AudioCacheService {
   Future<bool> hasAudioFile(String sessionId) async {
     final path = _sessionAudioPaths[sessionId];
     if (path == null) return false;
-    
+
     final file = File(path);
     return await file.exists();
   }
 
   /// Clean up audio file for a session
-  /// 
+  ///
   /// Called when capture is cancelled or discarded
   /// [sessionId] is the capture session identifier
   /// [keepIfQueued] if true, keeps the file even if it's queued for upload
@@ -125,7 +131,7 @@ class AudioCacheService {
       if (await file.exists()) {
         await file.delete();
       }
-      
+
       // Remove from tracking map
       _sessionAudioPaths.remove(sessionId);
     } catch (e) {
@@ -135,7 +141,7 @@ class AudioCacheService {
   }
 
   /// Clean up all temporary audio files
-  /// 
+  ///
   /// Removes all cached audio files that aren't actively being used
   /// Useful for periodic cleanup or app shutdown
   Future<void> cleanupAllTemporaryFiles() async {
@@ -165,7 +171,7 @@ class AudioCacheService {
   }
 
   /// Clear all session tracking (but don't delete files)
-  /// 
+  ///
   /// Useful when resetting state without deleting cached files
   void clearSessionTracking() {
     _sessionAudioPaths.clear();
@@ -178,7 +184,7 @@ class AudioCacheService {
   }
 
   /// Get total size of cached audio files (in bytes)
-  /// 
+  ///
   /// Useful for monitoring cache size
   Future<int> getCacheSize() async {
     try {
@@ -187,7 +193,7 @@ class AudioCacheService {
 
       int totalSize = 0;
       final files = cacheDir.listSync();
-      
+
       for (final entity in files) {
         if (entity is File) {
           try {
@@ -197,7 +203,7 @@ class AudioCacheService {
           }
         }
       }
-      
+
       return totalSize;
     } catch (e) {
       return 0;
@@ -209,8 +215,7 @@ class AudioCacheService {
 class AudioCacheException implements Exception {
   final String message;
   AudioCacheException(this.message);
-  
+
   @override
   String toString() => 'AudioCacheException: $message';
 }
-

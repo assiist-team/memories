@@ -6,7 +6,7 @@ import 'package:memories/models/memory_type.dart';
 import 'package:memories/widgets/memory_title_with_processing.dart';
 
 /// Reusable card widget for displaying a Story in the timeline
-/// 
+///
 /// Normalized layout: image on left, title/date/memory type on right.
 /// Uses the same card container styles as MomentCard and MementoCard for
 /// visual consistency.
@@ -28,6 +28,9 @@ class StoryCard extends ConsumerWidget {
     final locale = Localizations.localeOf(context);
 
     // Determine offline states
+    // Phase 1: Text-cached synced memories have isDetailCachedLocally=true but not isOfflineQueued
+    final isTextCachedOffline =
+        isOffline && story.isDetailCachedLocally && !story.isOfflineQueued;
     final isPreviewOnlyOffline =
         isOffline && story.isPreviewOnly && !story.isDetailCachedLocally;
     final isQueuedOffline = story.isOfflineQueued;
@@ -36,7 +39,8 @@ class StoryCard extends ConsumerWidget {
     // Format: "Story titled [title] recorded [absolute date]"
     final absoluteTime = _formatAbsoluteTimestamp(story.capturedAt, locale);
     final semanticLabel = StringBuffer('Story');
-    if (story.displayTitle.isNotEmpty && story.displayTitle != 'Untitled Story') {
+    if (story.displayTitle.isNotEmpty &&
+        story.displayTitle != 'Untitled Story') {
       semanticLabel.write(' titled ${story.displayTitle}');
     }
     semanticLabel.write(' recorded $absoluteTime');
@@ -56,7 +60,8 @@ class StoryCard extends ConsumerWidget {
         child: Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 2,
-          shape: _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
+          shape:
+              _buildCardShape(context, isQueuedOffline, isPreviewOnlyOffline),
           child: InkWell(
             onTap: isPreviewOnlyOffline
                 ? () => _showNotAvailableOfflineMessage(context)
@@ -86,7 +91,8 @@ class StoryCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     // Footer badges
-                    _buildFooterBadges(context, isQueuedOffline, isPreviewOnlyOffline),
+                    _buildFooterBadges(context, isQueuedOffline,
+                        isPreviewOnlyOffline, isTextCachedOffline),
                   ],
                 ),
               ),
@@ -123,12 +129,19 @@ class StoryCard extends ConsumerWidget {
     BuildContext context,
     bool isQueuedOffline,
     bool isPreviewOnlyOffline,
+    bool isTextCachedOffline,
   ) {
     final badges = <Widget>[];
 
     // Note: Processing and sync status indicators are now shown in the title area
     // via MemoryTitleWithProcessing widget. Footer badges are deprecated for these.
-    // Only show "Not available offline" chip if needed.
+
+    // Phase 1: Show "Media not available offline" for text-cached synced memories
+    if (isTextCachedOffline) {
+      badges.add(_buildMediaNotAvailableChip(context));
+    }
+
+    // Show "Not available offline" for preview-only memories (shouldn't happen after Phase 1)
     if (isPreviewOnlyOffline) {
       badges.add(_buildPreviewOnlyChip(context));
     }
@@ -142,6 +155,31 @@ class StoryCard extends ConsumerWidget {
               child: b,
             )),
       ],
+    );
+  }
+
+  Widget _buildMediaNotAvailableChip(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.cloud_off_outlined, size: 14, color: Colors.blue.shade700),
+          const SizedBox(width: 4),
+          Text(
+            'Media offline',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -211,7 +249,8 @@ class StoryCard extends ConsumerWidget {
         const SizedBox(height: 8),
         // Date - shows actual date
         Semantics(
-          label: 'Recorded ${_formatAbsoluteTimestamp(story.capturedAt, locale)}',
+          label:
+              'Recorded ${_formatAbsoluteTimestamp(story.capturedAt, locale)}',
           excludeSemantics: true,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -273,4 +312,3 @@ class StoryCard extends ConsumerWidget {
     return dateFormat.format(date);
   }
 }
-

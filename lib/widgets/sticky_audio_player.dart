@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
 /// Sticky audio player widget for Story detail view
 ///
 /// Displays audio playback controls (play/pause, scrubber, duration, playback speed)
-/// and remains visible when scrolling. Currently shows placeholder since audio fields
-/// are not yet available in the moments table.
+/// and remains visible when scrolling. When audio is not available or still loading,
+/// shows a neutral placeholder rather than implying future availability.
 class StickyAudioPlayer extends ConsumerStatefulWidget {
   /// Audio URL from Supabase Storage (nullable until audio fields are added)
   final String? audioUrl;
@@ -20,6 +21,7 @@ class StickyAudioPlayer extends ConsumerStatefulWidget {
   /// Story ID for audio caching
   final String storyId;
   final bool enablePositionUpdates;
+  final ValueChanged<double>? onHeightChanged;
 
   const StickyAudioPlayer({
     super.key,
@@ -27,6 +29,7 @@ class StickyAudioPlayer extends ConsumerStatefulWidget {
     this.duration,
     required this.storyId,
     this.enablePositionUpdates = true,
+    this.onHeightChanged,
   });
 
   @override
@@ -47,6 +50,8 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
   double _playbackSpeed = 1.0;
   double? _loadedDuration; // Duration loaded from audio engine (if available)
   String? _errorMessage;
+  double? _lastReportedHeight;
+  bool _heightReportScheduled = false;
 
   @override
   void initState() {
@@ -80,6 +85,7 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    _scheduleHeightReport();
 
     // Use loaded duration if available, otherwise fall back to widget duration
     final effectiveDuration = _loadedDuration ?? widget.duration;
@@ -88,8 +94,7 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
     // Duration can be loaded from audio engine once playback starts
     if (widget.audioUrl == null) {
       return Semantics(
-        label:
-            'Audio player placeholder - audio playback will be available soon',
+        label: 'Audio is not available for this story',
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -113,7 +118,7 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Audio playback will be available soon',
+                  'Audio is not available for this story',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -159,6 +164,7 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
                 _AudioLoadingBanner(isBuffering: _isBuffering),
               // Play/pause button and time display row
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Play/pause button - 48x48px meets accessibility requirements
                   Semantics(
@@ -174,17 +180,26 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
                       borderRadius: BorderRadius.circular(24),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(24),
-                        onTap: (_errorMessage == null && !_isLoading)
+                        onTap: (_errorMessage == null &&
+                                !_isLoading &&
+                                widget.audioUrl != null)
                             ? _togglePlayPause
                             : null,
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          alignment: Alignment.center,
-                          child: Icon(
-                            _isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: theme.colorScheme.onPrimary,
-                            size: 24,
+                        child: Opacity(
+                          opacity: (_errorMessage == null &&
+                                  !_isLoading &&
+                                  widget.audioUrl != null)
+                              ? 1.0
+                              : 0.5,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              _isPlaying ? Icons.pause : Icons.play_arrow,
+                              color: theme.colorScheme.onPrimary,
+                              size: 24,
+                            ),
                           ),
                         ),
                       ),
@@ -194,110 +209,131 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
                   // Time display and scrubber
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Current position / Duration
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _formatDuration(_currentPosition),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            Text(
-                              effectiveDuration != null
-                                  ? _formatDuration(effectiveDuration)
-                                  : '?:??',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
                         // Progress slider - accessible for screen readers
                         Semantics(
                           label: 'Audio progress',
                           value: effectiveDuration != null
                               ? '${_formatDuration(_currentPosition)} of ${_formatDuration(effectiveDuration)}'
                               : '${_formatDuration(_currentPosition)}',
-                          child: Slider(
-                            value: _currentPosition.clamp(
-                                0.0, effectiveDuration ?? 1.0),
-                            max: effectiveDuration ?? 1.0,
-                            onChanged: effectiveDuration != null
-                                ? (value) {
-                                    setState(() {
-                                      _currentPosition = value;
-                                    });
-                                  }
-                                : null, // Disable slider when duration is unknown
-                            onChangeEnd: effectiveDuration != null
-                                ? (value) => _seekTo(value)
-                                : null,
-                            activeColor: theme.colorScheme.primary,
-                            inactiveColor: theme.colorScheme.surfaceVariant,
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 2.0,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 6.0,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 14.0,
+                              ),
+                            ),
+                            child: Slider(
+                              value: _currentPosition.clamp(
+                                  0.0, effectiveDuration ?? 1.0),
+                              max: effectiveDuration ?? 1.0,
+                              onChanged: effectiveDuration != null
+                                  ? (value) {
+                                      setState(() {
+                                        _currentPosition = value;
+                                      });
+                                    }
+                                  : null, // Disable slider when duration is unknown
+                              onChangeEnd: effectiveDuration != null
+                                  ? (value) => _seekTo(value)
+                                  : null,
+                              activeColor: theme.colorScheme.primary,
+                              inactiveColor: theme.colorScheme.surfaceVariant,
+                            ),
+                          ),
+                        ),
+                        // Current position / Duration
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(_currentPosition),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              Text(
+                                effectiveDuration != null
+                                    ? _formatDuration(effectiveDuration)
+                                    : '?:??',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 16),
                   // Playback speed button - accessible with proper labels
-                  Semantics(
-                    label: 'Playback speed: ${_playbackSpeed}x',
-                    hint: 'Double tap to change playback speed',
-                    button: true,
-                    child: PopupMenuButton<double>(
-                      tooltip: 'Change playback speed',
-                      icon: Text(
-                        '${_playbackSpeed}x',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                      child: Semantics(
+                        label: 'Playback speed: ${_playbackSpeed}x',
+                        hint: 'Double tap to change playback speed',
+                        button: true,
+                        child: PopupMenuButton<double>(
+                          tooltip: 'Change playback speed',
+                          padding: EdgeInsets.zero,
+                          icon: Text(
+                            '${_playbackSpeed}x',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          onSelected: (speed) => _setPlaybackSpeed(speed),
+                          itemBuilder: (context) => [
+                            PopupMenuItem(
+                              value: 0.5,
+                              child: Semantics(
+                                  label: 'Playback speed 0.5x',
+                                  child: const Text('0.5x')),
+                            ),
+                            PopupMenuItem(
+                              value: 0.75,
+                              child: Semantics(
+                                  label: 'Playback speed 0.75x',
+                                  child: const Text('0.75x')),
+                            ),
+                            PopupMenuItem(
+                              value: 1.0,
+                              child: Semantics(
+                                  label: 'Playback speed 1x',
+                                  child: const Text('1x')),
+                            ),
+                            PopupMenuItem(
+                              value: 1.25,
+                              child: Semantics(
+                                  label: 'Playback speed 1.25x',
+                                  child: const Text('1.25x')),
+                            ),
+                            PopupMenuItem(
+                              value: 1.5,
+                              child: Semantics(
+                                  label: 'Playback speed 1.5x',
+                                  child: const Text('1.5x')),
+                            ),
+                            PopupMenuItem(
+                              value: 2.0,
+                              child: Semantics(
+                                  label: 'Playback speed 2x',
+                                  child: const Text('2x')),
+                            ),
+                          ],
                         ),
                       ),
-                      onSelected: (speed) => _setPlaybackSpeed(speed),
-                      itemBuilder: (context) => [
-                        PopupMenuItem(
-                          value: 0.5,
-                          child: Semantics(
-                              label: 'Playback speed 0.5x',
-                              child: const Text('0.5x')),
-                        ),
-                        PopupMenuItem(
-                          value: 0.75,
-                          child: Semantics(
-                              label: 'Playback speed 0.75x',
-                              child: const Text('0.75x')),
-                        ),
-                        PopupMenuItem(
-                          value: 1.0,
-                          child: Semantics(
-                              label: 'Playback speed 1x',
-                              child: const Text('1x')),
-                        ),
-                        PopupMenuItem(
-                          value: 1.25,
-                          child: Semantics(
-                              label: 'Playback speed 1.25x',
-                              child: const Text('1.25x')),
-                        ),
-                        PopupMenuItem(
-                          value: 1.5,
-                          child: Semantics(
-                              label: 'Playback speed 1.5x',
-                              child: const Text('1.5x')),
-                        ),
-                        PopupMenuItem(
-                          value: 2.0,
-                          child: Semantics(
-                              label: 'Playback speed 2x',
-                              child: const Text('2x')),
-                        ),
-                      ],
                     ),
                   ),
                 ],
@@ -309,18 +345,63 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
     );
   }
 
-  Future<void> _togglePlayPause() async {
-    if (widget.audioUrl == null || _isLoading) {
+  void _scheduleHeightReport() {
+    if (!mounted || widget.onHeightChanged == null || _heightReportScheduled) {
       return;
     }
+    _heightReportScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _heightReportScheduled = false;
+      _reportHeight();
+    });
+  }
+
+  void _reportHeight() {
+    if (!mounted || widget.onHeightChanged == null) {
+      return;
+    }
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return;
+    }
+    final height = renderBox.size.height;
+    if (!height.isFinite || height <= 0) {
+      return;
+    }
+    if (_lastReportedHeight == null ||
+        (height - _lastReportedHeight!).abs() > 0.5) {
+      _lastReportedHeight = height;
+      widget.onHeightChanged!(height);
+    }
+  }
+
+  Future<void> _togglePlayPause() async {
+    if (widget.audioUrl == null || _isLoading || _errorMessage != null) {
+      debugPrint(
+          '[StickyAudioPlayer] Play button disabled - audioUrl: ${widget.audioUrl}, isLoading: $_isLoading, error: $_errorMessage');
+      return;
+    }
+
     try {
+      debugPrint(
+          '[StickyAudioPlayer] Toggling playback - currently playing: ${_audioPlayer.playing}');
       if (_audioPlayer.playing) {
         await _audioPlayer.pause();
+        debugPrint('[StickyAudioPlayer] Paused');
       } else {
+        // Ensure audio source is loaded before playing
+        if (_loadedDuration == null && widget.duration == null) {
+          debugPrint(
+              '[StickyAudioPlayer] Audio duration not available, attempting to reload...');
+          await _loadAudioSource();
+          // Wait a bit for the source to be ready
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
         await _audioPlayer.play();
+        debugPrint('[StickyAudioPlayer] Playing');
       }
     } catch (error, stackTrace) {
-      debugPrint('Failed to toggle playback: $error');
+      debugPrint('[StickyAudioPlayer] Failed to toggle playback: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       setState(() {
@@ -379,10 +460,14 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
     });
 
     try {
+      debugPrint('[StickyAudioPlayer] Loading audio from: ${widget.audioUrl}');
+      // just_audio's setUrl handles both HTTP URLs and file:// URLs
       final duration = await _audioPlayer.setUrl(widget.audioUrl!);
       if (!mounted) {
         return;
       }
+      debugPrint(
+          '[StickyAudioPlayer] Audio loaded successfully, duration: $duration');
       setState(() {
         _currentPosition = 0.0;
         _loadedDuration =
@@ -391,7 +476,8 @@ class _StickyAudioPlayerState extends ConsumerState<StickyAudioPlayer> {
         _loadedDuration ??= widget.duration;
       });
     } catch (error, stackTrace) {
-      debugPrint('Failed to load audio source: $error');
+      debugPrint('[StickyAudioPlayer] Failed to load audio source: $error');
+      debugPrint('[StickyAudioPlayer] URL was: ${widget.audioUrl}');
       debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       setState(() {

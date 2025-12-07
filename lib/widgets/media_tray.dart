@@ -165,28 +165,18 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
 
   Future<void> _initializeVideo() async {
     try {
-      if (widget.isExisting && widget.url != null) {
-        // Existing video from storage path - need to get signed URL
-        final supabaseUrl = ref.read(supabaseUrlProvider);
-        final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
-        final imageCache = ref.read(timelineImageCacheServiceProvider);
-        final signedUrl = await imageCache.getSignedUrlForDetailView(
-          supabaseUrl,
-          supabaseAnonKey,
-          'memories-videos', // Videos are stored in memories-videos bucket
-          widget.url!,
-        );
-        _videoController =
-            VideoPlayerController.networkUrl(Uri.parse(signedUrl));
-      } else if (!widget.isExisting && widget.filePath != null) {
-        // New video from file path
-        _videoController = VideoPlayerController.file(File(widget.filePath!));
-      } else {
+      // For thumbnails, we don't load video players - just show placeholders
+      // This avoids distortion and performance issues
+      if (widget.isExisting) {
+        // Existing videos (online) - show placeholder, don't load video
         return;
-      }
-      await _videoController!.initialize();
-      if (mounted) {
-        setState(() {});
+      } else if (!widget.isExisting && widget.filePath != null) {
+        // New video from file path - can show video player for local preview
+        _videoController = VideoPlayerController.file(File(widget.filePath!));
+        await _videoController!.initialize();
+        if (mounted) {
+          setState(() {});
+        }
       }
     } catch (e) {
       // Handle error - show placeholder
@@ -273,6 +263,8 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
         final supabaseUrl = ref.read(supabaseUrlProvider);
         final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
         final imageCache = ref.read(timelineImageCacheServiceProvider);
+        final accessToken =
+            ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
         return FutureBuilder<String>(
           future: imageCache.getSignedUrlForDetailView(
@@ -280,11 +272,17 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
             supabaseAnonKey,
             'memories-photos',
             widget.url!,
+            accessToken: accessToken,
           ),
           builder: (context, snapshot) {
             if (snapshot.hasError || !snapshot.hasData) {
-              return const Center(
-                child: Icon(Icons.broken_image),
+              return Container(
+                width: 100,
+                height: 100,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: Icon(Icons.broken_image),
+                ),
               );
             }
 
@@ -294,8 +292,13 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
               width: 100,
               height: 100,
               errorBuilder: (context, error, stackTrace) {
-                return const Center(
-                  child: Icon(Icons.broken_image),
+                return Container(
+                  width: 100,
+                  height: 100,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Center(
+                    child: Icon(Icons.broken_image),
+                  ),
                 );
               },
             );
@@ -315,27 +318,61 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
           },
         );
       } else {
-        return const Center(
-          child: Icon(Icons.broken_image),
+        return Container(
+          width: 100,
+          height: 100,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: const Center(
+            child: Icon(Icons.broken_image),
+          ),
         );
       }
     } catch (e) {
-      return const Center(
-        child: Icon(Icons.broken_image),
+      return Container(
+        width: 100,
+        height: 100,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: const Center(
+          child: Icon(Icons.broken_image),
+        ),
       );
     }
   }
 
   Widget _buildVideoPreview() {
-    if (_videoController == null || !_videoController!.value.isInitialized) {
-      return const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
+    final theme = Theme.of(context);
+
+    // For existing videos (online), always show placeholder
+    // For local videos, show video player if initialized, otherwise placeholder
+    if (widget.isExisting) {
+      return Container(
+        color: theme.colorScheme.surfaceContainerHighest,
+        child: const Center(
+          child: Icon(Icons.videocam, size: 32),
+        ),
       );
     }
 
-    return AspectRatio(
-      aspectRatio: _videoController!.value.aspectRatio,
-      child: VideoPlayer(_videoController!),
+    if (_videoController == null || !_videoController!.value.isInitialized) {
+      return Container(
+        color: theme.colorScheme.surfaceContainerHighest,
+        child: const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 100,
+      height: 100,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _videoController!.value.size.width,
+          height: _videoController!.value.size.height,
+          child: VideoPlayer(_videoController!),
+        ),
+      ),
     );
   }
 }

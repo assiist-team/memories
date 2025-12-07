@@ -5,6 +5,7 @@ import 'package:memories/models/memory_detail.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/memory_detail_service.dart';
+import 'package:memories/services/shared_preferences_local_memory_preview_store.dart';
 
 part 'memory_detail_provider.g.dart';
 
@@ -49,7 +50,8 @@ class MemoryDetailViewState {
 @riverpod
 MemoryDetailService memoryDetailService(MemoryDetailServiceRef ref) {
   final supabase = ref.read(supabaseClientProvider);
-  return MemoryDetailService(supabase);
+  final previewStore = ref.read(localMemoryPreviewStoreProvider);
+  return MemoryDetailService(supabase, previewStore);
 }
 
 /// Provider for memory detail state
@@ -198,7 +200,7 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       final service = ref.read(memoryDetailServiceProvider);
       await service.updateMemoryDate(_memoryId, memoryDate);
       debugPrint('[MemoryDetailNotifier] Successfully updated memory_date');
-      
+
       // Refresh memory detail to get updated data
       await refresh();
     } catch (e, stackTrace) {
@@ -218,7 +220,7 @@ class MemoryDetailNotifier extends _$MemoryDetailNotifier {
       final service = ref.read(memoryDetailServiceProvider);
       await service.updateMemoryTitle(_memoryId, title);
       debugPrint('[MemoryDetailNotifier] Successfully updated title');
-      
+
       // Refresh memory detail to get updated data
       await refresh();
     } catch (e, stackTrace) {

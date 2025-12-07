@@ -1,29 +1,32 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memories/services/audio_cache_service.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('AudioCacheService', () {
     late AudioCacheService service;
     late Directory tempDir;
+    late Directory documentsDir;
 
     setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('audio_cache_temp');
+      documentsDir =
+          await Directory.systemTemp.createTemp('audio_cache_documents');
+      PathProviderPlatform.instance = _FakePathProviderPlatform(
+        tempPath: tempDir.path,
+        documentsPath: documentsDir.path,
+      );
       service = AudioCacheService();
-      tempDir = await getTemporaryDirectory();
     });
 
     tearDown(() async {
-      // Clean up test files
-      try {
-        final cacheDir = await service.getCacheDirectoryPath();
-        final dir = Directory(cacheDir);
-        if (await dir.exists()) {
-          await dir.delete(recursive: true);
-        }
-      } catch (e) {
-        // Ignore cleanup errors
-      }
+      await _deleteIfExists(tempDir);
+      await _deleteIfExists(documentsDir);
+      await _deleteIfExists(
+        Directory('${documentsDir.path}/audio_cache'),
+      );
     });
 
     test('storeAudioFile stores audio file and returns cached path', () async {
@@ -49,13 +52,31 @@ void main() {
       expect(await service.hasAudioFile(sessionId), isTrue);
     });
 
-    test('storeAudioFile reuses existing file for same session (retry scenario)', () async {
+    test('storeAudioFile preserves original file extension', () async {
+      final sourceFile = File('${tempDir.path}/test_audio.wav');
+      await sourceFile.writeAsString('wav audio content');
+
+      final sessionId = 'wav-session';
+      final cachedPath = await service.storeAudioFile(
+        sourcePath: sourceFile.path,
+        sessionId: sessionId,
+      );
+
+      expect(cachedPath.endsWith('.wav'), isTrue);
+      final cachedFile = File(cachedPath);
+      expect(await cachedFile.exists(), isTrue);
+      expect(await cachedFile.readAsString(), equals('wav audio content'));
+    });
+
+    test(
+        'storeAudioFile reuses existing file for same session (retry scenario)',
+        () async {
       // Create a temporary source file
       final sourceFile = File('${tempDir.path}/test_audio.m4a');
       await sourceFile.writeAsString('test audio content');
 
       final sessionId = 'test-session-2';
-      
+
       // First store
       final firstPath = await service.storeAudioFile(
         sourcePath: sourceFile.path,
@@ -118,13 +139,15 @@ void main() {
 
       // File should still exist
       expect(await File(cachedPath).exists(), isTrue);
-      // But tracking should be removed
-      expect(service.getAudioPath(sessionId), isNull);
+      // Tracking should remain so queued uploads can find the file
+      expect(service.getAudioPath(sessionId), equals(cachedPath));
     });
 
-    test('storeAudioFile throws AudioCacheException when source file does not exist', () async {
+    test(
+        'storeAudioFile throws AudioCacheException when source file does not exist',
+        () async {
       final sessionId = 'test-session-5';
-      
+
       expect(
         () => service.storeAudioFile(
           sourcePath: '/nonexistent/path/audio.m4a',
@@ -188,10 +211,12 @@ void main() {
       final cacheSize = await service.getCacheSize();
       expect(cacheSize, greaterThan(0));
       // Should be at least the size of both files
-      expect(cacheSize, greaterThanOrEqualTo(16)); // 'content1' + 'content2' = 16 bytes
+      expect(cacheSize,
+          greaterThanOrEqualTo(16)); // 'content1' + 'content2' = 16 bytes
     });
 
-    test('clearSessionTracking removes tracking without deleting files', () async {
+    test('clearSessionTracking removes tracking without deleting files',
+        () async {
       // Create and store a file
       final sourceFile = File('${tempDir.path}/test_audio.m4a');
       await sourceFile.writeAsString('test audio content');
@@ -215,3 +240,28 @@ void main() {
   });
 }
 
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  _FakePathProviderPlatform({
+    required this.tempPath,
+    required this.documentsPath,
+  }) : super();
+
+  final String tempPath;
+  final String documentsPath;
+
+  @override
+  Future<String?> getTemporaryPath() async => tempPath;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => documentsPath;
+}
+
+Future<void> _deleteIfExists(Directory dir) async {
+  try {
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+  } catch (_) {
+    // Best-effort cleanup for test artifacts.
+  }
+}

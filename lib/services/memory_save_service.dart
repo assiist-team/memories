@@ -294,17 +294,24 @@ class MemorySaveService {
           try {
             final audioFile = File(state.audioPath!);
             if (await audioFile.exists()) {
+              final lowerPath = audioFile.path.toLowerCase();
+              final isM4a = lowerPath.endsWith('.m4a');
+
+              // Default to WAV for now, since dictation currently outputs .wav
+              final fileExtension = isM4a ? 'm4a' : 'wav';
+              final contentType = isM4a ? 'audio/m4a' : 'audio/wav';
+
               final audioFileName =
-                  '${DateTime.now().millisecondsSinceEpoch}.m4a';
+                  '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
               final audioStoragePath =
                   'stories/audio/${_supabase.auth.currentUser?.id}/$memoryId/$audioFileName';
 
               await _supabase.storage.from('stories-audio').upload(
                     audioStoragePath,
                     audioFile,
-                    fileOptions: const FileOptions(
+                    fileOptions: FileOptions(
                       upsert: false,
-                      contentType: 'audio/m4a',
+                      contentType: contentType,
                     ),
                   );
 

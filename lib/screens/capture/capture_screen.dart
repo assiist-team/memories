@@ -11,7 +11,6 @@ import 'package:memories/models/capture_state.dart';
 import 'package:memories/models/queued_memory.dart';
 import 'package:memories/providers/capture_state_provider.dart';
 import 'package:memories/providers/media_picker_provider.dart';
-import 'package:memories/providers/memory_detail_provider.dart';
 import 'package:memories/providers/memory_timeline_update_bus_provider.dart';
 import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
@@ -24,6 +23,7 @@ import 'package:memories/widgets/save_button_success_checkmark.dart';
 import 'package:memories/models/location_suggestion.dart';
 import 'package:memories/services/location_suggestion_service.dart';
 import 'package:memories/services/connectivity_service.dart';
+import 'package:memories/screens/memory/memory_detail_screen.dart';
 
 /// Unified capture screen for creating Moments, Stories, and Mementos
 ///
@@ -322,6 +322,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           state: finalState,
         );
 
+        // Emit updated event with localId so timeline can refresh the card
+        // This ensures the timeline card shows the updated media immediately
+        final bus = ref.read(memoryTimelineUpdateBusProvider);
+        bus.emitUpdated(localId);
+
         captureNotifier.clearOfflineEditing();
 
         if (mounted) {
@@ -335,9 +340,16 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           );
           await notifier.clear(keepAudioIfQueued: true);
           _refreshLocationAfterClear(notifier);
-          // Navigate back to timeline / detail
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
+          // Navigate back to memory detail screen for the edited memory
+          if (mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => MemoryDetailScreen(
+                  memoryId: localId,
+                  isOfflineQueued: true,
+                ),
+              ),
+            );
           }
         }
         return;
@@ -414,11 +426,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             capturedAt: capturedAt,
             memoryLocationData: effectiveLocationDataMap,
           );
+          final localId = queuedMemory.localId;
           await queueService.enqueue(queuedMemory);
+
           await _showOfflineQueueSuccess(
             message:
                 'Saved offline. We\'ll sync this memory once you reconnect.',
             notifier: notifier,
+            localId: localId,
           );
         } else {
           final String targetMemoryId = effectiveEditingMemoryId;
@@ -481,12 +496,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
             final bus = ref.read(memoryTimelineUpdateBusProvider);
             bus.emitUpdated(memoryId);
 
-            // When editing, navigate back to detail screen
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
+            // When editing, navigate back to memory detail screen
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => MemoryDetailScreen(
+                    memoryId: memoryId,
+                    isOfflineQueued: false,
+                  ),
+                ),
+              );
             }
-            // Refresh detail screen to show updated content
-            ref.read(memoryDetailNotifierProvider(memoryId).notifier).refresh();
           } else {
             // When creating, navigate to timeline
             // Dismiss keyboard before navigation
@@ -574,6 +594,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   Future<void> _showOfflineQueueSuccess({
     required String message,
     required CaptureStateNotifier notifier,
+    String? localId,
   }) async {
     if (!mounted) return;
 
@@ -595,8 +616,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       _showSuccessCheckmark = false;
     });
 
+    // Unfocus input before navigation
+    FocusScope.of(context).unfocus();
+
+    // Navigate back if possible
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
+    }
+
+    // Switch to timeline tab to match online save flow
+    ref.read(mainNavigationTabNotifierProvider.notifier).switchToTimeline();
+
+    // Emit created event once navigation has returned to the timeline tab
+    if (localId != null) {
+      final bus = ref.read(memoryTimelineUpdateBusProvider);
+      bus.emitCreated(localId);
     }
 
     if (!mounted) {

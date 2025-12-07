@@ -18,6 +18,7 @@ import 'package:memories/providers/unified_feed_provider.dart';
 import 'package:memories/providers/unified_feed_tab_provider.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
+import 'package:memories/services/shared_preferences_local_memory_preview_store.dart';
 import 'package:memories/providers/supabase_provider.dart';
 import 'package:memories/providers/timeline_image_cache_provider.dart';
 import 'package:memories/widgets/media_strip.dart';
@@ -730,10 +731,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     final isOfflineQueuedNotFound =
         errorMessage.contains('Offline queued memory not found');
     final hasFallbackServer = widget.fallbackServerId != null;
-    final title = isOfflineQueuedNotFound
+    // Only claim memory synced if we have a fallback server ID
+    // Otherwise, the queue entry is missing but memory hasn't synced
+    final title = isOfflineQueuedNotFound && hasFallbackServer
         ? 'Memory Already Synced'
         : 'Offline Memory Unavailable';
-    final description = isOfflineQueuedNotFound
+    final description = isOfflineQueuedNotFound && hasFallbackServer
         ? 'This memory has already synced to the server. Refresh the timeline to see the updated version.'
         : 'We couldn’t load this queued memory while offline. You can retry the offline request or head back to the timeline.';
 
@@ -1053,18 +1056,27 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
           ),
         ),
 
-        // Sticky audio player for Stories (only if Story)
-        if (isStory)
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _StickyAudioPlayerDelegate(
-              child: _StoryAudioPlayer(
+        // Sticky audio player for Stories (only if Story has audio)
+        // Only show audio player if the story actually has audio data
+        if (isStory &&
+            memory.audioPath != null &&
+            memory.audioPath!.isNotEmpty) ...[
+          Builder(
+            builder: (context) {
+              developer.log(
+                '[MemoryDetailScreen] Creating audio player for story '
+                'id=${memory.id} audioPath=${memory.audioPath} '
+                'audioDuration=${memory.audioDuration}',
+                name: 'MemoryDetailScreen',
+              );
+              return _StoryAudioPlayerSliver(
                 audioPath: memory.audioPath,
                 audioDuration: memory.audioDuration,
                 storyId: memory.id,
-              ),
-            ),
+              );
+            },
           ),
+        ],
 
         SliverPadding(
           padding: const EdgeInsets.all(16),
@@ -1110,12 +1122,22 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                   _buildMediaPreviewContent(context, memory),
                   const SizedBox(height: 24),
                 ] else ...[
-                  _buildMediaPlaceholder(
-                    context: context,
-                    icon: Icons.burst_mode_outlined,
-                    title: 'No photos or videos yet',
-                    message: 'Add media from the edit screen to see it here.',
-                  ),
+                  // Show different message for text-cached memories (media not available offline)
+                  if (isFromCache && !widget.isOfflineQueued)
+                    _buildMediaPlaceholder(
+                      context: context,
+                      icon: Icons.cloud_off_outlined,
+                      title: 'Media not available offline',
+                      message:
+                          'Photos and videos require an internet connection to view.',
+                    )
+                  else
+                    _buildMediaPlaceholder(
+                      context: context,
+                      icon: Icons.burst_mode_outlined,
+                      title: 'No photos or videos yet',
+                      message: 'Add media from the edit screen to see it here.',
+                    ),
                   const SizedBox(height: 24),
                 ],
               ],
@@ -1127,7 +1149,37 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   }
 
   /// Build offline banner explaining limitations
+  /// Shows different messages for queued memories vs text-cached synced memories
   Widget _buildOfflineBanner(BuildContext context) {
+    // For text-cached synced memories (not queued), show media limitation message
+    if (!widget.isOfflineQueued) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          border: Border(
+            bottom: BorderSide(color: Colors.blue.shade200),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 20, color: Colors.blue.shade900),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Text available offline. Media requires internet connection.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.blue.shade900,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // For queued memories, show sync status (existing behavior)
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1509,6 +1561,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
   ) async {
     final analytics = ref.read(timelineAnalyticsServiceProvider);
     final queueService = ref.read(offlineMemoryQueueServiceProvider);
+    final previewStore = ref.read(localMemoryPreviewStoreProvider);
 
     // Track delete action
     analytics.trackMemoryDetailDelete(memory.id);
@@ -1519,11 +1572,33 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
     final canPop = navigator.canPop();
 
     try {
-      // Remove from unified queue (handles all memory types)
-      await queueService.remove(memory.id);
+      // For offline queued memories, memory.id is the localId
+      final localId = memory.id;
+      debugPrint(
+          '[MemoryDetailScreen] Deleting offline queued memory with localId: $localId');
 
-      // Queue-change event will drive unified feed update automatically
-      // No need to manually remove from feed here
+      // Get the queued memory to check for serverId before removing
+      final queuedMemory = await queueService.getByLocalId(localId);
+      final serverMemoryId = queuedMemory?.serverMemoryId;
+
+      // Remove from unified queue (handles all memory types)
+      // This emits a QueueChangeType.removed event that will update the feed
+      await queueService.remove(localId);
+
+      // Also purge matching preview index entries by serverId to prevent ghost cards
+      // This prevents the preview index from re-adding the deleted memory when _fetchPage runs
+      if (serverMemoryId != null) {
+        debugPrint(
+            '[MemoryDetailScreen] Purging preview index entry for serverId: $serverMemoryId');
+        await previewStore.removePreviewByServerId(serverMemoryId);
+      }
+
+      // Also directly remove from unified feed as a backup to ensure immediate removal
+      // This prevents ghost cards if the queue-change event is delayed or missed
+      final unifiedFeedController = ref.read(unifiedFeedProvider.notifier);
+      unifiedFeedController.removeMemory(localId);
+      debugPrint(
+          '[MemoryDetailScreen] Removed memory $localId from unified feed and preview index');
 
       final deleteMessage = memory.memoryType == 'story'
           ? 'Story deleted'
@@ -1547,6 +1622,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
         ),
       );
     } catch (e) {
+      debugPrint(
+          '[MemoryDetailScreen] Error deleting offline queued memory: $e');
       // Handle error
       if (!context.mounted) return;
 
@@ -1918,21 +1995,35 @@ class _StoryAudioPlayer extends ConsumerWidget {
   final String? audioPath;
   final double? audioDuration;
   final String storyId;
+  final ValueChanged<double>? onHeightChanged;
 
   const _StoryAudioPlayer({
     required this.audioPath,
     this.audioDuration,
     required this.storyId,
+    this.onHeightChanged,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Debug logging to diagnose audio playback issues
+    developer.log(
+      '[MemoryDetailScreen._StoryAudioPlayer] Building audio player '
+      'storyId=$storyId audioPath=$audioPath audioDuration=$audioDuration',
+      name: 'MemoryDetailScreen',
+    );
+
     // If no audio path, show placeholder
     if (audioPath == null || audioPath!.isEmpty) {
+      developer.log(
+        '[MemoryDetailScreen._StoryAudioPlayer] No audio path - showing placeholder',
+        name: 'MemoryDetailScreen',
+      );
       return StickyAudioPlayer(
         audioUrl: null,
         duration: audioDuration,
         storyId: storyId,
+        onHeightChanged: onHeightChanged,
       );
     }
 
@@ -1943,13 +2034,22 @@ class _StoryAudioPlayer extends ConsumerWidget {
         audioUrl: audioPath,
         duration: audioDuration,
         storyId: storyId,
+        onHeightChanged: onHeightChanged,
       );
     }
 
     // Fetch signed URL for remote Supabase Storage audio
     final supabaseUrl = ref.read(supabaseUrlProvider);
     final supabaseAnonKey = ref.read(supabaseAnonKeyProvider);
+    final supabaseClient = ref.read(supabaseClientProvider);
     final imageCache = ref.read(timelineImageCacheServiceProvider);
+    final accessToken = supabaseClient.auth.currentSession?.accessToken;
+
+    developer.log(
+      '[MemoryDetailScreen._StoryAudioPlayer] Fetching signed URL for '
+      'bucket=stories-audio path=$audioPath',
+      name: 'MemoryDetailScreen',
+    );
 
     return FutureBuilder<String>(
       future: imageCache.getSignedUrlForDetailView(
@@ -1957,13 +2057,14 @@ class _StoryAudioPlayer extends ConsumerWidget {
         supabaseAnonKey,
         'stories-audio',
         audioPath!,
+        accessToken: accessToken,
       ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           // If error fetching signed URL, show placeholder
           developer.log(
-            '[MemoryDetailScreen] Error fetching audio signed URL '
-            'storyId=$storyId path=$audioPath',
+            '[MemoryDetailScreen._StoryAudioPlayer] Error fetching audio signed URL '
+            'storyId=$storyId path=$audioPath error=${snapshot.error}',
             name: 'MemoryDetailScreen',
             error: snapshot.error,
             stackTrace: snapshot.stackTrace,
@@ -1972,25 +2073,88 @@ class _StoryAudioPlayer extends ConsumerWidget {
             audioUrl: null,
             duration: audioDuration,
             storyId: storyId,
+            onHeightChanged: onHeightChanged,
           );
         }
 
         if (!snapshot.hasData) {
           // Loading state - show placeholder while fetching URL
+          developer.log(
+            '[MemoryDetailScreen._StoryAudioPlayer] Still loading signed URL...',
+            name: 'MemoryDetailScreen',
+          );
           return StickyAudioPlayer(
             audioUrl: null,
             duration: audioDuration,
             storyId: storyId,
+            onHeightChanged: onHeightChanged,
           );
         }
 
         // Success - pass signed URL to player
+        developer.log(
+          '[MemoryDetailScreen._StoryAudioPlayer] Successfully fetched signed URL, '
+          'passing to StickyAudioPlayer',
+          name: 'MemoryDetailScreen',
+        );
         return StickyAudioPlayer(
           audioUrl: snapshot.data,
           duration: audioDuration,
           storyId: storyId,
+          onHeightChanged: onHeightChanged,
         );
       },
+    );
+  }
+}
+
+class _StoryAudioPlayerSliver extends ConsumerStatefulWidget {
+  final String? audioPath;
+  final double? audioDuration;
+  final String storyId;
+
+  const _StoryAudioPlayerSliver({
+    required this.audioPath,
+    required this.audioDuration,
+    required this.storyId,
+  });
+
+  @override
+  ConsumerState<_StoryAudioPlayerSliver> createState() =>
+      _StoryAudioPlayerSliverState();
+}
+
+class _StoryAudioPlayerSliverState
+    extends ConsumerState<_StoryAudioPlayerSliver> {
+  static const double _minHeight = 80.0;
+  static const double _maxHeight = 200.0;
+
+  double _currentHeight = _minHeight;
+
+  void _handleHeightChanged(double height) {
+    final clampedHeight = height.isFinite && height > 0
+        ? height.clamp(_minHeight, _maxHeight)
+        : _minHeight;
+    if ((clampedHeight - _currentHeight).abs() > 0.5) {
+      setState(() {
+        _currentHeight = clampedHeight.toDouble();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _StickyAudioPlayerDelegate(
+        height: _currentHeight,
+        child: _StoryAudioPlayer(
+          audioPath: widget.audioPath,
+          audioDuration: widget.audioDuration,
+          storyId: widget.storyId,
+          onHeightChanged: _handleHeightChanged,
+        ),
+      ),
     );
   }
 }
@@ -1998,19 +2162,18 @@ class _StoryAudioPlayer extends ConsumerWidget {
 /// Delegate for sticky audio player header
 class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
+  final double height;
 
-  _StickyAudioPlayerDelegate({required this.child});
+  _StickyAudioPlayerDelegate({required this.child, required this.height});
 
-  // Height matches actual painted child height to prevent layoutExtent > paintExtent errors
-  // Placeholder: ~58px (measured from actual render)
-  // Full player: ~80px (when audio is available)
-  // For pinned headers, layoutExtent must equal paintExtent
-  // Using 80px but ensuring child fills the space with padding
+  // Height matches the measured player height to keep layoutExtent == paintExtent.
+  // The player reports its intrinsic size (placeholder ~60px, error state ~120px),
+  // which allows the pinned header to avoid overlapping the story text.
   @override
-  double get minExtent => 80;
+  double get minExtent => height;
 
   @override
-  double get maxExtent => 80;
+  double get maxExtent => height;
 
   @override
   Widget build(
@@ -2018,17 +2181,13 @@ class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    // Force container to be exactly 80px tall to match extents
-    // This ensures layoutExtent equals paintExtent (both 80px)
-    // Padding is applied inside the delegate to ensure total height is 80px
-    // Use Align to ensure child is properly positioned within the 80px space
+    // The child (StickyAudioPlayer) already has its own padding and styling
+    // We just need to constrain the height and provide a background
     return SizedBox(
-      height: 80,
+      height: height,
       child: Container(
         width: double.infinity,
         color: Theme.of(context).scaffoldBackgroundColor,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        alignment: Alignment.center,
         child: child,
       ),
     );
@@ -2036,6 +2195,6 @@ class _StickyAudioPlayerDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_StickyAudioPlayerDelegate oldDelegate) {
-    return child != oldDelegate.child;
+    return child != oldDelegate.child || height != oldDelegate.height;
   }
 }

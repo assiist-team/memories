@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +38,9 @@ class MementoCard extends ConsumerWidget {
         ref.read(supabaseClientProvider).auth.currentSession?.accessToken;
 
     // Determine offline states
+    // Phase 1: Text-cached synced memories have isDetailCachedLocally=true but not isOfflineQueued
+    final isTextCachedOffline =
+        isOffline && memento.isDetailCachedLocally && !memento.isOfflineQueued;
     final isPreviewOnlyOffline =
         isOffline && memento.isPreviewOnly && !memento.isDetailCachedLocally;
     final isQueuedOffline = memento.isOfflineQueued;
@@ -93,7 +97,7 @@ class MementoCard extends ConsumerWidget {
                       children: [
                         // Thumbnail section
                         _buildThumbnail(context, supabaseUrl, supabaseAnonKey,
-                            imageCache, accessToken),
+                            imageCache, accessToken, isOffline),
                         const SizedBox(width: 16),
                         // Content section
                         Expanded(
@@ -103,8 +107,8 @@ class MementoCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     // Footer badges
-                    _buildFooterBadges(
-                        context, isQueuedOffline, isPreviewOnlyOffline),
+                    _buildFooterBadges(context, isQueuedOffline,
+                        isPreviewOnlyOffline, isTextCachedOffline),
                   ],
                 ),
               ),
@@ -141,12 +145,19 @@ class MementoCard extends ConsumerWidget {
     BuildContext context,
     bool isQueuedOffline,
     bool isPreviewOnlyOffline,
+    bool isTextCachedOffline,
   ) {
     final badges = <Widget>[];
 
     // Note: Processing and sync status indicators are now shown in the title area
     // via MemoryTitleWithProcessing widget. Footer badges are deprecated for these.
-    // Only show "Not available offline" chip if needed.
+
+    // Phase 1: Show "Media not available offline" for text-cached synced memories
+    if (isTextCachedOffline) {
+      badges.add(_buildMediaNotAvailableChip(context));
+    }
+
+    // Show "Not available offline" for preview-only memories (shouldn't happen after Phase 1)
     if (isPreviewOnlyOffline) {
       badges.add(_buildPreviewOnlyChip(context));
     }
@@ -160,6 +171,31 @@ class MementoCard extends ConsumerWidget {
               child: b,
             )),
       ],
+    );
+  }
+
+  Widget _buildMediaNotAvailableChip(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.shade200, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.cloud_off_outlined, size: 14, color: Colors.blue.shade700),
+          const SizedBox(width: 4),
+          Text(
+            'Media offline',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -199,7 +235,8 @@ class MementoCard extends ConsumerWidget {
       String supabaseUrl,
       String supabaseAnonKey,
       TimelineImageCacheService imageCache,
-      String? accessToken) {
+      String? accessToken,
+      bool isOffline) {
     const thumbnailSize = 80.0;
     final memoryTypeIcon = _getMemoryTypeIcon();
 
@@ -223,6 +260,169 @@ class MementoCard extends ConsumerWidget {
     }
 
     final media = memento.primaryMedia!;
+
+    // Branch on local vs remote media
+    if (media.isLocal) {
+      // Local file path - use Image.file or video placeholder
+      final path = media.url.replaceFirst('file://', '');
+      final file = File(path);
+
+      if (!file.existsSync()) {
+        // File missing - show broken image placeholder
+        return Semantics(
+          label: 'Missing media file',
+          child: Container(
+            width: thumbnailSize,
+            height: thumbnailSize,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.broken_image),
+          ),
+        );
+      }
+
+      // Hero tag for transition animation to detail view
+      final heroTag = 'memento_thumbnail_${memento.id}';
+
+      if (media.isPhoto) {
+        return Semantics(
+          label: 'Photo thumbnail',
+          image: true,
+          child: Hero(
+            tag: heroTag,
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    file,
+                    width: thumbnailSize,
+                    height: thumbnailSize,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Semantics(
+                        label: 'Failed to load thumbnail',
+                        child: Container(
+                          width: thumbnailSize,
+                          height: thumbnailSize,
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Icon(Icons.broken_image),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Memory type icon overlay in upper right corner
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      memoryTypeIcon,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        // Video - show generic video chip
+        return Semantics(
+          label: 'Video thumbnail',
+          image: true,
+          child: Hero(
+            tag: heroTag,
+            child: Stack(
+              children: [
+                Container(
+                  width: thumbnailSize,
+                  height: thumbnailSize,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.videocam, size: 32),
+                ),
+                // Memory type icon overlay in upper right corner
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      memoryTypeIcon,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 4,
+                  right: 4,
+                  child: Semantics(
+                    label: 'Video',
+                    excludeSemantics: true,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'VIDEO',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    // Remote Supabase media - use signed URL
+    // If offline, show memory type icon instead of trying to load
+    if (isOffline) {
+      return Semantics(
+        label: 'Text-only memento, no media',
+        image: true,
+        child: Container(
+          width: thumbnailSize,
+          height: thumbnailSize,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Icon(memoryTypeIcon, size: 32),
+          ),
+        ),
+      );
+    }
+
     final bucket = media.isPhoto ? 'memories-photos' : 'memories-videos';
 
     // Get signed URL from cache or generate new one
@@ -254,10 +454,28 @@ class MementoCard extends ConsumerWidget {
                       width: thumbnailSize,
                       height: thumbnailSize,
                       fit: BoxFit.cover,
-                      // Optimize image caching: cache at 2x resolution for retina displays
-                      cacheWidth: (thumbnailSize * 2).toInt(),
-                      cacheHeight: (thumbnailSize * 2).toInt(),
+                      // Match offline decoding: no cacheWidth/height hints
                       errorBuilder: (context, error, stackTrace) {
+                        // In offline mode, show memory type icon instead of broken image icon
+                        if (isOffline) {
+                          return Semantics(
+                            label: 'Text-only memento, no media',
+                            image: true,
+                            child: Container(
+                              width: thumbnailSize,
+                              height: thumbnailSize,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceVariant,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Icon(memoryTypeIcon, size: 32),
+                              ),
+                            ),
+                          );
+                        }
                         return Semantics(
                           label: 'Failed to load thumbnail',
                           child: Container(
@@ -327,6 +545,24 @@ class MementoCard extends ConsumerWidget {
             error: snapshot.error,
             stackTrace: snapshot.stackTrace,
           );
+          // In offline mode, show memory type icon instead of error icon
+          if (isOffline) {
+            return Semantics(
+              label: 'Text-only memento, no media',
+              image: true,
+              child: Container(
+                width: thumbnailSize,
+                height: thumbnailSize,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Icon(memoryTypeIcon, size: 32),
+                ),
+              ),
+            );
+          }
           return Semantics(
             label: 'Error loading thumbnail',
             child: Container(
