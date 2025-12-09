@@ -10,9 +10,9 @@ When running the Flutter app on iOS (physical device or simulator), Xcode logs s
 - Xcode console warning:
   ```
   objc[18365]: Class AudioWaveformsPlugin is implemented in both 
-  /private/var/containers/Bundle/Application/.../Runner.app/Frameworks/audio_waveforms.framework/audio_waveforms (0x105ab9cc8) 
+  /private/var/containers/Bundle/Application/.../Memories.app/Frameworks/audio_waveforms.framework/audio_waveforms (0x105ab9cc8) 
   and 
-  /private/var/containers/Bundle/Application/.../Runner.app/Runner.debug.dylib (0x104fa0ef8). 
+  /private/var/containers/Bundle/Application/.../Memories.app/Runner.debug.dylib (0x104fa0ef8). 
   This may cause spurious casting failures and mysterious crashes. 
   One of the duplicates must be removed or renamed.
   ```

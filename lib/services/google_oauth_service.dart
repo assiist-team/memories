@@ -29,7 +29,7 @@ class GoogleOAuthService {
   /// - Google Cloud Console: Add Supabase callback URL:
   ///   https://cgppebaekutbacvuaioa.supabase.co/auth/v1/callback
   /// - Supabase Dashboard: Add app redirect URL:
-  ///   com.example.memories://auth-callback
+  ///   com.memories.app://auth-callback
   ///
   /// For iOS: Configure Universal Links in Xcode
   /// For Android: Configure App Links in AndroidManifest.xml
@@ -92,7 +92,7 @@ class GoogleOAuthService {
         debugPrint('2. Verify Supabase Dashboard configuration:');
         debugPrint('   → Go to: Supabase Dashboard → Authentication → URL Configuration');
         debugPrint('   → Under "Redirect URLs", ensure this is added:');
-        debugPrint('     com.example.memories://auth-callback');
+        debugPrint('     com.memories.app://auth-callback');
         debugPrint('');
         debugPrint('3. Verify Google OAuth credentials in Supabase:');
         debugPrint('   → Go to: Supabase Dashboard → Authentication → Providers → Google');
@@ -111,8 +111,8 @@ class GoogleOAuthService {
   /// This should match the URL configured in Supabase dashboard.
   String _getRedirectUrl() {
     // This must match the URL scheme in Info.plist (iOS) and AndroidManifest.xml (Android)
-    // The bundle identifier is com.example.memories
-    return 'com.example.memories://auth-callback';
+    // The bundle identifier is com.memories.app
+    return 'com.memories.app://auth-callback';
   }
 
   /// Handle OAuth callback from deep link

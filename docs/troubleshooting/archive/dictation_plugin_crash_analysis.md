@@ -2,7 +2,7 @@
 
 ## Crash Summary
 
-**App**: Runner (com.example.memories)  
+**App**: Memories (com.memories.app)  
 **Version**: 1.0.0 (1)  
 **Crash Type**: EXC_BAD_ACCESS (SIGSEGV) – Segmentation Fault  
 **Crash Location**: Main thread, during app launch (`application:didFinishLaunchingWithOptions:`)  
