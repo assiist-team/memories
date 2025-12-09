@@ -61,6 +61,8 @@
 	<string>Memories uses local network access to check connectivity status and sync your memories.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Memories needs access to your location to tag your memories with where they happened.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Memories requires background location access so that it can tag and maintain the accuracy of memories even when you are away from the app.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_dartobservatory._tcp</string>
