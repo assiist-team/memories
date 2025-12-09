@@ -56,6 +56,9 @@ class MediaTray extends ConsumerWidget {
   /// File size of the attached audio in bytes (optional, for display only).
   final int? audioFileSizeBytes;
 
+  /// Callback when the attached audio should be removed.
+  final VoidCallback? onAudioRemoved;
+
   const MediaTray({
     super.key,
     required this.photoPaths,
@@ -73,6 +76,7 @@ class MediaTray extends ConsumerWidget {
     this.hasAudioAttachment = false,
     this.audioDurationSeconds,
     this.audioFileSizeBytes,
+    this.onAudioRemoved,
   });
 
   @override
@@ -100,6 +104,7 @@ class MediaTray extends ConsumerWidget {
           if (hasAudioAttachment && index == 0) {
             return _AudioAttachmentThumbnail(
               durationSeconds: audioDurationSeconds,
+              onRemoved: onAudioRemoved,
             );
           }
 
@@ -493,10 +498,11 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
 
 class _AudioAttachmentThumbnail extends StatelessWidget {
   final double? durationSeconds;
+  final VoidCallback? onRemoved;
 
   const _AudioAttachmentThumbnail({
-    super.key,
     this.durationSeconds,
+    this.onRemoved,
   });
 
   String _formatDuration() {
@@ -507,17 +513,13 @@ class _AudioAttachmentThumbnail extends StatelessWidget {
     return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
-  String _formatFileSize() {
-    // File size is intentionally not shown in the UI for this thumbnail.
-    return '';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final durationLabel = _formatDuration();
-    final sizeLabel = _formatFileSize();
     final hasDuration = durationLabel.isNotEmpty;
+    final overlayColor = theme.colorScheme.onSurface.withOpacity(0.7);
+    final overlayBackgroundColor = theme.colorScheme.surface.withOpacity(0.8);
 
     return Semantics(
       label: 'Attached audio',
@@ -533,42 +535,71 @@ class _AudioAttachmentThumbnail extends StatelessWidget {
             color: theme.colorScheme.outlineVariant.withOpacity(0.5),
           ),
         ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.multitrack_audio,
-                  size: 22,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              if (hasDuration) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(999),
+        child: Stack(
+          children: [
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.multitrack_audio,
+                      size: 22,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
-                  child: Text(
-                    durationLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface,
+                  if (hasDuration) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        durationLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (onRemoved != null)
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Semantics(
+                  label: 'Remove audio',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: onRemoved,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: overlayBackgroundColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        size: 16,
+                        color: overlayColor,
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

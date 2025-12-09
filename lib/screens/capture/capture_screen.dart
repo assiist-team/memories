@@ -1265,6 +1265,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                                     state.audioDuration,
                                                 audioFileSizeBytes:
                                                     state.audioFileSizeBytes,
+                                                onAudioRemoved: notifier
+                                                    .removeAudioAttachment,
                                               ),
                                             ),
                                           // Spacing between media and tags
@@ -3420,7 +3422,7 @@ class _VideoSelectionProgressBanner extends StatelessWidget {
 }
 
 class _AudioImportBusyBanner extends StatelessWidget {
-  const _AudioImportBusyBanner({super.key});
+  const _AudioImportBusyBanner();
 
   @override
   Widget build(BuildContext context) {

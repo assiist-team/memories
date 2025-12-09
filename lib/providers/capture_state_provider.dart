@@ -123,6 +123,36 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     );
   }
 
+  /// Remove the attached audio and clean up cached artifacts.
+  Future<void> removeAudioAttachment() async {
+    final normalizedAudioPath = state.normalizedAudioPath;
+    if (normalizedAudioPath != null) {
+      final pluginNormalizer = ref.read(pluginAudioNormalizerProvider);
+      try {
+        await pluginNormalizer.cleanupNormalizedFile(normalizedAudioPath);
+      } catch (e) {
+        debugPrint(
+            '[CaptureStateNotifier] Failed to clean up normalized audio: $e');
+      }
+    }
+
+    final sessionId = state.sessionId;
+    if (sessionId != null) {
+      final audioCacheService = ref.read(audioCacheServiceProvider);
+      try {
+        await audioCacheService.cleanupAudioFile(sessionId: sessionId);
+      } catch (e) {
+        debugPrint(
+            '[CaptureStateNotifier] Failed to clean up cached audio file: $e');
+      }
+    }
+
+    state = state.copyWith(
+      clearAudio: true,
+      hasUnsavedChanges: true,
+    );
+  }
+
   /// Set memory type
   void setMemoryType(MemoryType type) {
     state = state.copyWith(
