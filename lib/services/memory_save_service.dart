@@ -306,17 +306,27 @@ class MemorySaveService {
       // Step 3.5: Create story_fields row if this is a story
       if (state.memoryType == MemoryType.story) {
         // Upload audio if available
+        // Prefer normalized audio path (compressed/optimized) over original
         String? audioPath;
-        if (state.audioPath != null) {
-          try {
-            final audioFile = File(state.audioPath!);
-            if (await audioFile.exists()) {
-              final lowerPath = audioFile.path.toLowerCase();
-              final isM4a = lowerPath.endsWith('.m4a');
+        final audioFilePath = state.normalizedAudioPath ?? state.audioPath;
 
-              // Default to WAV for now, since dictation currently outputs .wav
-              final fileExtension = isM4a ? 'm4a' : 'wav';
-              final contentType = isM4a ? 'audio/m4a' : 'audio/wav';
+        if (audioFilePath != null) {
+          try {
+            final audioFile = File(audioFilePath);
+            if (await audioFile.exists()) {
+              // Verify file size is under 50 MB (safety check)
+              final fileSize = await audioFile.length();
+              const maxSizeBytes = 50 * 1024 * 1024; // 50 MB
+
+              if (fileSize > maxSizeBytes) {
+                throw Exception(
+                  'Audio file size (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB) exceeds maximum allowed size (50 MB)',
+                );
+              }
+
+              // Normalized audio is always m4a/AAC format
+              final fileExtension = 'm4a';
+              final contentType = 'audio/m4a';
 
               final audioFileName =
                   '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
@@ -337,6 +347,10 @@ class MemorySaveService {
           } catch (e) {
             // Audio upload failed, but continue with story creation
             // The story_fields row will be created without audio_path
+            developer.log(
+              'Audio upload failed: $e',
+              name: 'MemorySaveService',
+            );
           }
         }
 
@@ -345,6 +359,11 @@ class MemorySaveService {
           'memory_id': memoryId,
           'audio_path': audioPath,
           'audio_duration': state.audioDuration,
+          // Store normalization metadata if available
+          if (state.audioBitrateKbps != null)
+            'audio_bitrate_kbps': state.audioBitrateKbps,
+          if (state.audioFileSizeBytes != null)
+            'audio_filesize_bytes': state.audioFileSizeBytes,
         });
       }
 

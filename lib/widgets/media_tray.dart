@@ -46,6 +46,16 @@ class MediaTray extends ConsumerWidget {
   /// Whether video limit has been reached
   final bool canAddVideo;
 
+  /// Whether there is a normalized/ready audio attachment for this memory
+  /// (stories only).
+  final bool hasAudioAttachment;
+
+  /// Duration of the attached audio in seconds (optional, for display only).
+  final double? audioDurationSeconds;
+
+  /// File size of the attached audio in bytes (optional, for display only).
+  final int? audioFileSizeBytes;
+
   const MediaTray({
     super.key,
     required this.photoPaths,
@@ -60,40 +70,55 @@ class MediaTray extends ConsumerWidget {
     this.onExistingVideoRemoved,
     required this.canAddPhoto,
     required this.canAddVideo,
+    this.hasAudioAttachment = false,
+    this.audioDurationSeconds,
+    this.audioFileSizeBytes,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final totalPhotos = existingPhotoUrls.length + photoPaths.length;
     final totalVideos = existingVideoUrls.length + videoPaths.length;
-    final hasMedia = totalPhotos > 0 || totalVideos > 0;
+    final hasMedia = totalPhotos > 0 || totalVideos > 0 || hasAudioAttachment;
 
     if (!hasMedia) {
       return const SizedBox.shrink();
     }
 
-    // Combine existing photos, new photos, existing videos, and new videos
+    // Combine audio attachment (if present), existing photos, new photos,
+    // existing videos, and new videos into a single horizontal strip.
+    final totalItems = (hasAudioAttachment ? 1 : 0) + totalPhotos + totalVideos;
+
     return SizedBox(
       height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.zero,
-        itemCount: totalPhotos + totalVideos,
+        itemCount: totalItems,
         itemBuilder: (context, index) {
+          // Audio attachment tile always comes first, if present
+          if (hasAudioAttachment && index == 0) {
+            return _AudioAttachmentThumbnail(
+              durationSeconds: audioDurationSeconds,
+            );
+          }
+
+          final mediaIndex = hasAudioAttachment ? index - 1 : index;
+
           // Existing photos come first
-          if (index < existingPhotoUrls.length) {
+          if (mediaIndex < existingPhotoUrls.length) {
             return _MediaThumbnail(
-              url: existingPhotoUrls[index],
+              url: existingPhotoUrls[mediaIndex],
               isVideo: false,
               isExisting: true,
               onRemoved: onExistingPhotoRemoved != null
-                  ? () => onExistingPhotoRemoved!(index)
+                  ? () => onExistingPhotoRemoved!(mediaIndex)
                   : null,
             );
           }
           // New photos come next
-          else if (index < existingPhotoUrls.length + photoPaths.length) {
-            final photoIndex = index - existingPhotoUrls.length;
+          else if (mediaIndex < existingPhotoUrls.length + photoPaths.length) {
+            final photoIndex = mediaIndex - existingPhotoUrls.length;
             return _MediaThumbnail(
               filePath: photoPaths[photoIndex],
               isVideo: false,
@@ -102,12 +127,12 @@ class MediaTray extends ConsumerWidget {
             );
           }
           // Existing videos come next
-          else if (index <
+          else if (mediaIndex <
               existingPhotoUrls.length +
                   photoPaths.length +
                   existingVideoUrls.length) {
             final existingVideoIndex =
-                index - existingPhotoUrls.length - photoPaths.length;
+                mediaIndex - existingPhotoUrls.length - photoPaths.length;
             return _MediaThumbnail(
               url: existingVideoUrls[existingVideoIndex],
               isVideo: true,
@@ -122,7 +147,7 @@ class MediaTray extends ConsumerWidget {
           }
           // New videos come last
           else {
-            final videoIndex = index -
+            final videoIndex = mediaIndex -
                 existingPhotoUrls.length -
                 photoPaths.length -
                 existingVideoUrls.length;
@@ -460,6 +485,90 @@ class _MediaThumbnailState extends ConsumerState<_MediaThumbnail> {
           width: _videoController!.value.size.width,
           height: _videoController!.value.size.height,
           child: VideoPlayer(_videoController!),
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioAttachmentThumbnail extends StatelessWidget {
+  final double? durationSeconds;
+
+  const _AudioAttachmentThumbnail({
+    super.key,
+    this.durationSeconds,
+  });
+
+  String _formatDuration() {
+    if (durationSeconds == null) return '';
+    final totalSeconds = durationSeconds!.round();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String _formatFileSize() {
+    // File size is intentionally not shown in the UI for this thumbnail.
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final durationLabel = _formatDuration();
+    final sizeLabel = _formatFileSize();
+    final hasDuration = durationLabel.isNotEmpty;
+
+    return Semantics(
+      label: 'Attached audio',
+      child: Container(
+        width: 100,
+        height: 100,
+        margin: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          // Match placeholder thumbnails used in timeline cards
+          color: theme.colorScheme.surfaceVariant,
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.multitrack_audio,
+                  size: 22,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              if (hasDuration) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    durationLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

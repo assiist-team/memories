@@ -7,6 +7,7 @@ import 'package:memories/models/memory_type.dart';
 import 'package:memories/services/dictation_service.dart';
 import 'package:memories/services/geolocation_service.dart';
 import 'package:memories/services/audio_cache_service.dart';
+import 'package:memories/services/plugin_audio_normalizer.dart';
 import 'package:memories/services/location_lookup_service.dart';
 import 'package:memories/services/connectivity_service.dart';
 import 'package:memories/models/memory_detail.dart';
@@ -94,6 +95,32 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
     debugPrint(
         '[CaptureStateNotifier.build] ${DateTime.now().toIso8601String()} COMPLETE (${DateTime.now().difference(buildStartTime).inMilliseconds}ms)');
     return result;
+  }
+
+  /// Apply an imported audio file and its normalized output to the capture state.
+  Future<void> applyImportedAudio({
+    required String sourceFilePath,
+    required PluginNormalizedAudio normalizedAudio,
+  }) async {
+    final previousNormalizedPath = state.normalizedAudioPath;
+    final pluginNormalizer = ref.read(pluginAudioNormalizerProvider);
+
+    if (previousNormalizedPath != null &&
+        previousNormalizedPath != normalizedAudio.canonicalPath) {
+      await pluginNormalizer.cleanupNormalizedFile(previousNormalizedPath);
+    }
+
+    state = state.copyWith(
+      audioPath: sourceFilePath,
+      normalizedAudioPath: normalizedAudio.canonicalPath,
+      audioDuration: normalizedAudio.durationSeconds,
+      audioBitrateKbps: null,
+      audioFileSizeBytes: normalizedAudio.fileSizeBytes,
+      audioLevel: 0.0,
+      isDictating: false,
+      hasUnsavedChanges: true,
+      clearError: true,
+    );
   }
 
   /// Set memory type
@@ -365,18 +392,53 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
       cachedAudioPath = result.audioFilePath;
     }
 
+    // Normalize audio to ensure it's < 50 MB
+    String? normalizedAudioPath;
+    int? audioBitrateKbps;
+    int? audioFileSizeBytes;
+    double? normalizedDuration = audioDuration;
+    final previousNormalizedPath = state.normalizedAudioPath;
+
+    if (cachedAudioPath != null) {
+      try {
+        final pluginNormalizer = ref.read(pluginAudioNormalizerProvider);
+        final normalizedAudio =
+            await pluginNormalizer.normalize(cachedAudioPath);
+
+        normalizedAudioPath = normalizedAudio.canonicalPath;
+        normalizedDuration = normalizedAudio.durationSeconds;
+        audioBitrateKbps = null;
+        audioFileSizeBytes = normalizedAudio.fileSizeBytes;
+
+        if (previousNormalizedPath != null &&
+            previousNormalizedPath != normalizedAudioPath) {
+          await pluginNormalizer.cleanupNormalizedFile(previousNormalizedPath);
+        }
+      } catch (e) {
+        state = state.copyWith(
+          errorMessage: e is AudioNormalizationFailure
+              ? e.message
+              : 'Failed to process audio: $e',
+        );
+        return;
+      }
+    }
+
     // Clear preserved text for next dictation session
     // The current inputText already has the combined text from the transcript subscription
     // CRITICAL: The transcript subscription always appends to preserved text, never overwrites
     _textBeforeDictation = null;
 
-    // Reset waveform state and store cached audio path
+    // Reset waveform state and store normalized audio path
     // Keep current inputText (already contains preserved text + dictation transcript)
     state = state.copyWith(
       isDictating: false,
       // inputText already has the combined text from transcript subscription, don't overwrite
-      audioPath: cachedAudioPath,
-      audioDuration: audioDuration,
+      audioPath: cachedAudioPath, // Keep original for reference
+      normalizedAudioPath: normalizedAudioPath, // Use normalized for upload
+      audioDuration: normalizedDuration,
+      audioBitrateKbps: audioBitrateKbps,
+      audioFileSizeBytes: audioFileSizeBytes,
       audioLevel: 0.0,
       // Keep elapsedDuration as final recording duration
       hasUnsavedChanges: true,
@@ -538,6 +600,12 @@ class CaptureStateNotifier extends _$CaptureStateNotifier {
         sessionId: sessionId,
         keepIfQueued: keepAudioIfQueued,
       );
+    }
+
+    final normalizedAudioPath = state.normalizedAudioPath;
+    if (normalizedAudioPath != null) {
+      final pluginNormalizer = ref.read(pluginAudioNormalizerProvider);
+      await pluginNormalizer.cleanupNormalizedFile(normalizedAudioPath);
     }
 
     // Clear offline editing state

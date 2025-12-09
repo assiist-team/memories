@@ -66,6 +66,16 @@ class CaptureState {
   /// Audio duration in seconds (from dictation metadata)
   final double? audioDuration;
 
+  /// Normalized audio file path (after compression/normalization)
+  /// This is the file that should be uploaded, replacing the original audioPath
+  final String? normalizedAudioPath;
+
+  /// Audio bitrate in kbps (from normalization)
+  final int? audioBitrateKbps;
+
+  /// Audio file size in bytes (from normalization)
+  final int? audioFileSizeBytes;
+
   /// Locale used for dictation (e.g., 'en-US', 'es-ES')
   /// Tracked separately since plugin doesn't provide it
   final String? dictationLocale;
@@ -145,6 +155,9 @@ class CaptureState {
     this.memoryDate,
     this.audioPath,
     this.audioDuration,
+    this.normalizedAudioPath,
+    this.audioBitrateKbps,
+    this.audioFileSizeBytes,
     this.dictationLocale,
     this.sessionId,
     this.latitude,
@@ -186,6 +199,9 @@ class CaptureState {
     DateTime? memoryDate,
     String? audioPath,
     double? audioDuration,
+    String? normalizedAudioPath,
+    int? audioBitrateKbps,
+    int? audioFileSizeBytes,
     String? dictationLocale,
     String? sessionId,
     double? latitude,
@@ -238,6 +254,12 @@ class CaptureState {
       memoryDate: memoryDate ?? this.memoryDate,
       audioPath: clearAudio ? null : (audioPath ?? this.audioPath),
       audioDuration: clearAudio ? null : (audioDuration ?? this.audioDuration),
+      normalizedAudioPath:
+          clearAudio ? null : (normalizedAudioPath ?? this.normalizedAudioPath),
+      audioBitrateKbps:
+          clearAudio ? null : (audioBitrateKbps ?? this.audioBitrateKbps),
+      audioFileSizeBytes:
+          clearAudio ? null : (audioFileSizeBytes ?? this.audioFileSizeBytes),
       dictationLocale: dictationLocale ?? this.dictationLocale,
       sessionId: sessionId ?? this.sessionId,
       latitude: clearLocation ? null : (latitude ?? this.latitude),

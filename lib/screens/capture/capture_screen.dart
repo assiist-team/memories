@@ -16,6 +16,7 @@ import 'package:memories/providers/main_navigation_provider.dart';
 import 'package:memories/services/memory_save_service.dart';
 import 'package:memories/services/offline_memory_queue_service.dart';
 import 'package:memories/services/media_picker_service.dart';
+import 'package:memories/services/plugin_audio_normalizer.dart';
 import 'package:memories/utils/platform_utils.dart';
 import 'package:memories/widgets/media_tray.dart';
 import 'package:memories/widgets/inspirational_quote.dart';
@@ -52,6 +53,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   final GlobalKey _titleFieldKey = GlobalKey();
   bool _isSaving = false;
   bool _isPickingVideo = false;
+  bool _isImportingAudio = false;
   bool _showSuccessCheckmark = false;
   bool _hasInitializedDescription = false;
   bool _hasInitializedTitle = false;
@@ -356,6 +358,83 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     }
   }
 
+  Future<void> _handleImportAudio() async {
+    if (_isImportingAudio) {
+      debugPrint(
+          '[CaptureScreen] _handleImportAudio: Already importing, ignoring tap');
+      return;
+    }
+
+    debugPrint('[CaptureScreen] _handleImportAudio: Starting audio import');
+    final mediaPicker = ref.read(mediaPickerServiceProvider);
+    final notifier = ref.read(captureStateNotifierProvider.notifier);
+    final audioNormalizer = ref.read(pluginAudioNormalizerProvider);
+
+    // First, show the picker without busy state
+    String? audioFilePath;
+    try {
+      debugPrint('[CaptureScreen] _handleImportAudio: Calling pickAudioFile');
+      audioFilePath = await mediaPicker.pickAudioFile();
+      debugPrint(
+          '[CaptureScreen] _handleImportAudio: pickAudioFile completed, path: $audioFilePath');
+    } on MediaPickerException catch (e) {
+      debugPrint(
+          '[CaptureScreen] _handleImportAudio: MediaPickerException: ${e.message}');
+      _showErrorSnackBar(e.message);
+      return;
+    } catch (e, stackTrace) {
+      debugPrint('[CaptureScreen] _handleImportAudio: Exception: $e');
+      debugPrint(
+          '[CaptureScreen] _handleImportAudio: Stack trace: $stackTrace');
+      _showErrorSnackBar('Failed to pick audio file: $e');
+      return;
+    }
+
+    // User cancelled selection
+    if (audioFilePath == null) {
+      return;
+    }
+
+    // Now show busy state while normalizing
+    if (mounted) {
+      setState(() {
+        _isImportingAudio = true;
+      });
+    }
+
+    try {
+      final normalizedAudio = await audioNormalizer.normalize(audioFilePath);
+
+      await notifier.applyImportedAudio(
+        sourceFilePath: audioFilePath,
+        normalizedAudio: normalizedAudio,
+      );
+    } on AudioNormalizationFailure catch (e) {
+      _showErrorSnackBar(e.message);
+    } catch (e) {
+      _showErrorSnackBar('Failed to import audio: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImportingAudio = false;
+        });
+      }
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   Future<void> _handleAddTag() async {
     final notifier = ref.read(captureStateNotifierProvider.notifier);
 
@@ -523,6 +602,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           final queuedMemory = QueuedMemory.fromCaptureState(
             localId: OfflineMemoryQueueService.generateLocalId(),
             state: finalState,
+            // fromCaptureState will prefer normalizedAudioPath if available
             audioPath: finalState.audioPath,
             audioDuration: finalState.audioDuration,
             capturedAt: capturedAt,
@@ -542,6 +622,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           final queuedMemory = QueuedMemory.fromCaptureState(
             localId: OfflineMemoryQueueService.generateLocalId(),
             state: finalState,
+            // fromCaptureState will prefer normalizedAudioPath if available
             audioPath: finalState.audioPath,
             audioDuration: finalState.audioDuration,
             capturedAt: capturedAt,
@@ -1011,6 +1092,60 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                           ),
                                         ),
                                       ),
+                                      if (state.memoryType ==
+                                          MemoryType.story) ...[
+                                        const SizedBox(width: 8),
+                                        Semantics(
+                                          label: 'Import audio',
+                                          button: true,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              shape: BoxShape.circle,
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.08),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              shape: const CircleBorder(),
+                                              child: InkWell(
+                                                onTap: _isImportingAudio
+                                                    ? null
+                                                    : _handleImportAudio,
+                                                customBorder:
+                                                    const CircleBorder(),
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.all(12),
+                                                  width: 48,
+                                                  height: 48,
+                                                  alignment: Alignment.center,
+                                                  child: Icon(
+                                                    Icons.multitrack_audio,
+                                                    size: 18,
+                                                    color: _isImportingAudio
+                                                        ? Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurface
+                                                            .withOpacity(0.38)
+                                                        : Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurface,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 8),
@@ -1025,13 +1160,25 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                     ),
                                   if (_isPickingVideo)
                                     const SizedBox(height: 12),
+                                  if (_isImportingAudio)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5),
+                                      child: const _AudioImportBusyBanner(),
+                                    ),
+                                  if (_isImportingAudio)
+                                    const SizedBox(height: 12),
 
-                                  // Combined container for tags and media
+                                  // Combined container for tags, media, and uploaded audio
                                   if (state.photoPaths.isNotEmpty ||
                                       state.videoPaths.isNotEmpty ||
                                       state.existingPhotoUrls.isNotEmpty ||
                                       state.existingVideoUrls.isNotEmpty ||
-                                      state.tags.isNotEmpty)
+                                      state.tags.isNotEmpty ||
+                                      // For stories, also surface an imported/recorded audio indicator
+                                      (state.memoryType == MemoryType.story &&
+                                          (state.normalizedAudioPath != null ||
+                                              state.audioPath != null)))
                                     Container(
                                       margin: const EdgeInsets.symmetric(
                                           horizontal: 5),
@@ -1063,8 +1210,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                               state.videoPaths.isNotEmpty ||
                                               state.existingPhotoUrls
                                                   .isNotEmpty ||
-                                              state
-                                                  .existingVideoUrls.isNotEmpty)
+                                              state.existingVideoUrls
+                                                  .isNotEmpty ||
+                                              (state.memoryType ==
+                                                      MemoryType.story &&
+                                                  (state.normalizedAudioPath !=
+                                                          null ||
+                                                      state.audioPath != null)))
                                             SizedBox(
                                               height: 100,
                                               child: MediaTray(
@@ -1102,6 +1254,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
                                                     : null,
                                                 canAddPhoto: state.canAddPhoto,
                                                 canAddVideo: state.canAddVideo,
+                                                hasAudioAttachment: state
+                                                            .memoryType ==
+                                                        MemoryType.story &&
+                                                    (state.normalizedAudioPath !=
+                                                            null ||
+                                                        state.audioPath !=
+                                                            null),
+                                                audioDurationSeconds:
+                                                    state.audioDuration,
+                                                audioFileSizeBytes:
+                                                    state.audioFileSizeBytes,
                                               ),
                                             ),
                                           // Spacing between media and tags
@@ -3246,6 +3409,51 @@ class _VideoSelectionProgressBanner extends StatelessWidget {
                 message,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioImportBusyBanner extends StatelessWidget {
+  const _AudioImportBusyBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      label: 'Audio is being prepared for upload',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Preparing audio for upload…',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

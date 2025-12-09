@@ -565,6 +565,64 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Validate audio file size if audio exists (backend safeguard)
+    const { data: storyFields, error: storyFieldsError } = await supabaseClient
+      .from("story_fields")
+      .select("audio_path, audio_filesize_bytes, audio_bitrate_kbps")
+      .eq("memory_id", requestBody.memoryId)
+      .single();
+
+    if (!storyFieldsError && storyFields?.audio_path) {
+      const maxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
+      const fileSizeBytes = storyFields.audio_filesize_bytes as number | null;
+
+      if (fileSizeBytes != null && fileSizeBytes > maxFileSizeBytes) {
+        console.error(
+          JSON.stringify({
+            event: "audio_file_size_exceeds_limit",
+            memoryId: requestBody.memoryId,
+            fileSizeBytes,
+            maxFileSizeBytes,
+            audioPath: storyFields.audio_path,
+          }),
+        );
+
+        // Mark memory as failed with audio validation error
+        await supabaseClient
+          .from("memory_processing_status")
+          .update({
+            state: "failed",
+            last_error: `Audio file size (${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB) exceeds maximum allowed size (50 MB)`,
+            last_error_at: new Date().toISOString(),
+            last_updated_at: new Date().toISOString(),
+          })
+          .eq("memory_id", requestBody.memoryId);
+
+        return new Response(
+          JSON.stringify({
+            code: "AUDIO_TOO_LARGE",
+            message: `Audio file size exceeds maximum allowed size (50 MB). File size: ${(fileSizeBytes / 1024 / 1024).toFixed(2)} MB`,
+          } as ErrorResponse),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      // Log audio metadata for monitoring
+      if (storyFields.audio_bitrate_kbps || storyFields.audio_filesize_bytes) {
+        console.log(
+          JSON.stringify({
+            event: "audio_metadata_logged",
+            memoryId: requestBody.memoryId,
+            audioBitrateKbps: storyFields.audio_bitrate_kbps,
+            audioFileSizeBytes: storyFields.audio_filesize_bytes,
+          }),
+        );
+      }
+    }
+
     // Validate input_text
     const inputText = memory.input_text?.trim();
     if (!inputText || inputText.length === 0) {

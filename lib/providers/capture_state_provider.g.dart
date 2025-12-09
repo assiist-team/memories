@@ -6,7 +6,7 @@ part of 'capture_state_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$dictationServiceHash() => r'93ad50543ea9d6633920c761d573865260e5dff9';
+String _$dictationServiceHash() => r'aa1811a1defe86604eee8583ec7a460f7481a089';
 
 /// Provider for dictation service
 ///
@@ -77,7 +77,7 @@ final geolocationServiceProvider =
 // ignore: unused_element
 typedef GeolocationServiceRef = AutoDisposeProviderRef<GeolocationService>;
 String _$captureStateNotifierHash() =>
-    r'd19ee6071d3360fe23b1f097d5ccd8c36ce86899';
+    r'20661d582414759d7d28c4ea6921a9614d05e25a';
 
 /// Provider for capture state
 ///

@@ -37,10 +37,21 @@ class QueuedMemory {
   final bool inputTextChanged;
 
   /// Audio file path (local path to audio recording) - for stories only
+  /// This is the original audio path before normalization
   final String? audioPath;
+
+  /// Normalized audio file path (after compression/normalization) - for stories only
+  /// This is the file that should be uploaded, replacing the original audioPath
+  final String? normalizedAudioPath;
 
   /// Audio duration in seconds (optional metadata) - for stories only
   final double? audioDuration;
+
+  /// Audio bitrate in kbps (from normalization) - for stories only
+  final int? audioBitrateKbps;
+
+  /// Audio file size in bytes (from normalization) - for stories only
+  final int? audioFileSizeBytes;
 
   /// Photo file paths (local)
   final List<String> photoPaths;
@@ -115,12 +126,12 @@ class QueuedMemory {
   /// Remote video poster URLs that should be deleted on sync
   final List<String?> deletedVideoPosterUrls;
 
-  /// Version of the serialization format
-  /// Increment this when making breaking changes to the model structure
-  static const int currentVersion = 4;
-
   /// Model version for this instance
   final int version;
+
+  /// Increment this when making breaking changes to the model structure
+  /// Version 5: Added normalizedAudioPath, audioBitrateKbps, audioFileSizeBytes
+  static const int currentVersion = 5;
 
   QueuedMemory({
     required this.localId,
@@ -129,7 +140,10 @@ class QueuedMemory {
     this.title,
     this.originalTitle,
     this.audioPath,
+    this.normalizedAudioPath,
     this.audioDuration,
+    this.audioBitrateKbps,
+    this.audioFileSizeBytes,
     this.photoPaths = const [],
     this.videoPaths = const [],
     this.videoPosterPaths = const [],
@@ -164,6 +178,7 @@ class QueuedMemory {
   /// Create from CaptureState
   ///
   /// Handles optional audio fields when memoryType is 'story'
+  /// Prefers normalizedAudioPath over audioPath to ensure uploaded files are < 50 MB
   factory QueuedMemory.fromCaptureState({
     required String localId,
     required CaptureState state,
@@ -174,14 +189,21 @@ class QueuedMemory {
     String? targetMemoryId,
     Map<String, dynamic>? memoryLocationData,
   }) {
+    // Prefer normalized audio path if available (ensures file is < 50 MB)
+    final effectiveAudioDuration = audioDuration ?? state.audioDuration;
+
     return QueuedMemory(
       localId: localId,
       memoryType: state.memoryType.apiValue,
       inputText: state.inputText,
       title: state.memoryTitle,
       originalTitle: state.originalMemoryTitle,
-      audioPath: audioPath,
-      audioDuration: audioDuration,
+      audioPath: audioPath ?? state.audioPath, // Keep original for reference
+      normalizedAudioPath:
+          state.normalizedAudioPath, // This is what should be uploaded
+      audioDuration: effectiveAudioDuration,
+      audioBitrateKbps: state.audioBitrateKbps,
+      audioFileSizeBytes: state.audioFileSizeBytes,
       photoPaths: List.from(state.photoPaths),
       videoPaths: List.from(state.videoPaths),
       videoPosterPaths: List<String?>.from(state.videoPosterPaths),
@@ -234,7 +256,10 @@ class QueuedMemory {
       capturedAt: capturedAt,
       memoryDate: memoryDate,
       audioPath: audioPath,
+      normalizedAudioPath: normalizedAudioPath,
       audioDuration: audioDuration,
+      audioBitrateKbps: audioBitrateKbps,
+      audioFileSizeBytes: audioFileSizeBytes,
       memoryLocationLabel: memoryLocationLabel,
       memoryLocationLatitude: memoryLocationLatitude,
       memoryLocationLongitude: memoryLocationLongitude,
@@ -309,9 +334,15 @@ class QueuedMemory {
       ...state.videoPosterPaths
     ];
 
-    // Preserve audio fields for stories
+    // Preserve audio fields for stories (prefer normalized path)
     final preservedAudioPath = memoryType == 'story' ? audioPath : null;
+    final preservedNormalizedAudioPath =
+        memoryType == 'story' ? normalizedAudioPath : null;
     final preservedAudioDuration = memoryType == 'story' ? audioDuration : null;
+    final preservedAudioBitrateKbps =
+        memoryType == 'story' ? audioBitrateKbps : null;
+    final preservedAudioFileSizeBytes =
+        memoryType == 'story' ? audioFileSizeBytes : null;
 
     final updatedMemoryLocationData = _cloneMap(memoryLocationData) ??
         _cloneMap(this.memoryLocationData) ??
@@ -324,7 +355,10 @@ class QueuedMemory {
       title: state.memoryTitle,
       originalTitle: state.originalMemoryTitle,
       audioPath: preservedAudioPath,
+      normalizedAudioPath: preservedNormalizedAudioPath,
       audioDuration: preservedAudioDuration,
+      audioBitrateKbps: preservedAudioBitrateKbps,
+      audioFileSizeBytes: preservedAudioFileSizeBytes,
       photoPaths: allPhotoPaths,
       videoPaths: allVideoPaths,
       videoPosterPaths: allVideoPosterPaths,
@@ -364,7 +398,10 @@ class QueuedMemory {
     String? originalTitle,
     bool? inputTextChanged,
     String? audioPath,
+    String? normalizedAudioPath,
     double? audioDuration,
+    int? audioBitrateKbps,
+    int? audioFileSizeBytes,
     List<String>? photoPaths,
     List<String>? videoPaths,
     List<String?>? videoPosterPaths,
@@ -398,7 +435,10 @@ class QueuedMemory {
       title: title ?? this.title,
       originalTitle: originalTitle ?? this.originalTitle,
       audioPath: audioPath ?? this.audioPath,
+      normalizedAudioPath: normalizedAudioPath ?? this.normalizedAudioPath,
       audioDuration: audioDuration ?? this.audioDuration,
+      audioBitrateKbps: audioBitrateKbps ?? this.audioBitrateKbps,
+      audioFileSizeBytes: audioFileSizeBytes ?? this.audioFileSizeBytes,
       photoPaths: photoPaths ?? this.photoPaths,
       videoPaths: videoPaths ?? this.videoPaths,
       videoPosterPaths: videoPosterPaths ?? this.videoPosterPaths,
@@ -457,7 +497,10 @@ class QueuedMemory {
       'title': title,
       'originalTitle': originalTitle,
       'audioPath': audioPath,
+      'normalizedAudioPath': normalizedAudioPath,
       'audioDuration': audioDuration,
+      'audioBitrateKbps': audioBitrateKbps,
+      'audioFileSizeBytes': audioFileSizeBytes,
       'photoPaths': photoPaths,
       'videoPaths': videoPaths,
       'videoPosterPaths': videoPosterPaths,
@@ -498,7 +541,10 @@ class QueuedMemory {
       title: json['title'] as String?,
       originalTitle: json['originalTitle'] as String?,
       audioPath: json['audioPath'] as String?,
+      normalizedAudioPath: json['normalizedAudioPath'] as String?,
       audioDuration: (json['audioDuration'] as num?)?.toDouble(),
+      audioBitrateKbps: (json['audioBitrateKbps'] as num?)?.toInt(),
+      audioFileSizeBytes: (json['audioFileSizeBytes'] as num?)?.toInt(),
       photoPaths: List<String>.from(json['photoPaths'] as List? ?? []),
       videoPaths: List<String>.from(json['videoPaths'] as List? ?? []),
       videoPosterPaths:
